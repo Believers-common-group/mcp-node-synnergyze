@@ -52,7 +52,7 @@ export const StartServerOptionsSchema = CliFilteringOptionsSchema.extend({
     .optional(),
 });
 
-type StartServerOptions = z.infer<typeof StartServerOptionsSchema>;
+export type StartServerOptions = z.infer<typeof StartServerOptionsSchema>;
 
 function makeRegionRequestMiddleware(dashboardApi: DashboardApi): RequestMiddleware {
   return async ({ request, params }) => {
@@ -72,7 +72,7 @@ function makeRegionRequestMiddleware(dashboardApi: DashboardApi): RequestMiddlew
   };
 }
 
-export async function startServer(options: StartServerOptions): Promise<CustomMcpServer> {
+export async function createServer(options: StartServerOptions): Promise<CustomMcpServer> {
   const { credentials, ...opts } = StartServerOptionsSchema.parse(options);
   const toolFilter = getToolFilter(opts);
 
@@ -88,7 +88,6 @@ export async function startServer(options: StartServerOptions): Promise<CustomMc
   const regionHotFixMiddlewares: RequestMiddleware[] = [];
   let processCallbackArguments: ProcessCallbackArguments;
   const processInputSchema: ProcessInputSchema = (inputSchema) => {
-    // If we got it from the options, we don't need it from the AI
     if (credentials && inputSchema.properties?.applicationId) {
       delete inputSchema.properties.applicationId;
 
@@ -140,7 +139,6 @@ export async function startServer(options: StartServerOptions): Promise<CustomMc
 
     regionHotFixMiddlewares.push(makeRegionRequestMiddleware(dashboardApi));
 
-    // Dashboard API Tools
     if (isToolAllowed(GetUserInfoOperationId, toolFilter)) {
       registerGetUserInfo(server, dashboardApi);
     }
@@ -149,7 +147,6 @@ export async function startServer(options: StartServerOptions): Promise<CustomMc
       registerGetApplications(server, dashboardApi);
     }
 
-    // TODO: Make it available when with applicationId+apiKey mode too
     if (isToolAllowed(SetAttributesForFacetingOperationId, toolFilter)) {
       registerSetAttributesForFaceting(server, dashboardApi);
     }
@@ -177,7 +174,6 @@ export async function startServer(options: StartServerOptions): Promise<CustomMc
     });
   }
 
-  // Usage
   registerOpenApiTools({
     server,
     processInputSchema,
@@ -185,8 +181,6 @@ export async function startServer(options: StartServerOptions): Promise<CustomMc
     openApiSpec: UsageSpec,
     toolFilter,
     requestMiddlewares: [
-      // The Usage API expects `name` parameter as multiple values
-      // rather than comma-separated.
       async ({ request }) => {
         const url = new URL(request.url);
         const nameParams = url.searchParams.get("name");
@@ -208,19 +202,20 @@ export async function startServer(options: StartServerOptions): Promise<CustomMc
     ],
   });
 
-  // Ingestion API Tools
   registerOpenApiTools({
     server,
     processInputSchema,
     processCallbackArguments,
     openApiSpec: IngestionSpec,
     toolFilter,
-    requestMiddlewares: [
-      // Dirty fix for Claud hallucinating regions
-      ...regionHotFixMiddlewares,
-    ],
+    requestMiddlewares: [...regionHotFixMiddlewares],
   });
 
+  return server;
+}
+
+export async function startServer(options: StartServerOptions): Promise<CustomMcpServer> {
+  const server = await createServer(options);
   const transport = new StdioServerTransport();
   await server.connect(transport);
   return server;
