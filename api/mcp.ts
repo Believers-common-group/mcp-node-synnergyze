@@ -3,6 +3,45 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 
+const SUPABASE_URL = process.env.SUPABASE_URL;
+const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
+
+function supabaseConfiguration() {
+  return {
+    configured: Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY),
+    urlConfigured: Boolean(SUPABASE_URL),
+    publishableKeyConfigured: Boolean(SUPABASE_PUBLISHABLE_KEY),
+  };
+}
+
+async function probeSupabase() {
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+    return {
+      ok: false,
+      configured: false,
+      error: "Supabase environment variables are not configured.",
+    };
+  }
+
+  const startedAt = Date.now();
+  const response = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/`, {
+    method: "GET",
+    headers: {
+      apikey: SUPABASE_PUBLISHABLE_KEY,
+      accept: "application/openapi+json, application/json",
+      "user-agent": "synnergyze-genesis-mcp/0.1.0",
+    },
+    signal: AbortSignal.timeout(8000),
+  });
+
+  return {
+    ok: response.ok,
+    configured: true,
+    status: response.status,
+    latencyMs: Date.now() - startedAt,
+  };
+}
+
 function createServer() {
   const server = new McpServer({
     name: "synnergyze-genesis-mcp",
@@ -21,12 +60,38 @@ function createServer() {
             service: "synnergyze-genesis-mcp",
             transport: "streamable-http",
             deployment: "vercel",
-            supabase: "not-attached",
+            supabase: supabaseConfiguration(),
             legacyAlgoliaTools: "quarantined",
           }),
         },
       ],
     }),
+  );
+
+  server.tool(
+    "genesis_supabase_probe",
+    "Test network/API reachability to the configured Supabase project using only its publishable key. This performs no database mutation.",
+    {},
+    async () => {
+      try {
+        const result = await probeSupabase();
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (error) {
+        return {
+          isError: true,
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: false,
+                configured: true,
+                error: error instanceof Error ? error.message : "Unknown Supabase probe failure",
+              }),
+            },
+          ],
+        };
+      }
+    },
   );
 
   server.tool(
@@ -64,6 +129,7 @@ export default async function handler(request: IncomingMessage, response: Server
     const server = createServer();
     const transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: undefined,
+      enableJsonResponse: true,
     });
 
     response.on("close", () => {
