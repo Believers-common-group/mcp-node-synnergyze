@@ -1,20 +1,20 @@
 {
-  "name": "algolia-mcp",
-  "version": "0.0.8",
-  "main": "index.js",
+  "name": "synnergyze-genesis-mcp",
+  "version": "0.1.0",
+  "main": "src/app.ts",
   "scripts": {
     "start": "node --experimental-strip-types --no-warnings=ExperimentalWarnings src/app.ts",
     "type-check": "tsc --noEmit",
-    "lint": "eslint --ext .ts src",
+    "lint": "eslint --ext .ts src api",
     "test": "vitest",
-    "build": "bun build ./src/app.ts --compile",
+    "build": "npm run type-check",
     "debug": "mcp-inspector npm start"
   },
   "type": "module",
-  "keywords": [],
-  "author": "",
+  "keywords": ["mcp", "synnergyze", "genesis", "vsr"],
+  "author": "Believers Common Group",
   "license": "ISC",
-  "description": "",
+  "description": "Synnergyze Genesis MCP service for governed VSR/Genesis integrations.",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
     "ajv": "^8.17.1",
