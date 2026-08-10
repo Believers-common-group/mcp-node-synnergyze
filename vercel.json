@@ -3,6 +3,7 @@
   "framework": null,
   "buildCommand": null,
   "outputDirectory": null,
+  "ignoreCommand": "if [ \"$VERCEL_GIT_COMMIT_REF\" = \"genesis\" ]; then exit 1; else exit 0; fi",
   "functions": {
     "api/health.ts": {
       "maxDuration": 10
