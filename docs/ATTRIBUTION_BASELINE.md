@@ -56,7 +56,42 @@ The Datadog workflow can execute once during pull-request validation and again a
 
 The npm publication workflow is privileged because release creation can progress into package publication using a protected token.
 
-## 6. Evidence classes
+## 6. First verified run-level attribution — PR #17
+
+Creating the policy PR itself produced four pull-request-triggered workflow runs associated with commit `fbfb3047cfa35e843b9c802b58b32fb1ac02b30e`:
+
+| Workflow | Run ID | Job ID | Result | Verified runner |
+|---|---:|---:|---|---|
+| Run Datadog Synthetic tests | 31363227612 | 93376159514 | failure | Ubuntu 24.04 / `ubuntu-24.04` |
+| test | 31363227683 | 93376160017 | success | Ubuntu 24.04 / `ubuntu-24.04` |
+| type-check | 31363227659 | 93376159841 | success | Ubuntu 24.04 / `ubuntu-24.04` |
+| lint | 31363227627 | 93376159747 | success | Ubuntu 24.04 / `ubuntu-24.04` |
+
+This proves that a single PR can fan out into multiple independent Actions runs even when the proposed change is documentation/policy-only.
+
+### Datadog failure cause
+
+The Datadog job failed at the Datadog Synthetic tests step because the required Datadog API/application key inputs were not supplied to that PR run. The log reports `Missing API or APP keys to initialize datadog-ci!` and `Input required and not supplied: api_key`.
+
+The failure occurred after the Ubuntu hosted runner had already been provisioned and the checkout/Datadog actions had been downloaded. Therefore, even a fast missing-secret failure can still create Actions execution and billing/usage evidence.
+
+This is a configuration-boundary issue, not evidence of contributor misconduct.
+
+### Other verified PR checks
+
+The `test`, `type-check`, and `lint` runs completed successfully on Ubuntu hosted runners. Their logs show read-only GitHub token permissions for contents/metadata/packages. The test and type-check workflows each installed the project dependencies before performing their designated check; the test job reported 26 passing tests.
+
+The dependency installation output also reported 26 npm audit findings (3 low, 3 moderate, 17 high, 3 critical). This is a separate dependency-security observation and must not be conflated with runner billing or contributor accountability.
+
+### Attribution lesson
+
+The policy PR provides a concrete example of why accountability must distinguish:
+
+`ACTOR/CHANGE → PR → MULTIPLE WORKFLOW RUNS → JOBS → RUNNER MINUTES → RESULT`
+
+A contributor should be accountable for the attributable trigger/change, while project maintainers remain accountable for canonical workflow design, secret availability rules, runner selection, and whether particular checks should execute for that class of change.
+
+## 7. Evidence classes
 
 Each future attribution record should distinguish:
 
@@ -66,7 +101,7 @@ Each future attribution record should distinguish:
 
 No enforcement decision should be based solely on an `INFERRED` attribution where direct run-level evidence is reasonably obtainable.
 
-## 7. Required next evidence
+## 8. Required next evidence
 
 The next evidence set should identify, where connector/API coverage allows:
 
@@ -83,7 +118,7 @@ The next evidence set should identify, where connector/API coverage allows:
 
 Until that evidence is available, no contributor project should be blamed for the macOS/Linux billing changes.
 
-## 8. Non-disruption rule
+## 9. Non-disruption rule
 
 Attribution is observational. It does not itself revoke access, delete branches, stop forks, close projects, demand payment, or alter repository history.
 
