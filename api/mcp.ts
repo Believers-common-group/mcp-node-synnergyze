@@ -1,154 +1,73 @@
+import { timingSafeEqual } from "node:crypto";
 import type { IncomingMessage, ServerResponse } from "node:http";
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
-import { z } from "zod";
+import { createServer } from "../src/commands/start-server.ts";
 
-const SUPABASE_URL = process.env.SUPABASE_URL;
-const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
-
-function supabaseConfiguration() {
-  return {
-    configured: Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY),
-    urlConfigured: Boolean(SUPABASE_URL),
-    publishableKeyConfigured: Boolean(SUPABASE_PUBLISHABLE_KEY),
-  };
+interface VercelRequest extends IncomingMessage {
+  body?: unknown;
 }
 
-async function probeSupabase() {
-  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
-    return {
-      ok: false,
-      configured: false,
-      error: "Supabase environment variables are not configured.",
-    };
+function sendJson(response: ServerResponse, status: number, body: unknown): void {
+  response.statusCode = status;
+  response.setHeader("content-type", "application/json");
+  response.end(JSON.stringify(body));
+}
+
+function hasValidBearerToken(request: IncomingMessage, expected: string): boolean {
+  const authorization = request.headers.authorization;
+  if (!authorization?.startsWith("Bearer ")) return false;
+
+  const actual = Buffer.from(authorization.slice("Bearer ".length));
+  const wanted = Buffer.from(expected);
+  return actual.length === wanted.length && timingSafeEqual(actual, wanted);
+}
+
+function hasAllowedOrigin(request: IncomingMessage): boolean {
+  const origin = request.headers.origin;
+  if (!origin) return true;
+
+  const configured = process.env.MCP_ALLOWED_ORIGINS;
+  if (!configured) return false;
+
+  const allowed = configured
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean);
+  return allowed.includes(origin);
+}
+
+export default async function handler(request: VercelRequest, response: ServerResponse) {
+  const bearerToken = process.env.MCP_BEARER_TOKEN;
+  const applicationId = process.env.ALGOLIA_APPLICATION_ID;
+  const apiKey = process.env.ALGOLIA_API_KEY;
+
+  if (!bearerToken || !applicationId || !apiKey) {
+    return sendJson(response, 503, {
+      error: "MCP runtime is not configured",
+    });
   }
 
-  const startedAt = Date.now();
-  const response = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/`, {
-    method: "GET",
-    headers: {
-      apikey: SUPABASE_PUBLISHABLE_KEY,
-      accept: "application/openapi+json, application/json",
-      "user-agent": "synnergyze-genesis-mcp/0.1.0",
-    },
-    signal: AbortSignal.timeout(8000),
+  if (!hasAllowedOrigin(request)) {
+    return sendJson(response, 403, { error: "Origin not allowed" });
+  }
+
+  if (!hasValidBearerToken(request, bearerToken)) {
+    response.setHeader("www-authenticate", "Bearer");
+    return sendJson(response, 401, { error: "Unauthorized" });
+  }
+
+  const server = await createServer({
+    credentials: { applicationId, apiKey },
   });
-
-  return {
-    ok: response.ok,
-    configured: true,
-    status: response.status,
-    latencyMs: Date.now() - startedAt,
-  };
-}
-
-function createServer() {
-  const server = new McpServer({
-    name: "synnergyze-genesis-mcp",
-    version: "0.1.0",
+  const transport = new StreamableHTTPServerTransport({
+    sessionIdGenerator: undefined,
   });
-
-  server.tool(
-    "genesis_status",
-    "Return the deployment and integration status of the Synnergyze Genesis MCP boundary.",
-    {},
-    async () => ({
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            service: "synnergyze-genesis-mcp",
-            transport: "streamable-http",
-            deployment: "vercel",
-            supabase: supabaseConfiguration(),
-            legacyAlgoliaTools: "quarantined",
-          }),
-        },
-      ],
-    }),
-  );
-
-  server.tool(
-    "genesis_supabase_probe",
-    "Test network/API reachability to the configured Supabase project using only its publishable key. This performs no database mutation.",
-    {},
-    async () => {
-      try {
-        const result = await probeSupabase();
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
-      } catch (error) {
-        return {
-          isError: true,
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify({
-                ok: false,
-                configured: true,
-                error: error instanceof Error ? error.message : "Unknown Supabase probe failure",
-              }),
-            },
-          ],
-        };
-      }
-    },
-  );
-
-  server.tool(
-    "genesis_echo",
-    "Connectivity test for the Genesis MCP transport. It performs no external action.",
-    { message: z.string().max(2000) },
-    async ({ message }) => ({
-      content: [{ type: "text", text: message }],
-    }),
-  );
-
-  return server;
-}
-
-async function readJsonBody(request: IncomingMessage): Promise<unknown> {
-  const chunks: Buffer[] = [];
-  for await (const chunk of request) {
-    chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
-  }
-  if (chunks.length === 0) return undefined;
-  return JSON.parse(Buffer.concat(chunks).toString("utf8"));
-}
-
-export default async function handler(request: IncomingMessage, response: ServerResponse) {
-  if (request.method !== "POST") {
-    response.statusCode = 405;
-    response.setHeader("allow", "POST");
-    response.setHeader("content-type", "application/json; charset=utf-8");
-    response.end(JSON.stringify({ error: "Use POST for MCP requests." }));
-    return;
-  }
 
   try {
-    const body = await readJsonBody(request);
-    const server = createServer();
-    const transport = new StreamableHTTPServerTransport({
-      sessionIdGenerator: undefined,
-      enableJsonResponse: true,
-    });
-
-    response.on("close", () => {
-      void transport.close();
-      void server.close();
-    });
-
     await server.connect(transport);
-    await transport.handleRequest(request, response, body);
-  } catch (error) {
-    if (!response.headersSent) {
-      response.statusCode = 500;
-      response.setHeader("content-type", "application/json; charset=utf-8");
-      response.end(
-        JSON.stringify({
-          error: "Genesis MCP request failed.",
-          detail: error instanceof Error ? error.message : "Unknown error",
-        }),
-      );
-    }
+    await transport.handleRequest(request, response, request.body);
+  } finally {
+    await transport.close();
+    await server.close();
   }
 }
