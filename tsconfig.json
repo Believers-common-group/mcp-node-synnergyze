@@ -1,9 +1,8 @@
 {
   "compilerOptions": {
-    "lib": ["es2023", "ES2024.Promise"],
+    "lib": ["es2023", "ES2024.Promise", "DOM"],
     "module": "nodenext",
     "target": "es2022",
-
     "strict": true,
     "esModuleInterop": true,
     "skipLibCheck": true,
@@ -13,5 +12,7 @@
     "verbatimModuleSyntax": false,
     "noUnusedLocals": true,
     "resolveJsonModule": true
-  }
+  },
+  "include": ["api/**/*.ts"],
+  "exclude": ["src/**", "node_modules"]
 }
