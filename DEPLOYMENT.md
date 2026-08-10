@@ -9,6 +9,14 @@
 - Health route: `/health`
 - MCP route: `/mcp`
 
+## One-click Vercel import
+
+Use Vercel's repository clone/import flow for this exact branch:
+
+`https://vercel.com/new/clone?repository-url=https%3A%2F%2Fgithub.com%2FBelievers-common-group%2Fmcp-node-synnergyze%2Ftree%2Fgenesis&repository-name=synnergyze-genesis-mcp`
+
+After import, confirm the project is linked to the `genesis` branch before promoting production.
+
 ## Required Vercel environment
 
 Configure these values in Vercel rather than GitHub:
