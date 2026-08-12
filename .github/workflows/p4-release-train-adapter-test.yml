@@ -1,0 +1,30 @@
+name: p4-release-train-adapter-test
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    paths:
+      - 'api/adapters/**'
+      - 'api/runtime/**'
+      - '.github/workflows/p4-release-train-adapter-test.yml'
+
+jobs:
+  release-train-adapter:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: npm i
+
+      - name: Run focused release train adapter tests
+        run: npx vitest run api/adapters/release-train-adapter.test.ts
+
+      - name: Type-check API runtime and adapters
+        run: npm run -s type-check
