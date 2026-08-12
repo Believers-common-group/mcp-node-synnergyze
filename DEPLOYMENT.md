@@ -3,11 +3,39 @@
 ## Canonical deployment source
 
 - Repository: `Believers-common-group/mcp-node-synnergyze`
-- Branch: `genesis`
+- Runtime deployment branch: `genesis`
+- Repository release branch: `main`
 - Runtime: Node.js 22+
 - Remote MCP transport: Streamable HTTP
 - Health route: `/health`
 - MCP route: `/mcp`
+
+## Branch roles and lineage
+
+`genesis` is the governed integration branch and the canonical Vercel runtime deployment source for the Synnergyze Genesis MCP surface.
+
+`main` remains the repository release/governance branch. Promotion from `genesis` to `main` records a validated repository release; it does not by itself transfer Vercel production deployment authority away from `genesis`.
+
+This runtime rule is effective from commit `413ba073cf3187a548896dd416cfb9bcce3f20c5` (`fix(vercel): deploy only canonical genesis branch`, 10 August 2026) and is additive to the earlier Genesis branch contract.
+
+## Vercel project contract
+
+The Vercel project `synnergyze-genesis-mcp` must use:
+
+- Production Branch: `genesis`
+- Framework Preset: Other / auto-detected serverless functions
+- Output Directory: Auto-detect / cleared
+- Repository root as the project root unless explicitly superseded
+
+Do not set Output Directory to `public`, and do not create a placeholder `public` directory to satisfy a stale project setting. The repository already declares `outputDirectory: null` in `vercel.json`; the Vercel project-level override must also be cleared.
+
+Equivalent Vercel CLI remediation when operating with an authorized Vercel token:
+
+```bash
+vercel project update synnergyze-genesis-mcp --auto-detect output-directory
+```
+
+After the project setting is corrected, a push to `genesis` is the canonical Git-triggered deployment path. `vercel.json#ignoreCommand` intentionally suppresses non-`genesis` Git deployments.
 
 ## One-click Vercel import
 
