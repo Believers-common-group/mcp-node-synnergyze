@@ -1,0 +1,36 @@
+name: program-runtime-test
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    paths:
+      - 'api/runtime/**'
+      - '.github/workflows/program-runtime-test.yml'
+  push:
+    branches:
+      - genesis
+    paths:
+      - 'api/runtime/**'
+      - '.github/workflows/program-runtime-test.yml'
+
+jobs:
+  program-runtime:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+
+      - name: Install locked dependencies
+        run: npm ci
+
+      - name: Run focused Program/Event tests
+        run: npx vitest run api/runtime/program-runner.test.ts
+
+      - name: Type-check API runtime
+        run: npm run -s type-check
