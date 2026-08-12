@@ -6,8 +6,19 @@ genesis_branch:
   source_authority: Believers-common-group/genesis-stack
   first_point_of_contact: true
   production_branch: false
+  production_branch_scope: repository_release
+  runtime_deployment:
+    platform: vercel
+    project: synnergyze-genesis-mcp
+    source_branch: genesis
+    target_environment: production
+    output_directory_policy: auto_detect
+    effective_from: 2026-08-10T08:17:02Z
+    authority_commit: 413ba073cf3187a548896dd416cfb9bcce3f20c5
   workstream_pattern: genesis/<workstream>
   promotion:
     requires_validation: true
     target: main
+    effect: repository_release_only
   release_rule: Synnergyze node changes integrate here before promotion.
+  deployment_rule: Runtime deployment is sourced from genesis; promotion to main does not change the Vercel deployment source unless explicitly superseded.
