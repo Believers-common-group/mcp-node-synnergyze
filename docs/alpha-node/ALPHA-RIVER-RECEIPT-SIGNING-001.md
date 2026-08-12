@@ -1,6 +1,6 @@
 # ALPHA-RIVER-RECEIPT-SIGNING-001
 
-Status: DEPLOYED — LIVE CANARY VERIFICATION PENDING
+Status: VERIFIED CONTINUOUS DIGITAL-SIGNATURE ASSURANCE
 
 Node: `ALPHA-NODE-001`
 
@@ -9,6 +9,8 @@ Signer: `alpha-river-receipt-signer/1.0.0`
 Verifier: `alpha-river-signature-verifier/1.0.0`
 
 Signer reference: `ALPHA-RIVER-RECEIPT-SIGNER-001`
+
+Signer authority: `ALPHA-RIVER-SIGNER-POLICY-001`
 
 Algorithm: `ECDSA_P256_SHA256`
 
@@ -30,7 +32,7 @@ Signing is represented as a companion immutable attestation in `riveros.receipt_
 - The private P-256 signing JWK is stored only in Supabase Vault.
 - Scheduler authentication keys are also stored in Vault.
 - Private key material, worker secrets, database credentials and service-role credentials must never be committed to GitHub, Box, Notion, or manifests.
-- Key state supports ACTIVE, RETIRED and REVOKED without rewriting historical signatures.
+- Key state supports `ACTIVE`, `RETIRED` and `REVOKED` without rewriting historical signatures.
 
 ## Canonical signed payload
 
@@ -54,8 +56,8 @@ The database computes and returns the canonical payload plus its SHA-256. The si
 `alpha-river-receipt-signer/1.0.0`:
 
 - has access to the private signing key through a service-role-only Vault resolver;
-- may sign only verified River effect-witness receipts without an existing signature for the active signer key;
-- self-verifies the signature against the derived public key before recording the immutable signature attestation;
+- signs only verified River effect-witness receipts without an existing signature for the active signer key;
+- self-verifies the ECDSA signature before recording the immutable signature attestation;
 - cannot mark that signature independently verified.
 
 ### Verifier
@@ -70,26 +72,65 @@ The database computes and returns the canonical payload plus its SHA-256. The si
 
 ## Scheduling
 
-Two Vault-authenticated once-per-minute scheduler jobs are installed:
+Two Vault-authenticated once-per-minute scheduler jobs are active:
 
-- `alpha-river-receipt-signer-minute`
-- `alpha-river-signature-verifier-minute`
+- job `11` — `alpha-river-receipt-signer-minute`
+- job `12` — `alpha-river-signature-verifier-minute`
 
-The signer runs before or independently of the verifier; the verifier selects only signatures that do not yet have its verification attestation.
+## Verified canary — 12 Aug 2026
 
-## Current verification state
+River receipt:
 
-The schema, signer key registry, Vault secrets, Edge Functions and cron wiring were successfully installed. During the live canary step, the Supabase private connector began returning upstream/network `502` errors, and the local runtime could not resolve the private Supabase hostname. Therefore this contract is deliberately **not** marked VERIFIED yet.
+- receipt: `03b6a0ba-b51c-426c-851c-da0ec25739b9`
+- receipt hash: `cd399a46168bd196370b3261b24b0abc5c11b12d6e4272e11ad84fc25607a12a`
+- mode: `HASH_CHAINED_INTERNAL`
+- original receipt `signature_algorithm`, `signature` and `signer_reference` remain `NULL`; history was not rewritten.
 
-Required closing checks when the private path is reachable:
+Signature attestation:
 
-1. Confirm one signature attestation exists for River receipt `03b6a0ba-b51c-426c-851c-da0ec25739b9`.
-2. Confirm the original `riveros.receipts` row is unchanged.
-3. Confirm the verifier records `VALID` using the public key only.
-4. Confirm replay creates neither a second signature nor a second verification.
-5. Confirm signer/verifier cron jobs are active and return HTTP 200.
-6. Rerun the Supabase security advisor.
+- signature: `cb8f099f-e4eb-48f9-9010-623bf47971c4`
+- signer: `ALPHA-RIVER-RECEIPT-SIGNER-001`
+- key version: `1`
+- canonical payload SHA-256: `c893141173d25b341e05c2edd675e7a5986094ed5111c82cff701280a1c717b2`
+- signed at: `2026-08-12T19:30:03.530Z`
+- issuance state: `SELF_VERIFIED`
+- signature evidence hash: `0cccb76b66ea6b03d23c20cb29e6041cdb2e57ddf01a30036b3463aa6b246185`
 
-Until those checks pass, the correct assurance state remains:
+Independent verification:
 
-`RIVER HASH-CHAIN VERIFIED / RECEIPT SIGNING DEPLOYED / LIVE SIGNATURE VERIFICATION PENDING`
+- verification: `275c53f6-330e-4505-9b23-c92142a8f928`
+- verifier: `ALPHA-RIVER-SIGNATURE-VERIFIER-001`
+- verifier version: `1.0.0`
+- result: `VALID`
+- verified at: `2026-08-12T19:31:00.971Z`
+- verification used public key only
+- signature length: `64` bytes
+- key state at verification: `ACTIVE`
+- verification evidence hash: `7f348c5de9473454cfbd69a0f74779d8274effbed7ee30e11c43b5e1cff280e9`
+
+Replay verification at the next minute:
+
+- signer: HTTP 200, processed `0`
+- verifier: HTTP 200, processed `0`
+- signature count for this receipt remains `1`
+- verification count remains `1`
+
+The signature-recording RPC was additionally hardened against concurrent duplicate insertion: conflicts resolve to the already-existing immutable attestation rather than attempting to update it.
+
+## Registry evidence chain
+
+The Registry now resolves:
+
+`RIVER-RECEIPT:03b6... -> RIVER-SIGNATURE:cb8f... -> RIVER-SIGNATURE-VERIFICATION:275c...`
+
+The signature and verification are each represented by their own evidence reference and SHA-256 evidence hash.
+
+## Security status
+
+Post-DDL security advisor results introduce no new authenticated `SECURITY DEFINER` warning for this signing subsystem. The new River signing tables appear only as intentional `RLS enabled / no policy` INFO because they are private fail-closed/service-role surfaces.
+
+The estate remains AMBER for unrelated pre-existing DigitalMe/gateway-agent SECURITY DEFINER warnings and disabled leaked-password protection.
+
+## Standing invariant
+
+`RIVER HASH VERIFIED != DIGITAL SIGNATURE != PUBLIC-KEY VERIFICATION != KEY TRUST STATE`
