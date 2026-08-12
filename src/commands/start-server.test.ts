@@ -74,16 +74,9 @@ describe("when specifying credentials flag", () => {
       },
     });
 
-    expect(result).toMatchInlineSnapshot(`
-      {
-        "content": [
-          {
-            "text": "{\"taskId\":123}",
-            "type": "text",
-          },
-        ],
-      }
-    `);
+    expect(result).toEqual({
+      content: [{ type: "text", text: JSON.stringify({ taskId: 123 }) }],
+    });
 
     await server.close();
   });
