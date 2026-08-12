@@ -1,0 +1,34 @@
+name: One-shot Vercel output repair
+
+on:
+  push:
+    branches:
+      - genesis
+    paths:
+      - '.github/workflows/vercel-output-repair.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  repair:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+    steps:
+      - name: Require Vercel token
+        shell: bash
+        run: |
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "::error::Repository secret VERCEL_TOKEN is not configured."
+            exit 78
+          fi
+
+      - name: Clear stale Output Directory override
+        shell: bash
+        run: |
+          npx --yes vercel@58.9.5 \
+            --scope faizahmed29-5330s-projects \
+            project update synnergyze-genesis-mcp \
+            --auto-detect output-directory \
+            --format json
