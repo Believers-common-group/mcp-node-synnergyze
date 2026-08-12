@@ -2,8 +2,10 @@ import { neon } from "@neondatabase/serverless";
 import type { IncomingMessage, ServerResponse } from "node:http";
 
 const SOURCE_NODE_CODE = "CWR-REGISTRY";
+const BRIDGE_CODE = "GEN-PART-PG-BRIDGE-003";
 const DEFAULT_BATCH_SIZE = 25;
 const MAX_BATCH_SIZE = 100;
+const LEASE_MINUTES = 5;
 
 type RegistryEnvelope = {
   registry_outbox_id: string;
@@ -16,6 +18,7 @@ type RegistryEnvelope = {
   registry_revision_ref: string | null;
   payload: unknown;
   evidence_reference: string | null;
+  occurred_at: string | Date;
 };
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown) {
@@ -24,7 +27,7 @@ function sendJson(response: ServerResponse, statusCode: number, body: unknown) {
   response.end(JSON.stringify(body));
 }
 
-function getBatchSize(request: IncomingMessage) {
+export function getBatchSize(request: IncomingMessage) {
   const url = new URL(request.url ?? "/api/registry-bridge", "https://registry-bridge.invalid");
   const requested = Number(url.searchParams.get("limit") ?? DEFAULT_BATCH_SIZE);
 
@@ -32,7 +35,7 @@ function getBatchSize(request: IncomingMessage) {
   return Math.max(1, Math.min(MAX_BATCH_SIZE, Math.trunc(requested)));
 }
 
-function isAuthorized(request: IncomingMessage) {
+export function isAuthorized(request: IncomingMessage) {
   const secret = process.env.REGISTRY_BRIDGE_SECRET ?? process.env.CRON_SECRET;
   if (!secret) return false;
   return request.headers.authorization === `Bearer ${secret}`;
@@ -66,23 +69,37 @@ export default async function handler(request: IncomingMessage, response: Server
   const target = neon(targetUrl);
   const batchSize = getBatchSize(request);
 
+  // Claim a bounded batch in one atomic statement. `available_at` doubles as the
+  // lease expiry so an interrupted worker can be safely reclaimed later.
   const envelopes = (await source`
-    select
-      registry_outbox_id,
-      event_reference,
-      source_node_code,
-      change_code,
-      event_code,
-      object_type,
-      object_code,
-      registry_revision_ref,
-      payload,
-      evidence_reference
-    from uoe_master.registry_outbox
-    where delivery_state in ('pending', 'failed')
-      and available_at <= now()
-    order by occurred_at asc, registry_outbox_id asc
-    limit ${batchSize}
+    with candidates as (
+      select registry_outbox_id
+      from uoe_master.registry_outbox
+      where delivery_state in ('pending', 'failed', 'leased')
+        and available_at <= now()
+      order by occurred_at asc, registry_outbox_id asc
+      for update skip locked
+      limit ${batchSize}
+    )
+    update uoe_master.registry_outbox as outbox
+    set delivery_state = 'leased',
+        available_at = now() + (${LEASE_MINUTES} * interval '1 minute'),
+        attempt_count = attempt_count + 1,
+        last_error = null
+    from candidates
+    where outbox.registry_outbox_id = candidates.registry_outbox_id
+    returning
+      outbox.registry_outbox_id,
+      outbox.event_reference,
+      outbox.source_node_code,
+      outbox.change_code,
+      outbox.event_code,
+      outbox.object_type,
+      outbox.object_code,
+      outbox.registry_revision_ref,
+      outbox.payload,
+      outbox.evidence_reference,
+      outbox.occurred_at
   `) as RegistryEnvelope[];
 
   let delivered = 0;
@@ -118,6 +135,8 @@ export default async function handler(request: IncomingMessage, response: Server
         on conflict (source_node_code, event_reference) do nothing
       `;
 
+      // The checkpoint is observability state, not the transport authority. Guard
+      // it against regressing when two workers complete distinct leases out of order.
       await target`
         insert into uoe_growth_runtime.registry_sync_checkpoints (
           registry_source_code,
@@ -131,7 +150,10 @@ export default async function handler(request: IncomingMessage, response: Server
           ${envelope.event_reference},
           ${envelope.registry_revision_ref},
           now(),
-          jsonb_build_object('bridge', 'GEN-PART-PG-BRIDGE-003'),
+          jsonb_build_object(
+            'bridge', ${BRIDGE_CODE},
+            'last_event_occurred_at', ${envelope.occurred_at}::timestamptz
+          ),
           now()
         )
         on conflict (registry_source_code) do update set
@@ -141,15 +163,19 @@ export default async function handler(request: IncomingMessage, response: Server
           checkpoint_context = coalesce(uoe_growth_runtime.registry_sync_checkpoints.checkpoint_context, '{}'::jsonb)
             || excluded.checkpoint_context,
           updated_at = excluded.updated_at
+        where coalesce(
+          (uoe_growth_runtime.registry_sync_checkpoints.checkpoint_context->>'last_event_occurred_at')::timestamptz,
+          '-infinity'::timestamptz
+        ) <= ${envelope.occurred_at}::timestamptz
       `;
 
       await source`
         update uoe_master.registry_outbox
         set delivery_state = 'delivered',
             delivered_at = now(),
-            attempt_count = attempt_count + 1,
             last_error = null
         where registry_outbox_id = ${envelope.registry_outbox_id}
+          and delivery_state = 'leased'
       `;
 
       delivered += 1;
@@ -162,19 +188,20 @@ export default async function handler(request: IncomingMessage, response: Server
         await source`
           update uoe_master.registry_outbox
           set delivery_state = 'failed',
-              attempt_count = attempt_count + 1,
+              available_at = now() + interval '1 minute',
               last_error = ${message}
           where registry_outbox_id = ${envelope.registry_outbox_id}
+            and delivery_state = 'leased'
         `;
       } catch {
-        // Preserve the original bridge error; a later run can retry the same envelope idempotently.
+        // Preserve the original bridge error; the lease expires and becomes reclaimable.
       }
     }
   }
 
   return sendJson(response, failed > 0 ? 207 : 200, {
     ok: failed === 0,
-    bridge: "GEN-PART-PG-BRIDGE-003",
+    bridge: BRIDGE_CODE,
     source: SOURCE_NODE_CODE,
     scanned: envelopes.length,
     delivered,
