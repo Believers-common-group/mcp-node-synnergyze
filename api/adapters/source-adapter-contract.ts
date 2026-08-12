@@ -43,6 +43,18 @@ export interface TemporalProjection {
   dueWindowRef?: string;
 }
 
+export interface RelativeTemporalProjection {
+  anchorRef: string;
+  anchorDate: string;
+  sourceDate: string;
+  generatedDate: string;
+  offsetDaysFromAnchor: number;
+  offsetWeeksFromAnchor: number;
+  durationWeeks?: number;
+  sourceRemainingWeeks?: number;
+  collisionConstraintRefs: string[];
+}
+
 export interface NormalizedSourceProgramEvent {
   contractVersion: typeof SOURCE_ADAPTER_CONTRACT_VERSION;
   adapterType: "ANNUAL_OPERATING_CALENDAR" | "RELEASE_TRAIN" | "CREATOR_PROGRAMME" | "ECONOMIC_MODEL";
@@ -52,6 +64,7 @@ export interface NormalizedSourceProgramEvent {
   workstreamRef?: string;
   ownerRoleRef?: string;
   temporal?: TemporalProjection;
+  relativeTemporal?: RelativeTemporalProjection;
   governance: GovernanceFieldResolution[];
   targetStateRef?: string;
   closureConditionRef?: string;
