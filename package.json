@@ -7,6 +7,7 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint --ext .ts src api",
     "test": "vitest",
+    "test:bridge": "vitest run api/registry-bridge.test.ts",
     "build": "npm run type-check",
     "debug": "mcp-inspector npm start"
   },
