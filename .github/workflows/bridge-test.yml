@@ -1,0 +1,27 @@
+name: bridge-test
+
+on:
+  pull_request:
+    paths:
+      - 'api/registry-bridge.ts'
+      - 'api/registry-bridge.test.ts'
+      - 'package.json'
+      - '.github/workflows/bridge-test.yml'
+
+jobs:
+  bridge-test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: npm i
+
+      - name: Run bridge tests
+        run: npm run test:bridge

@@ -10,6 +10,9 @@
     },
     "api/mcp.ts": {
       "maxDuration": 60
+    },
+    "api/registry-bridge.ts": {
+      "maxDuration": 60
     }
   },
   "rewrites": [
@@ -20,6 +23,10 @@
     {
       "source": "/mcp",
       "destination": "/api/mcp"
+    },
+    {
+      "source": "/registry-bridge",
+      "destination": "/api/registry-bridge"
     }
   ]
 }

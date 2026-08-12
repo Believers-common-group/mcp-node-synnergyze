@@ -7,6 +7,7 @@
     "type-check": "tsc --noEmit",
     "lint": "eslint --ext .ts src api",
     "test": "vitest",
+    "test:bridge": "vitest run api/registry-bridge.test.ts",
     "build": "npm run type-check",
     "debug": "mcp-inspector npm start"
   },
@@ -17,6 +18,7 @@
   "description": "Synnergyze Genesis MCP service for governed VSR/Genesis integrations.",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
+    "@neondatabase/serverless": "^1.0.1",
     "ajv": "^8.17.1",
     "algoliasearch": "^5.23.4",
     "commander": "^13.1.0",
