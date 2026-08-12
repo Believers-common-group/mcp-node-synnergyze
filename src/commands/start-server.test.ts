@@ -1,7 +1,7 @@
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 
-import { startServer } from "./start-server.ts";
+import { createServer, startServer } from "./start-server.ts";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { setupServer } from "msw/node";
 import { http } from "msw";
@@ -48,7 +48,7 @@ describe("when specifying credentials flag", () => {
       ),
     );
     const client = new Client({ name: "test client", version: "1.0.0" });
-    const server = await startServer({
+    const server = await createServer({
       credentials: {
         apiKey: "apiKey",
         applicationId: "appId",
@@ -78,7 +78,7 @@ describe("when specifying credentials flag", () => {
       {
         "content": [
           {
-            "text": "{"taskId":123}",
+            "text": "{\"taskId\":123}",
             "type": "text",
           },
         ],
@@ -109,7 +109,7 @@ describe("default behavior", () => {
 
   it("should list dashboard tools", async () => {
     const client = new Client({ name: "test client", version: "1.0.0" });
-    const server = await startServer({});
+    const server = await createServer({});
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
 
@@ -128,7 +128,7 @@ describe("default behavior", () => {
       http.get("https://appid.algolia.net/1/indexes/indexName/settings", () => Response.json({})),
     );
     const client = new Client({ name: "test client", version: "1.0.0" });
-    const server = await startServer({ allowTools: ["getSettings"] });
+    const server = await createServer({ allowTools: ["getSettings"] });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
 
