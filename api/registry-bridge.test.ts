@@ -2,6 +2,11 @@ import type { IncomingMessage, ServerResponse } from "node:http";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const queries = vi.hoisted(() => ({ source: [] as string[], target: [] as string[] }));
+const behavior = vi.hoisted(() => ({
+  insertConflict: false,
+  existingInboxMatches: true,
+  finalizeSucceeds: true,
+}));
 
 vi.mock("@neondatabase/serverless", () => ({
   neon: (url: string) => async (strings: TemplateStringsArray, ..._values: unknown[]) => {
@@ -23,8 +28,23 @@ vi.mock("@neondatabase/serverless", () => ({
           payload: { ok: true },
           evidence_reference: null,
           occurred_at: "2026-08-12T17:00:00.000Z",
+          attempt_count: 3,
         },
       ];
+    }
+
+    if (url === "target-db" && sql.includes("insert into uoe_growth_runtime.registry_inbox")) {
+      return behavior.insertConflict ? [] : [{ event_reference: "EVT-001" }];
+    }
+
+    if (url === "target-db" && sql.includes("select 1 as matched")) {
+      return behavior.existingInboxMatches ? [{ matched: 1 }] : [];
+    }
+
+    if (url === "source-db" && sql.includes("delivery_state = 'delivered'")) {
+      return behavior.finalizeSucceeds
+        ? [{ registry_outbox_id: "00000000-0000-0000-0000-000000000001" }]
+        : [];
     }
 
     return [];
@@ -74,10 +94,19 @@ function response() {
 
 const originalEnv = { ...process.env };
 
+function configureBridge() {
+  process.env.REGISTRY_BRIDGE_SECRET = "bridge-secret";
+  process.env.CWR_REGISTRY_DATABASE_URL = "source-db";
+  process.env.VSR_PUBLIC_DATABASE_URL = "target-db";
+}
+
 describe("GEN-PART-PG-BRIDGE-003", () => {
   beforeEach(() => {
     queries.source.length = 0;
     queries.target.length = 0;
+    behavior.insertConflict = false;
+    behavior.existingInboxMatches = true;
+    behavior.finalizeSucceeds = true;
     process.env = { ...originalEnv };
     delete process.env.REGISTRY_BRIDGE_SECRET;
     delete process.env.CRON_SECRET;
@@ -95,10 +124,12 @@ describe("GEN-PART-PG-BRIDGE-003", () => {
     expect(getBatchSize(request({ url: "/api/registry-bridge?limit=not-a-number" }))).toBe(25);
   });
 
-  it("requires the configured bearer secret", () => {
+  it("accepts either configured bridge or cron bearer secret", () => {
     process.env.REGISTRY_BRIDGE_SECRET = "bridge-secret";
+    process.env.CRON_SECRET = "cron-secret";
 
     expect(isAuthorized(request({ headers: { authorization: "Bearer bridge-secret" } }))).toBe(true);
+    expect(isAuthorized(request({ headers: { authorization: "Bearer cron-secret" } }))).toBe(true);
     expect(isAuthorized(request({ headers: { authorization: "Bearer wrong" } }))).toBe(false);
   });
 
@@ -132,10 +163,8 @@ describe("GEN-PART-PG-BRIDGE-003", () => {
     expect(queries.target).toHaveLength(0);
   });
 
-  it("claims before delivery and marks source delivered only after target writes", async () => {
-    process.env.REGISTRY_BRIDGE_SECRET = "bridge-secret";
-    process.env.CWR_REGISTRY_DATABASE_URL = "source-db";
-    process.env.VSR_PUBLIC_DATABASE_URL = "target-db";
+  it("claims only CWR source rows and finalizes the exact lease generation", async () => {
+    configureBridge();
     const output = response();
 
     await handler(
@@ -153,10 +182,71 @@ describe("GEN-PART-PG-BRIDGE-003", () => {
       failed: 0,
     });
 
-    expect(queries.source[0]).toContain("delivery_state = 'leased'");
+    expect(queries.source[0]).toContain("where source_node_code = ?");
+    expect(queries.source[0]).toContain("outbox.attempt_count");
     expect(queries.target[0]).toContain("registry_inbox");
     expect(queries.target[0]).toContain("on conflict (source_node_code, event_reference) do nothing");
     expect(queries.target[1]).toContain("registry_sync_checkpoints");
     expect(queries.source[1]).toContain("delivery_state = 'delivered'");
+    expect(queries.source[1]).toContain("attempt_count = ?");
+  });
+
+  it("accepts an identical inbox retry after duplicate suppression", async () => {
+    configureBridge();
+    behavior.insertConflict = true;
+    behavior.existingInboxMatches = true;
+    const output = response();
+
+    await handler(
+      request({ headers: { authorization: "Bearer bridge-secret" } }),
+      output.res,
+    );
+
+    expect(output.statusCode).toBe(200);
+    expect(JSON.parse(output.body)).toMatchObject({ ok: true, delivered: 1, failed: 0 });
+    expect(queries.target.some((sql) => sql.includes("select 1 as matched"))).toBe(true);
+  });
+
+  it("rejects an idempotency-key collision with different inbox content", async () => {
+    configureBridge();
+    behavior.insertConflict = true;
+    behavior.existingInboxMatches = false;
+    const output = response();
+
+    await handler(
+      request({ headers: { authorization: "Bearer bridge-secret" } }),
+      output.res,
+    );
+
+    expect(output.statusCode).toBe(207);
+    expect(JSON.parse(output.body)).toMatchObject({
+      ok: false,
+      delivered: 0,
+      failed: 1,
+      failures: [{ event_reference: "EVT-001", error: "registry_inbox_idempotency_collision" }],
+    });
+    expect(queries.target.some((sql) => sql.includes("registry_sync_checkpoints"))).toBe(false);
+    expect(queries.source.some((sql) => sql.includes("delivery_state = 'failed'"))).toBe(true);
+  });
+
+  it("does not finalize a lease reclaimed by another worker", async () => {
+    configureBridge();
+    behavior.finalizeSucceeds = false;
+    const output = response();
+
+    await handler(
+      request({ headers: { authorization: "Bearer bridge-secret" } }),
+      output.res,
+    );
+
+    expect(output.statusCode).toBe(207);
+    expect(JSON.parse(output.body)).toMatchObject({
+      ok: false,
+      delivered: 0,
+      failed: 1,
+      failures: [{ event_reference: "EVT-001", error: "lease_lost_before_finalize" }],
+    });
+    expect(queries.source.some((sql) => sql.includes("delivery_state = 'failed'"))).toBe(true);
+    expect(queries.source.at(-1)).toContain("attempt_count = ?");
   });
 });
