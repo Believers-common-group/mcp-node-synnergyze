@@ -19,7 +19,11 @@ type RegistryEnvelope = {
   payload: unknown;
   evidence_reference: string | null;
   occurred_at: string | Date;
+  attempt_count: number;
 };
+
+type OutboxIdRow = { registry_outbox_id: string };
+type InboxMatchRow = { matched: number };
 
 function sendJson(response: ServerResponse, statusCode: number, body: unknown) {
   response.statusCode = statusCode;
@@ -36,9 +40,15 @@ export function getBatchSize(request: IncomingMessage) {
 }
 
 export function isAuthorized(request: IncomingMessage) {
-  const secret = process.env.REGISTRY_BRIDGE_SECRET ?? process.env.CRON_SECRET;
-  if (!secret) return false;
-  return request.headers.authorization === `Bearer ${secret}`;
+  const authorization = request.headers.authorization;
+  if (typeof authorization !== "string" || !authorization.startsWith("Bearer ")) return false;
+
+  const presented = authorization.slice("Bearer ".length);
+  const secrets = [process.env.REGISTRY_BRIDGE_SECRET, process.env.CRON_SECRET].filter(
+    (secret): secret is string => Boolean(secret),
+  );
+
+  return secrets.some((secret) => presented === secret);
 }
 
 export default async function handler(request: IncomingMessage, response: ServerResponse) {
@@ -69,13 +79,14 @@ export default async function handler(request: IncomingMessage, response: Server
   const target = neon(targetUrl);
   const batchSize = getBatchSize(request);
 
-  // Claim a bounded batch in one atomic statement. `available_at` doubles as the
-  // lease expiry so an interrupted worker can be safely reclaimed later.
+  // Claim only this bridge's governed source. `attempt_count` is the lease generation:
+  // later finalize/failure writes must still own the exact generation they claimed.
   const envelopes = (await source`
     with candidates as (
       select registry_outbox_id
       from uoe_master.registry_outbox
-      where delivery_state in ('pending', 'failed', 'leased')
+      where source_node_code = ${SOURCE_NODE_CODE}
+        and delivery_state in ('pending', 'failed', 'leased')
         and available_at <= now()
       order by occurred_at asc, registry_outbox_id asc
       for update skip locked
@@ -99,7 +110,8 @@ export default async function handler(request: IncomingMessage, response: Server
       outbox.registry_revision_ref,
       outbox.payload,
       outbox.evidence_reference,
-      outbox.occurred_at
+      outbox.occurred_at,
+      outbox.attempt_count
   `) as RegistryEnvelope[];
 
   let delivered = 0;
@@ -108,7 +120,7 @@ export default async function handler(request: IncomingMessage, response: Server
 
   for (const envelope of envelopes) {
     try {
-      await target`
+      const inserted = (await target`
         insert into uoe_growth_runtime.registry_inbox (
           source_node_code,
           event_reference,
@@ -133,7 +145,29 @@ export default async function handler(request: IncomingMessage, response: Server
           'received'
         )
         on conflict (source_node_code, event_reference) do nothing
-      `;
+        returning event_reference
+      `) as Array<{ event_reference: string }>;
+
+      if (inserted.length === 0) {
+        const existingMatch = (await target`
+          select 1 as matched
+          from uoe_growth_runtime.registry_inbox
+          where source_node_code = ${envelope.source_node_code}
+            and event_reference = ${envelope.event_reference}
+            and change_code is not distinct from ${envelope.change_code}
+            and event_code is not distinct from ${envelope.event_code}
+            and object_type is not distinct from ${envelope.object_type}
+            and object_code is not distinct from ${envelope.object_code}
+            and registry_revision_ref is not distinct from ${envelope.registry_revision_ref}
+            and payload is not distinct from ${JSON.stringify(envelope.payload)}::jsonb
+            and evidence_reference is not distinct from ${envelope.evidence_reference}
+          limit 1
+        `) as InboxMatchRow[];
+
+        if (existingMatch.length !== 1) {
+          throw new Error("registry_inbox_idempotency_collision");
+        }
+      }
 
       // The checkpoint is observability state, not the transport authority. Guard
       // it against regressing when two workers complete distinct leases out of order.
@@ -169,14 +203,21 @@ export default async function handler(request: IncomingMessage, response: Server
         ) <= ${envelope.occurred_at}::timestamptz
       `;
 
-      await source`
+      const finalized = (await source`
         update uoe_master.registry_outbox
         set delivery_state = 'delivered',
             delivered_at = now(),
             last_error = null
         where registry_outbox_id = ${envelope.registry_outbox_id}
+          and source_node_code = ${SOURCE_NODE_CODE}
           and delivery_state = 'leased'
-      `;
+          and attempt_count = ${envelope.attempt_count}
+        returning registry_outbox_id
+      `) as OutboxIdRow[];
+
+      if (finalized.length !== 1) {
+        throw new Error("lease_lost_before_finalize");
+      }
 
       delivered += 1;
     } catch (error) {
@@ -191,7 +232,9 @@ export default async function handler(request: IncomingMessage, response: Server
               available_at = now() + interval '1 minute',
               last_error = ${message}
           where registry_outbox_id = ${envelope.registry_outbox_id}
+            and source_node_code = ${SOURCE_NODE_CODE}
             and delivery_state = 'leased'
+            and attempt_count = ${envelope.attempt_count}
         `;
       } catch {
         // Preserve the original bridge error; the lease expires and becomes reclaimable.
