@@ -1,0 +1,26 @@
+name: alpha-vercel-token-check
+
+on:
+  push:
+    branches: [genesis]
+    paths:
+      - .github/workflows/alpha-vercel-token-check.yml
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check scoped Vercel credential presence
+        env:
+          VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+        shell: bash
+        run: |
+          if [ -n "${VERCEL_TOKEN:-}" ]; then
+            echo 'vercel_token_present=true'
+            exit 0
+          fi
+          echo 'vercel_token_present=false'
+          exit 2
