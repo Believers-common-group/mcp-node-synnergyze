@@ -1,75 +1,13 @@
-name: live-neon-persistence-verify
+name: archived-live-neon-persistence-verify
 
 on:
-  push:
-    branches: [ops/env-refresh-2026-08-13]
-    paths:
-      - .github/workflows/live-neon-persistence-verify.yml
+  workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  verify:
+  archived:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
     steps:
-      - name: Verify GEN-PERSIST-007 production contract
-        shell: bash
-        run: |
-          set -euo pipefail
-          endpoint='https://synnergyze-genesis-mcp.vercel.app/mcp'
-
-          init='{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-03-26","capabilities":{},"clientInfo":{"name":"github-live-verifier","version":"1.0.0"}}}'
-          curl -fsS -X POST "$endpoint" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' --data "$init" > /tmp/init.json
-          jq -e '.result.serverInfo.name == "synnergyze-genesis-mcp" and .result.serverInfo.version == "0.2.1"' /tmp/init.json >/dev/null
-          echo 'mcp_initialize=PASS'
-
-          call_tool() {
-            id="$1"
-            tool="$2"
-            out="$3"
-            payload=$(printf '{"jsonrpc":"2.0","id":%s,"method":"tools/call","params":{"name":"%s","arguments":{}}}' "$id" "$tool")
-            code=$(curl -sS -o "$out" -w '%{http_code}' -X POST "$endpoint" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -H 'mcp-protocol-version: 2025-03-26' --data "$payload")
-            test "$code" = '200'
-          }
-
-          call_tool 2 genesis_status /tmp/status.json
-          status_text=$(jq -r '.result.content[]? | select(.type=="text") | .text' /tmp/status.json | head -n1)
-          printf '%s' "$status_text" | jq -e '
-            .runtimeState == "operational" and
-            .authorityBoundary.canonicalState == "ALPHA-NODE-001 local Registry" and
-            .authorityBoundary.policyAuthority == "Warden" and
-            .authorityBoundary.neon == "runtime_projection_only" and
-            .supabase.required == false and
-            .supabase.runtimeBlocking == false and
-            .supabase.mode == "deferred_optional" and
-            .neonProjection.runtimeBlocking == false and
-            .neonProjection.mode == "connector_managed_external" and
-            .neonProjection.directBridgeConfigured == false and
-            .bridgeState == "connector_managed_external_direct_bridge_dormant"' >/dev/null
-          echo 'runtime_authority=PASS'
-
-          call_tool 3 genesis_neon_projection_probe /tmp/neon.json
-          neon_text=$(jq -r '.result.content[]? | select(.type=="text") | .text' /tmp/neon.json | head -n1)
-          printf '%s' "$neon_text" | jq -e '
-            .runtimeBlocking == false and
-            .bridgeReady == false and
-            .mode == "connector_managed_external" and
-            .directProbeSkipped == true' >/dev/null
-          test "$(jq -r '.result.isError // false' /tmp/neon.json)" = 'false'
-          echo 'neon_direct_bridge_dormant_nonblocking=PASS'
-
-          call_tool 4 genesis_supabase_probe /tmp/supabase.json
-          supabase_text=$(jq -r '.result.content[]? | select(.type=="text") | .text' /tmp/supabase.json | head -n1)
-          printf '%s' "$supabase_text" | jq -e '.required == false and .runtimeBlocking == false and .deferred == true' >/dev/null
-          echo 'supabase_deferred_nonblocking=PASS'
-
-          bridge='https://synnergyze-genesis-mcp.vercel.app/registry-bridge?limit=1'
-          noauth=$(curl -sS -o /tmp/noauth -w '%{http_code}' "$bridge")
-          wrong=$(curl -sS -o /tmp/wrong -w '%{http_code}' "$bridge" -H 'Authorization: Bearer deliberately-wrong-verification-token')
-          test "$noauth" = '401'
-          test "$wrong" = '401'
-          jq -e '.ok == false and .error == "unauthorized"' /tmp/noauth >/dev/null
-          jq -e '.ok == false and .error == "unauthorized"' /tmp/wrong >/dev/null
-          echo 'bridge_fail_closed=PASS'
+      - run: echo 'Archived verification workflow. No automatic execution.'
