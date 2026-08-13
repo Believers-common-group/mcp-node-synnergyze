@@ -1,0 +1,55 @@
+{
+  "schema_version": "1.0",
+  "registry_object": "REG-COMPUTE-001",
+  "release": "ALPHA-RELEASE-003",
+  "node_id": "ALPHA-NODE-001",
+  "mode": "governed",
+  "default_provider": null,
+  "require_warden_grant": true,
+  "evidence_mode": "envelope",
+  "fallback_policy": "explicit-grant-only",
+  "providers": [
+    {
+      "capability_id": "ALPHA-COMPUTE-CPU-001",
+      "provider": "cpu-local",
+      "execution_class": "cpu",
+      "runtime": "node",
+      "hardware_family": "alpha-control-host",
+      "locality": "alpha-node",
+      "status": "CONTROL_PLANE_ONLY",
+      "supported_datatypes": [],
+      "supported_operations": [],
+      "trust": {
+        "attestation_required": true
+      },
+      "warden": {
+        "required": true
+      },
+      "evidence": {
+        "mode": "envelope"
+      },
+      "version": "1"
+    },
+    {
+      "capability_id": "ALPHA-COMPUTE-APPLE-MPP-001",
+      "provider": "apple-mpp-local",
+      "execution_class": "gpu-neural-accelerator",
+      "runtime": "metal4-mpp",
+      "hardware_family": "apple-m5",
+      "locality": "enrolled-edge-runner",
+      "status": "UNAVAILABLE_UNTIL_RUNNER_ENROLLED",
+      "supported_datatypes": ["fp16"],
+      "supported_operations": ["tensor", "gemm", "fused-kernel"],
+      "trust": {
+        "attestation_required": true
+      },
+      "warden": {
+        "required": true
+      },
+      "evidence": {
+        "mode": "envelope"
+      },
+      "version": "1"
+    }
+  ]
+}
