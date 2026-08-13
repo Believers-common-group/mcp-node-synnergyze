@@ -11,6 +11,9 @@
     "api/compute-plane.ts": {
       "maxDuration": 10
     },
+    "api/sites.ts": {
+      "maxDuration": 10
+    },
     "api/mcp.ts": {
       "maxDuration": 60
     },
@@ -26,6 +29,14 @@
     {
       "source": "/compute-plane",
       "destination": "/api/compute-plane"
+    },
+    {
+      "source": "/sites",
+      "destination": "/api/sites"
+    },
+    {
+      "source": "/.well-known/estate-sites",
+      "destination": "/api/sites"
     },
     {
       "source": "/mcp",
