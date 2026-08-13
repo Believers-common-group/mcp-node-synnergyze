@@ -1,6 +1,6 @@
 # BNR-DB-GATE-001 — Governed Database Gateway
 
-Status: ADDITIVE REFERENCE / IMPLEMENTATION SLICE
+Status: ADDITIVE REFERENCE / CONTROLLED CANARY IMPLEMENTATION
 
 Node lineage: `ALPHA-NODE-001 -> future BNR nodes`
 
@@ -38,6 +38,7 @@ DigitalMe / participant / system actor
         -> Hyperdrive
         -> Neon runtime operation
         -> acknowledgement
+        -> Warden lease consumption / reconciliation
         -> RiverOS evidence / effect observation
         -> Registry effect/state update
 ```
@@ -103,6 +104,7 @@ Every exposed operation must be a named, versioned command/query with:
 - authority reference;
 - execution lease reference when consequential;
 - idempotency key when mutating;
+- command fingerprint bound to the authorized input;
 - evidence/receipt requirements;
 - deterministic success/failure states.
 
@@ -112,12 +114,15 @@ Preferred Cloudflare implementation is a service binding to a Warden verificatio
 
 The DB gateway fails closed when:
 
-- Warden cannot be reached;
+- Warden cannot be reached before a command is authorized;
 - authority is absent, expired, revoked, mismatched, or outside scope;
 - the requested operation differs from the authorized operation;
 - an execution lease is required but not valid;
+- the command fingerprint differs from the command Warden authorized;
 - an idempotency collision is detected;
 - the runtime database state cannot be reconciled safely.
+
+For controlled writes, runtime acceptance and Warden lease consumption are represented separately. A post-commit Warden outage produces a recoverable `accepted_pending_authority_consumption` state; it does not fabricate rollback or effect.
 
 ## Public repository safety
 
@@ -133,29 +138,54 @@ Do not commit:
 
 Only binding names, stable public-safe references, schemas, redacted fixtures, and deployment instructions belong in this repository.
 
-## Initial implementation slice
+## Implementation slices
 
-The companion `cloudflare/db-gate` package intentionally begins with:
+### Slice A — governed reads
+
+The companion `cloudflare/db-gate` package includes:
 
 - edge liveness that does not touch Postgres;
 - Warden service-binding verification;
 - a cache-disabled `HYPERDRIVE_AUTH` binding;
 - fixed read-only operational queries;
-- no arbitrary SQL;
-- no mutation path until execution-lease and idempotency contracts are wired end-to-end.
+- no arbitrary SQL.
 
-This keeps the first deployment non-destructive while proving the authority-to-database boundary.
+### Slice B — controlled mutation canary
+
+The package now also includes one synthetic named command:
+
+`runtime.canary.record`
+
+This command:
+
+- requires DigitalMe/context/authority references;
+- requires an execution lease and idempotency key;
+- computes a canonical SHA-256 command fingerprint;
+- requires Warden to echo the exact lease and fingerprint;
+- writes only to dedicated canary tables on a non-production Neon branch;
+- creates command + `ACKNOWLEDGED` receipt atomically;
+- rejects same-key/different-envelope replay;
+- consumes Warden authority after runtime acceptance;
+- preserves `pending` authority-consumption state if post-commit reconciliation is unavailable;
+- never asserts `EFFECT_OBSERVED`.
+
+Detailed contract: `BNR-DB-GATE-MUTATION-001.md`.
 
 ## Promotion gate
 
-Do not replace `GEN-PART-PG-BRIDGE-003` merely because the Cloudflare Worker deploys.
+Do not replace `GEN-PART-PG-BRIDGE-003` merely because the Cloudflare Worker deploys or the canary mutation succeeds.
 
 Promotion requires at minimum:
 
 1. config/type validation;
-2. local synthetic tests;
-3. remote Worker + Hyperdrive + non-production Neon branch test;
+2. focused contract tests;
+3. remote Worker + cache-disabled Hyperdrive + non-production Neon branch test;
 4. Warden deny/allow/expiry/revocation tests;
-5. retry/idempotency tests before any mutation is enabled;
-6. evidence/receipt verification;
-7. explicit Registry decision recording the new runtime role.
+5. exact execution-lease and command-fingerprint validation;
+6. first-write, identical replay, and idempotency-collision tests;
+7. post-commit Warden outage and replay reconciliation test;
+8. evidence/receipt verification with no effect fabrication;
+9. least-privilege Neon role verification;
+10. explicit Registry decision recording any production runtime role.
+
+A real business mutation requires a separate named/versioned command and cannot be inferred from successful canary execution.
