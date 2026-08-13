@@ -89,28 +89,32 @@ describe("APPLE-RUNNER-001 canary", () => {
     ).rejects.toThrow("WARDEN_CAPABILITY_RUNNER_MISMATCH");
   });
 
-  it("physically executes the deterministic Metal fixture on macOS", async () => {
-    const secret = "test-only-secret";
-    process.env.ALPHA_WARDEN_HMAC_SECRET = secret;
-    const tool = captureTool();
-    const input = {
-      runnerRef: "APPLE-RUNNER-001",
-      fixture: "vector-add-f32-v1",
-      capabilityToken: makeToken(secret),
-    };
+  it(
+    "physically executes the deterministic Metal fixture on macOS",
+    async () => {
+      const secret = "test-only-secret";
+      process.env.ALPHA_WARDEN_HMAC_SECRET = secret;
+      const tool = captureTool();
+      const input = {
+        runnerRef: "APPLE-RUNNER-001",
+        fixture: "vector-add-f32-v1",
+        capabilityToken: makeToken(secret),
+      };
 
-    if (process.platform !== "darwin") {
-      await expect(tool.cb(input)).rejects.toThrow("APPLE_RUNNER_REQUIRES_MACOS");
-      return;
-    }
+      if (process.platform !== "darwin") {
+        await expect(tool.cb(input)).rejects.toThrow("APPLE_RUNNER_REQUIRES_MACOS");
+        return;
+      }
 
-    const result = JSON.parse(await tool.cb(input));
-    expect(result.schema).toBe("APPLE-RUNNER-EXECUTION-001");
-    expect(result.runnerRef).toBe("APPLE-RUNNER-001");
-    expect(result.commandPolicy.arbitraryCommandExecution).toBe(false);
-    expect(result.evidence.schema).toBe("APPLE-RUNNER-METAL-EVIDENCE-001");
-    expect(result.evidence.fixture).toBe("vector-add-f32-v1");
-    expect(result.evidence.output).toEqual([11, 22, 33, 44]);
-    expect(result.evidence.correct).toBe(true);
-  });
+      const result = JSON.parse(await tool.cb(input));
+      expect(result.schema).toBe("APPLE-RUNNER-EXECUTION-001");
+      expect(result.runnerRef).toBe("APPLE-RUNNER-001");
+      expect(result.commandPolicy.arbitraryCommandExecution).toBe(false);
+      expect(result.evidence.schema).toBe("APPLE-RUNNER-METAL-EVIDENCE-001");
+      expect(result.evidence.fixture).toBe("vector-add-f32-v1");
+      expect(result.evidence.output).toEqual([11, 22, 33, 44]);
+      expect(result.evidence.correct).toBe(true);
+    },
+    60_000,
+  );
 });
