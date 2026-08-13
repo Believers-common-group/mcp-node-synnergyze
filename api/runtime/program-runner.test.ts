@@ -174,6 +174,8 @@ describe("Synnergyze Program/Event runtime v1", () => {
   it("blocks unmet R4 requirements before Warden or execution", async () => {
     const blockedResolution = resolved();
     blockedResolution.r4 = "REQUIRES_EVIDENCE";
+    blockedResolution.r5 = "REQUIRES_EVIDENCE";
+    delete blockedResolution.candidateAction;
     blockedResolution.unmetRequirementRefs = ["requirement:test:missing"];
     const { gateway, calls } = testGateway({ resolution: blockedResolution });
 
@@ -208,7 +210,6 @@ describe("Synnergyze Program/Event runtime v1", () => {
 
   it("records confirmation mismatch evidence but creates no Effect or economics", async () => {
     const { gateway, calls } = testGateway({ confirmationMatched: false });
-
     const output = await runProgramEvent(input(), gateway);
 
     expect(output.state).toBe("EXCEPTION");
@@ -227,7 +228,6 @@ describe("Synnergyze Program/Event runtime v1", () => {
 
   it("routes connector failure to EXCEPTION before confirmation or Effect", async () => {
     const { gateway, calls } = testGateway({ executionThrows: true });
-
     const output = await runProgramEvent(input(), gateway);
 
     expect(output.state).toBe("EXCEPTION");
