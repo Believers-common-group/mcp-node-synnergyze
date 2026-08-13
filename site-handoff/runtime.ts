@@ -43,8 +43,8 @@ function decode(value: string): string {
   return Buffer.from(value, "base64url").toString("utf8");
 }
 
-function signature(unsignedToken: string, secret: string): string {
-  return createHmac("sha256", secret).update(unsignedToken).digest("base64url");
+function signature(unsignedToken: string, secret: string): Buffer {
+  return createHmac("sha256", secret).update(unsignedToken).digest();
 }
 
 function validReturnUrl(site: EstateSiteId, returnUrl: string): boolean {
@@ -88,7 +88,7 @@ export function issueHandoffGrant(
   const header = encode(JSON.stringify({ alg: "HS256", typ: "VSR-HANDOFF" }));
   const payload = encode(JSON.stringify(claims));
   const unsigned = `${header}.${payload}`;
-  return { token: `${unsigned}.${signature(unsigned, secret)}`, claims };
+  return { token: `${unsigned}.${signature(unsigned, secret).toString("base64url")}`, claims };
 }
 
 export async function consumeHandoffGrant(
@@ -102,22 +102,48 @@ export async function consumeHandoffGrant(
 
   const parts = token.split(".");
   if (parts.length !== 3) throw new Error("invalid_token");
-  const [header, payload, suppliedSignature] = parts;
-  const unsigned = `${header}.${payload}`;
+  const [headerPart, payloadPart, signaturePart] = parts;
+
+  let header: { alg?: string; typ?: string };
+  try {
+    header = JSON.parse(decode(headerPart)) as { alg?: string; typ?: string };
+  } catch {
+    throw new Error("invalid_header");
+  }
+  if (header.alg !== "HS256" || header.typ !== "VSR-HANDOFF") throw new Error("invalid_header");
+
+  const unsigned = `${headerPart}.${payloadPart}`;
   const expectedSignature = signature(unsigned, secret);
-  const supplied = Buffer.from(suppliedSignature);
-  const expected = Buffer.from(expectedSignature);
-  if (supplied.length !== expected.length || !timingSafeEqual(supplied, expected)) {
+  let suppliedSignature: Buffer;
+  try {
+    suppliedSignature = Buffer.from(signaturePart, "base64url");
+  } catch {
+    throw new Error("invalid_signature");
+  }
+  if (
+    suppliedSignature.length !== expectedSignature.length ||
+    !timingSafeEqual(suppliedSignature, expectedSignature)
+  ) {
     throw new Error("invalid_signature");
   }
 
-  const claims = JSON.parse(decode(payload)) as HandoffClaims;
+  let claims: HandoffClaims;
+  try {
+    claims = JSON.parse(decode(payloadPart)) as HandoffClaims;
+  } catch {
+    throw new Error("invalid_payload");
+  }
+
   if (claims.version !== "REG-SITE-HANDOFF-001" || claims.issuer !== "WARDEN") {
     throw new Error("invalid_issuer");
   }
   if (claims.node !== "ALPHA-NODE-001") throw new Error("invalid_node");
   if (claims.audience !== expectedAudience) throw new Error("audience_mismatch");
+  if (!Number.isInteger(claims.issued_at) || !Number.isInteger(claims.expires_at)) {
+    throw new Error("invalid_time_claims");
+  }
   if (claims.expires_at <= nowEpochSeconds) throw new Error("expired_handoff");
+  if (claims.expires_at - claims.issued_at > 120) throw new Error("ttl_exceeded");
   if (claims.issued_at > nowEpochSeconds + 30) throw new Error("issued_in_future");
   if (!validReturnUrl(claims.audience, claims.return_url)) throw new Error("invalid_return_url");
   if (!claims.digital_me_id || !claims.warden_grant_id || !claims.nonce) throw new Error("incomplete_claims");
