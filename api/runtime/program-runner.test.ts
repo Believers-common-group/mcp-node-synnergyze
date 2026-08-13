@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   PROGRAM_EVENT_CONTRACT_VERSION,
+  type DeviceSecurityState,
   type EventContractV1,
   type ProgramContractV1,
   type ProgramExecutionGateway,
@@ -136,6 +137,24 @@ const input = () => ({
   idempotencyKey: "idem:test:1",
 });
 
+function deviceBoundInput() {
+  const value = input();
+  value.event.executionDeviceRef = "device:test:1";
+  return value;
+}
+
+function withDeviceState(state: DeviceSecurityState): RegistryResolutionBundle {
+  const value = resolved();
+  value.deviceSecurityContext = {
+    deviceRef: "device:test:1",
+    state,
+    policyRef: "policy:bag-lock:v1",
+    evidenceRef: "river:bag-lock-state:test:1",
+    assuranceLevel: "L1",
+  };
+  return value;
+}
+
 describe("Synnergyze Program/Event runtime v1", () => {
   it("executes the governed happy path in canonical order", async () => {
     const { gateway, calls } = testGateway();
@@ -237,6 +256,73 @@ describe("Synnergyze Program/Event runtime v1", () => {
       "authorize:ROUTE_TO_TEST_CAPABILITY",
       "reserve",
       "execute",
+    ]);
+  });
+
+  it("fails closed when a device-bound event has no resolved security state", async () => {
+    const { gateway, calls } = testGateway();
+    const output = await runProgramEvent(deviceBoundInput(), gateway);
+
+    expect(output.state).toBe("BLOCKED_REQUIREMENT");
+    expect(output.reason).toBe("DEVICE_SECURITY_STATE_UNRESOLVED");
+    expect(calls).toEqual(["resolve"]);
+    expect(output.trace.map((entry) => entry.step)).toEqual([
+      "RESOLVE_R1_R5",
+      "CHECK_DEVICE_SECURITY",
+    ]);
+  });
+
+  it("fails closed when the resolved security context belongs to another device", async () => {
+    const resolution = withDeviceState("ACTIVE");
+    resolution.deviceSecurityContext!.deviceRef = "device:test:other";
+    const { gateway, calls } = testGateway({ resolution });
+    const output = await runProgramEvent(deviceBoundInput(), gateway);
+
+    expect(output.state).toBe("BLOCKED_REQUIREMENT");
+    expect(output.reason).toBe("DEVICE_SECURITY_CONTEXT_MISMATCH");
+    expect(calls).toEqual(["resolve"]);
+  });
+
+  for (const state of [
+    "BAG_LOCK_REQUESTED",
+    "SEALED",
+    "SEALED_ALERT",
+    "UNSEAL_PENDING",
+    "WARDEN_REAUTH",
+    "CONTROLLED_RECONNECT",
+    "RECOVERY_REQUIRED",
+  ] as const) {
+    it(`blocks ordinary device-bound execution while device state is ${state}`, async () => {
+      const { gateway, calls } = testGateway({ resolution: withDeviceState(state) });
+      const output = await runProgramEvent(deviceBoundInput(), gateway);
+
+      expect(output.state).toBe("BLOCKED_REQUIREMENT");
+      expect(output.eventState).toBe("BLOCKED_REQUIREMENT");
+      expect(output.reason).toBe(`DEVICE_SECURITY_STATE_${state}`);
+      expect(calls).toEqual(["resolve"]);
+      expect(calls).not.toContain("execute");
+    });
+  }
+
+  it("allows a device-bound event to continue only when the same device resolves ACTIVE", async () => {
+    const { gateway, calls } = testGateway({ resolution: withDeviceState("ACTIVE") });
+    const output = await runProgramEvent(deviceBoundInput(), gateway);
+
+    expect(output.state).toBe("SETTLED_RECONCILED");
+    expect(calls).toContain("authorize:ROUTE_TO_TEST_CAPABILITY");
+    expect(calls).toContain("execute");
+    expect(output.trace.map((entry) => entry.step)).toEqual([
+      "RESOLVE_R1_R5",
+      "CHECK_DEVICE_SECURITY",
+      "PREPARE_ACTION",
+      "WARDEN_AUTHORIZE",
+      "RIVER_RESERVE",
+      "EXECUTE_CAPABILITY",
+      "CONFIRM_RESULT",
+      "RIVER_SEAL",
+      "RECORD_EFFECT",
+      "ECONOMIC_CONSEQUENCE",
+      "UPDATE_STATE",
     ]);
   });
 });
