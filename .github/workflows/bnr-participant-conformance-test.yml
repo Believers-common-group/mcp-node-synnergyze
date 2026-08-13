@@ -1,0 +1,40 @@
+name: bnr-participant-conformance-test
+
+on:
+  pull_request:
+    types: [opened, edited, synchronize, reopened]
+    paths:
+      - 'api/runtime/participant-conformance.ts'
+      - 'api/runtime/participant-conformance.test.ts'
+      - 'api/runtime/program-event-contract.ts'
+      - 'docs/bnr/BNR-PARTICIPANT-CONFORMANCE-001.md'
+      - '.github/workflows/bnr-participant-conformance-test.yml'
+  push:
+    branches:
+      - genesis
+    paths:
+      - 'api/runtime/participant-conformance.ts'
+      - 'api/runtime/participant-conformance.test.ts'
+      - 'api/runtime/program-event-contract.ts'
+      - '.github/workflows/bnr-participant-conformance-test.yml'
+
+jobs:
+  participant-conformance:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install dependencies
+        run: npm i
+
+      - name: Run focused BNR participant conformance tests
+        run: npx vitest run api/runtime/participant-conformance.test.ts
+
+      - name: Type-check API runtime
+        run: npm run -s type-check
