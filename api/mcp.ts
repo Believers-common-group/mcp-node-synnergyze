@@ -9,61 +9,35 @@ const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
 const CWR_REGISTRY_DATABASE_URL = process.env.CWR_REGISTRY_DATABASE_URL;
 const VSR_PUBLIC_DATABASE_URL = process.env.VSR_PUBLIC_DATABASE_URL;
 
-// Alpha-scoped public-client configuration. Supabase publishable keys are
-// designed for public clients; secret/service-role credentials must never be
-// added here. The key is selected only when SUPABASE_URL resolves to the exact
-// verified VSR project ref.
-const ALPHA_SUPABASE_PUBLISHABLE_KEYS: Readonly<Record<string, string>> = {
-  ayrivdysmbphhlqjmdtc: "sb_publishable_u0-I8HkVLnTOyV_tjVO8Pw_B-RkrpJj",
-};
-
-function configuredSupabaseProjectRef() {
-  if (!SUPABASE_URL) return undefined;
-  try {
-    const hostname = new URL(SUPABASE_URL).hostname;
-    return hostname.match(/^([a-z0-9]+)\.supabase\.co$/i)?.[1];
-  } catch {
-    return undefined;
-  }
-}
-
-function effectiveSupabasePublishableKey() {
-  const projectRef = configuredSupabaseProjectRef();
-  if (projectRef && ALPHA_SUPABASE_PUBLISHABLE_KEYS[projectRef]) {
-    return ALPHA_SUPABASE_PUBLISHABLE_KEYS[projectRef];
-  }
-  return SUPABASE_PUBLISHABLE_KEY;
-}
-
 function supabaseConfiguration() {
-  const projectRef = configuredSupabaseProjectRef();
-  const publishableKey = effectiveSupabasePublishableKey();
   return {
     required: false,
+    runtimeBlocking: false,
     mode: "deferred_optional",
-    configured: Boolean(SUPABASE_URL && publishableKey),
+    configured: Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY),
     urlConfigured: Boolean(SUPABASE_URL),
-    publishableKeyConfigured: Boolean(publishableKey),
-    projectBoundPublishableKey: Boolean(projectRef && ALPHA_SUPABASE_PUBLISHABLE_KEYS[projectRef]),
+    publishableKeyConfigured: Boolean(SUPABASE_PUBLISHABLE_KEY),
   };
 }
 
 function neonProjectionConfiguration() {
+  const directBridgeConfigured = Boolean(CWR_REGISTRY_DATABASE_URL && VSR_PUBLIC_DATABASE_URL);
   return {
-    required: true,
-    mode: "runtime_projection",
-    configured: Boolean(CWR_REGISTRY_DATABASE_URL && VSR_PUBLIC_DATABASE_URL),
+    authority: "runtime_projection_only",
+    runtimeBlocking: false,
+    mode: directBridgeConfigured ? "vercel_direct_bridge" : "connector_managed_external",
+    directBridgeConfigured,
     cwrRegistryConfigured: Boolean(CWR_REGISTRY_DATABASE_URL),
     vsrPublicConfigured: Boolean(VSR_PUBLIC_DATABASE_URL),
   };
 }
 
 async function probeSupabase() {
-  const publishableKey = effectiveSupabasePublishableKey();
-  if (!SUPABASE_URL || !publishableKey) {
+  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
     return {
       ok: false,
       required: false,
+      runtimeBlocking: false,
       deferred: true,
       configured: false,
       error: "Supabase adapter is deferred and not fully configured.",
@@ -74,9 +48,9 @@ async function probeSupabase() {
   const response = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/`, {
     method: "GET",
     headers: {
-      apikey: publishableKey,
+      apikey: SUPABASE_PUBLISHABLE_KEY,
       accept: "application/openapi+json, application/json",
-      "user-agent": "synnergyze-genesis-mcp/0.2.0",
+      "user-agent": "synnergyze-genesis-mcp/0.2.1",
     },
     signal: AbortSignal.timeout(8000),
   });
@@ -84,6 +58,7 @@ async function probeSupabase() {
   return {
     ok: response.ok,
     required: false,
+    runtimeBlocking: false,
     deferred: true,
     configured: true,
     status: response.status,
@@ -92,17 +67,18 @@ async function probeSupabase() {
 }
 
 async function probeNeonProjection() {
-  const missing = [
-    ...(CWR_REGISTRY_DATABASE_URL ? [] : ["CWR_REGISTRY_DATABASE_URL"]),
-    ...(VSR_PUBLIC_DATABASE_URL ? [] : ["VSR_PUBLIC_DATABASE_URL"]),
-  ];
-
-  if (missing.length > 0) {
+  const config = neonProjectionConfiguration();
+  if (!config.directBridgeConfigured) {
     return {
       ok: false,
-      required: true,
-      configured: false,
-      missing,
+      runtimeBlocking: false,
+      bridgeReady: false,
+      mode: "connector_managed_external",
+      directProbeSkipped: true,
+      missing: [
+        ...(CWR_REGISTRY_DATABASE_URL ? [] : ["CWR_REGISTRY_DATABASE_URL"]),
+        ...(VSR_PUBLIC_DATABASE_URL ? [] : ["VSR_PUBLIC_DATABASE_URL"]),
+      ],
     };
   }
 
@@ -116,8 +92,9 @@ async function probeNeonProjection() {
 
   return {
     ok: sourceRows.length === 1 && targetRows.length === 1,
-    required: true,
-    configured: true,
+    runtimeBlocking: false,
+    bridgeReady: sourceRows.length === 1 && targetRows.length === 1,
+    mode: "vercel_direct_bridge",
     cwrRegistryReachable: sourceRows.length === 1,
     vsrPublicReachable: targetRows.length === 1,
     latencyMs: Date.now() - startedAt,
@@ -127,58 +104,62 @@ async function probeNeonProjection() {
 function createServer() {
   const server = new McpServer({
     name: "synnergyze-genesis-mcp",
-    version: "0.2.0",
+    version: "0.2.1",
   });
 
   server.tool(
     "genesis_status",
     "Return the deployment, authority-boundary, and persistence status of the Synnergyze Genesis MCP boundary.",
     {},
-    async () => ({
-      content: [
-        {
-          type: "text",
-          text: JSON.stringify({
-            service: "synnergyze-genesis-mcp",
-            transport: "streamable-http",
-            deployment: "vercel",
-            authorityBoundary: {
-              canonicalState: "ALPHA-NODE-001 local Registry",
-              policyAuthority: "Warden",
-              neon: "runtime_projection_only",
-              supabase: "deferred_optional_retained_data",
-              evidence: "RiverOS + governed object storage",
-            },
-            neonProjection: neonProjectionConfiguration(),
-            supabase: supabaseConfiguration(),
-            legacyAlgoliaTools: "quarantined",
-          }),
-        },
-      ],
-    }),
+    async () => {
+      const neonProjection = neonProjectionConfiguration();
+      return {
+        content: [
+          {
+            type: "text",
+            text: JSON.stringify({
+              service: "synnergyze-genesis-mcp",
+              runtimeState: "operational",
+              transport: "streamable-http",
+              deployment: "vercel",
+              authorityBoundary: {
+                canonicalState: "ALPHA-NODE-001 local Registry",
+                policyAuthority: "Warden",
+                neon: "runtime_projection_only",
+                supabase: "deferred_optional_retained_data",
+                evidence: "RiverOS + governed object storage",
+              },
+              neonProjection,
+              bridgeState: neonProjection.directBridgeConfigured
+                ? "direct_activation_configured"
+                : "connector_managed_external_direct_bridge_dormant",
+              supabase: supabaseConfiguration(),
+              legacyAlgoliaTools: "quarantined",
+            }),
+          },
+        ],
+      };
+    },
   );
 
   server.tool(
     "genesis_neon_projection_probe",
-    "Test read-only connectivity to the governed CWR and VSR Neon projection databases. This performs no database mutation.",
+    "Inspect direct Vercel-to-Neon bridge readiness. When direct credentials are absent, Neon may remain available through the governed external control plane and this diagnostic is non-blocking. This performs no database mutation.",
     {},
     async () => {
       try {
         const result = await probeNeonProjection();
-        return {
-          ...(result.ok ? {} : { isError: true }),
-          content: [{ type: "text", text: JSON.stringify(result) }],
-        };
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
       } catch (error) {
         return {
-          isError: true,
           content: [
             {
               type: "text",
               text: JSON.stringify({
                 ok: false,
-                required: true,
-                configured: Boolean(CWR_REGISTRY_DATABASE_URL && VSR_PUBLIC_DATABASE_URL),
+                runtimeBlocking: false,
+                bridgeReady: false,
+                mode: "vercel_direct_bridge",
                 error: error instanceof Error ? error.message : "Unknown Neon projection probe failure",
               }),
             },
@@ -190,7 +171,7 @@ function createServer() {
 
   server.tool(
     "genesis_supabase_probe",
-    "Inspect the deferred Supabase adapter using only its publishable key. Supabase is not a deployment gate and this performs no database mutation.",
+    "Inspect the deferred Supabase adapter using only its configured publishable key. Supabase is not a deployment gate and this performs no database mutation.",
     {},
     async () => {
       try {
@@ -204,8 +185,9 @@ function createServer() {
               text: JSON.stringify({
                 ok: false,
                 required: false,
+                runtimeBlocking: false,
                 deferred: true,
-                configured: Boolean(SUPABASE_URL && effectiveSupabasePublishableKey()),
+                configured: Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY),
                 error: error instanceof Error ? error.message : "Unknown deferred Supabase probe failure",
               }),
             },
