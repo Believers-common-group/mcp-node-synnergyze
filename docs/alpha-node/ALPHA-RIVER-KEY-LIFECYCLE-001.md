@@ -1,6 +1,6 @@
 # ALPHA-RIVER-KEY-LIFECYCLE-001
 
-Status: **VERIFIED LIFECYCLE CONTROL / KEY V2 STAGED**
+Status: **VERIFIED LIFECYCLE CONTROL / KEY V2 STAGED / CLEANUP PASS COMPLETE**
 
 ## Purpose
 
@@ -10,7 +10,7 @@ Canonical invariant:
 
 `OLD SIGNATURE != CURRENT KEY STATE`
 
-A key being retired or revoked now does not automatically mean a signature was invalid when it was produced. Historical verification must evaluate the key at `signed_at`, including activation, validity window, revocation time, and any backdated compromise time.
+A key being retired or revoked now does not automatically mean a signature was invalid when it was produced. Historical verification evaluates the key at `signed_at`, including activation, validity window, revocation time, and any backdated compromise time.
 
 ## Key lifecycle
 
@@ -26,7 +26,7 @@ Emergency terminal states:
 
 `STAGED` means the public key is registered and private material is secured, but the private key is unusable for signing.
 
-State changes that alter operational trust require an executable Warden decision token bound to the exact key action and exact target key. The lifecycle transition function consumes the Warden runtime action through the existing GEE change-envelope mechanism.
+State changes that alter operational trust require an executable Warden decision token bound to the exact key action and exact target key. The lifecycle transition consumes the Warden runtime action through the existing GEE change-envelope mechanism.
 
 No Warden token -> no activation, retirement, revocation, or compromise declaration.
 
@@ -44,15 +44,40 @@ Current key inventory:
 - v1 public fingerprint — `kZma2tG_97WuUAkIvF7fMOqgY6mM4Q7dDkwuoq5IoXk`
 - v2 — signer key `aadac578-2022-42e4-8d76-43a8c1bf785e` — **STAGED**
 - v2 public fingerprint — `6mCcAmqDY_O0k3EYBK7qwFM1G4CtvWlRygilZALqBTI`
-- v2 explicitly supersedes v1 after authorized cutover.
+- v2 explicitly supersedes v1 only after authorized cutover.
 
 Private key material remains in Supabase Vault and is not included in this repository.
+
+## Deterministic Warden transition preparation
+
+`registry_desk.prepare_signer_key_transition(...)` is now the canonical source of the exact Warden-approved change payload.
+
+It returns:
+
+- exact `action_code`
+- exact `target_reference`
+- current and target key states
+- exact `approved_change`
+- deterministic `approved_change_hash`
+
+Runtime-generated timestamps and execution references are excluded from the approved change hash. They are recorded only when execution actually occurs.
+
+Verified v2 activation preparation:
+
+- action: `riveros.signer_key.activate`
+- target: `RIVEROS:SIGNER_KEY:aadac578-2022-42e4-8d76-43a8c1bf785e`
+- state: `STAGED -> ACTIVE`
+- deterministic canary hash: `33a6f00c3ab34f243924d3faef8beca30fde358f395b898a5676309dd62e550e`
+- repeated preparation produced the same hash
+- approved payload contains no runtime `effective_at`
 
 ## Immutable lifecycle evidence
 
 `riveros.signer_key_events` is an append-only key-state event ledger. It records registration, staging, activation, supersession, retirement, revocation, and compromise declarations with effective time, recorded time, authority reference, decision-token reference, execution reference, reason, metadata, and event hash.
 
-`riveros.signer_keys` remains the current-state projection; the event ledger preserves the state-transition history.
+`riveros.signer_keys` remains the current-state projection; the event ledger preserves state-transition history.
+
+When a key is superseded, historical signature reassessment now uses that key's own `SUPERSEDED` event ID. The successor key's `ACTIVATED` event is not reused as the provenance basis for the predecessor's reassessment.
 
 ## Historical signature trust
 
@@ -85,6 +110,15 @@ It deliberately excludes Vault secret identifiers, private key material and Ward
 
 Historical public keys remain available after retirement or revocation so old receipts remain independently verifiable.
 
+Cleanup hardening:
+
+- `anon`: SELECT only
+- `authenticated`: SELECT only
+- `anon/authenticated` INSERT: denied
+- `anon/authenticated` UPDATE: denied
+- writes remain service-role only
+- RLS read policy remains explicit for the public projection
+
 ## Rotation-safe signer worker
 
 `alpha-river-receipt-signer/1.1.0` binds every signing attempt to the exact `signer_key_id` selected by the database. The worker retrieves private material by that exact key ID, eliminating a list-then-rotate race between key selection and private-key retrieval.
@@ -99,6 +133,8 @@ Verified:
 2. v2 activation without a Warden decision token is rejected with `WARDEN_DECISION_TOKEN_REQUIRED`.
 3. Exactly one active signer key remains: v1.
 4. v2 trust snapshot while staged is `NOT_ACTIVE_AT_TIME`.
+5. Public projection write privileges for `anon` and `authenticated` are absent.
+6. Repeated transition preparation yields the same approved-change hash.
 
 ## Compromise semantics
 
@@ -117,9 +153,9 @@ but
 
 ## Security posture
 
-The post-DDL Supabase advisor introduced no new signed-in-user `SECURITY DEFINER` warning for this lifecycle subsystem. New private lifecycle tables are RLS fail-closed and service-role only. The public verification-key projection has an explicit read-only RLS policy for `anon` and `authenticated`, with writes limited to `service_role`.
+The post-cleanup Supabase security advisor introduced no new signed-in-user `SECURITY DEFINER` warning for this lifecycle subsystem.
 
-The wider estate remains **AMBER** because pre-existing `authenticated_security_definer_function_executable` warnings and leaked-password-protection configuration remain unresolved.
+The wider estate remains **AMBER** because pre-existing `authenticated_security_definer_function_executable` warnings remain on older DigitalMe/Gateway Agent RPCs, and leaked-password protection remains disabled.
 
 ## Pending authority action
 
@@ -131,8 +167,8 @@ Target:
 
 `RIVEROS:SIGNER_KEY:aadac578-2022-42e4-8d76-43a8c1bf785e`
 
-Until that authority exists and is consumed, v1 remains the sole signing key.
+The exact approved change should be produced by `registry_desk_prepare_signer_key_transition(...)`, then bound into the GEE change envelope. Until that authority exists and is consumed, v1 remains the sole signing key.
 
 ## Next assurance boundary
 
-After governed key activation/rotation, the next independent assurance layer is `ALPHA-RIVER-EXTERNAL-TIMESTAMP-001`: external trusted timestamp/notary evidence. It must remain distinct from key lifecycle and signature verification.
+After governed key activation/rotation, the next independent assurance layer is `ALPHA-RIVER-EXTERNAL-TIMESTAMP-001`: external trusted timestamp/notary evidence. It remains distinct from key lifecycle and signature verification.
