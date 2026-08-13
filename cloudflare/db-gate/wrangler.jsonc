@@ -1,0 +1,28 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "alpha-bnr-db-gate",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-08-13",
+  "compatibility_flags": ["nodejs_compat"],
+  "observability": {
+    "enabled": true,
+    "head_sampling_rate": 1
+  },
+  "hyperdrive": [
+    {
+      "binding": "HYPERDRIVE_AUTH",
+      "id": "<CACHE_DISABLED_HYPERDRIVE_ID>"
+    }
+  ],
+  "services": [
+    {
+      "binding": "WARDEN",
+      "service": "alpha-warden-gate"
+    }
+  ],
+  "vars": {
+    "GATE_CODE": "BNR-DB-GATE-001",
+    "NODE_CODE": "ALPHA-NODE-001",
+    "ENVIRONMENT": "development"
+  }
+}
