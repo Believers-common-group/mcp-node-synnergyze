@@ -12,6 +12,7 @@
     "test:compute": "vitest run api/compute-plane.test.ts compute/runtime.test.ts",
     "test:compute-proof": "vitest run compute/runtime.test.ts",
     "test:agent": "vitest run agent-fabric/runtime.test.ts",
+    "test:sites": "vitest run api/sites.test.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
     "debug": "mcp-inspector npm start"
