@@ -8,6 +8,8 @@
     "lint": "eslint --ext .ts src api",
     "test": "vitest",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
+    "test:compute": "vitest run api/compute-plane.test.ts",
+    "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "debug": "mcp-inspector npm start"
   },
   "type": "module",
