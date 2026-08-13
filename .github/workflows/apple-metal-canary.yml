@@ -1,4 +1,4 @@
-name: Apple Metal canary
+name: Apple runner governed checks
 
 on:
   pull_request:
@@ -6,11 +6,13 @@ on:
     paths:
       - 'src/tools/registerAppleRunnerCanary.ts'
       - 'src/tools/registerAppleRunnerCanary.test.ts'
+      - 'src/tools/registerAppleRunnerBuild.ts'
+      - 'src/tools/registerAppleRunnerBuild.test.ts'
       - 'src/commands/start-alpha-newton-server.ts'
       - '.github/workflows/apple-metal-canary.yml'
 
 jobs:
-  metal-canary:
+  apple-runner:
     runs-on: macos-latest
 
     steps:
@@ -30,5 +32,8 @@ jobs:
           xcodebuild -version
           xcrun --find swift
 
-      - name: Run APPLE-RUNNER-001 Metal canary test
-        run: npm test -- --run src/tools/registerAppleRunnerCanary.test.ts
+      - name: Run APPLE-RUNNER-001 governed execution tests
+        run: >-
+          npm test -- --run
+          src/tools/registerAppleRunnerCanary.test.ts
+          src/tools/registerAppleRunnerBuild.test.ts
