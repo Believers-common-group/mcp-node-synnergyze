@@ -1,25 +1,72 @@
 import type { IncomingMessage, ServerResponse } from "node:http";
+import { neon } from "@neondatabase/serverless";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
+const CWR_REGISTRY_DATABASE_URL = process.env.CWR_REGISTRY_DATABASE_URL;
+const VSR_PUBLIC_DATABASE_URL = process.env.VSR_PUBLIC_DATABASE_URL;
+
+// Alpha-scoped public-client configuration. Supabase publishable keys are
+// designed for public clients; secret/service-role credentials must never be
+// added here. The key is selected only when SUPABASE_URL resolves to the exact
+// verified VSR project ref.
+const ALPHA_SUPABASE_PUBLISHABLE_KEYS: Readonly<Record<string, string>> = {
+  ayrivdysmbphhlqjmdtc: "sb_publishable_u0-I8HkVLnTOyV_tjVO8Pw_B-RkrpJj",
+};
+
+function configuredSupabaseProjectRef() {
+  if (!SUPABASE_URL) return undefined;
+  try {
+    const hostname = new URL(SUPABASE_URL).hostname;
+    return hostname.match(/^([a-z0-9]+)\.supabase\.co$/i)?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+function effectiveSupabasePublishableKey() {
+  const projectRef = configuredSupabaseProjectRef();
+  if (projectRef && ALPHA_SUPABASE_PUBLISHABLE_KEYS[projectRef]) {
+    return ALPHA_SUPABASE_PUBLISHABLE_KEYS[projectRef];
+  }
+  return SUPABASE_PUBLISHABLE_KEY;
+}
 
 function supabaseConfiguration() {
+  const projectRef = configuredSupabaseProjectRef();
+  const publishableKey = effectiveSupabasePublishableKey();
   return {
-    configured: Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY),
+    required: false,
+    mode: "deferred_optional",
+    configured: Boolean(SUPABASE_URL && publishableKey),
     urlConfigured: Boolean(SUPABASE_URL),
-    publishableKeyConfigured: Boolean(SUPABASE_PUBLISHABLE_KEY),
+    publishableKeyConfigured: Boolean(publishableKey),
+    projectBoundPublishableKey: Boolean(projectRef && ALPHA_SUPABASE_PUBLISHABLE_KEYS[projectRef]),
+  };
+}
+
+function neonProjectionConfiguration() {
+  return {
+    required: true,
+    mode: "runtime_projection",
+    configured: Boolean(CWR_REGISTRY_DATABASE_URL && VSR_PUBLIC_DATABASE_URL),
+    cwrRegistryConfigured: Boolean(CWR_REGISTRY_DATABASE_URL),
+    vsrPublicConfigured: Boolean(VSR_PUBLIC_DATABASE_URL),
   };
 }
 
 async function probeSupabase() {
-  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  const publishableKey = effectiveSupabasePublishableKey();
+  if (!SUPABASE_URL || !publishableKey) {
     return {
       ok: false,
+      required: false,
+      deferred: true,
       configured: false,
-      error: "Supabase environment variables are not configured.",
+      error: "Supabase adapter is deferred and not fully configured.",
     };
   }
 
@@ -27,17 +74,52 @@ async function probeSupabase() {
   const response = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/`, {
     method: "GET",
     headers: {
-      apikey: SUPABASE_PUBLISHABLE_KEY,
+      apikey: publishableKey,
       accept: "application/openapi+json, application/json",
-      "user-agent": "synnergyze-genesis-mcp/0.1.0",
+      "user-agent": "synnergyze-genesis-mcp/0.2.0",
     },
     signal: AbortSignal.timeout(8000),
   });
 
   return {
     ok: response.ok,
+    required: false,
+    deferred: true,
     configured: true,
     status: response.status,
+    latencyMs: Date.now() - startedAt,
+  };
+}
+
+async function probeNeonProjection() {
+  const missing = [
+    ...(CWR_REGISTRY_DATABASE_URL ? [] : ["CWR_REGISTRY_DATABASE_URL"]),
+    ...(VSR_PUBLIC_DATABASE_URL ? [] : ["VSR_PUBLIC_DATABASE_URL"]),
+  ];
+
+  if (missing.length > 0) {
+    return {
+      ok: false,
+      required: true,
+      configured: false,
+      missing,
+    };
+  }
+
+  const startedAt = Date.now();
+  const source = neon(CWR_REGISTRY_DATABASE_URL!);
+  const target = neon(VSR_PUBLIC_DATABASE_URL!);
+  const [sourceRows, targetRows] = await Promise.all([
+    source`select 1 as ok`,
+    target`select 1 as ok`,
+  ]);
+
+  return {
+    ok: sourceRows.length === 1 && targetRows.length === 1,
+    required: true,
+    configured: true,
+    cwrRegistryReachable: sourceRows.length === 1,
+    vsrPublicReachable: targetRows.length === 1,
     latencyMs: Date.now() - startedAt,
   };
 }
@@ -45,12 +127,12 @@ async function probeSupabase() {
 function createServer() {
   const server = new McpServer({
     name: "synnergyze-genesis-mcp",
-    version: "0.1.0",
+    version: "0.2.0",
   });
 
   server.tool(
     "genesis_status",
-    "Return the deployment and integration status of the Synnergyze Genesis MCP boundary.",
+    "Return the deployment, authority-boundary, and persistence status of the Synnergyze Genesis MCP boundary.",
     {},
     async () => ({
       content: [
@@ -60,6 +142,14 @@ function createServer() {
             service: "synnergyze-genesis-mcp",
             transport: "streamable-http",
             deployment: "vercel",
+            authorityBoundary: {
+              canonicalState: "ALPHA-NODE-001 local Registry",
+              policyAuthority: "Warden",
+              neon: "runtime_projection_only",
+              supabase: "deferred_optional_retained_data",
+              evidence: "RiverOS + governed object storage",
+            },
+            neonProjection: neonProjectionConfiguration(),
             supabase: supabaseConfiguration(),
             legacyAlgoliaTools: "quarantined",
           }),
@@ -69,13 +159,16 @@ function createServer() {
   );
 
   server.tool(
-    "genesis_supabase_probe",
-    "Test network/API reachability to the configured Supabase project using only its publishable key. This performs no database mutation.",
+    "genesis_neon_projection_probe",
+    "Test read-only connectivity to the governed CWR and VSR Neon projection databases. This performs no database mutation.",
     {},
     async () => {
       try {
-        const result = await probeSupabase();
-        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+        const result = await probeNeonProjection();
+        return {
+          ...(result.ok ? {} : { isError: true }),
+          content: [{ type: "text", text: JSON.stringify(result) }],
+        };
       } catch (error) {
         return {
           isError: true,
@@ -84,8 +177,36 @@ function createServer() {
               type: "text",
               text: JSON.stringify({
                 ok: false,
-                configured: true,
-                error: error instanceof Error ? error.message : "Unknown Supabase probe failure",
+                required: true,
+                configured: Boolean(CWR_REGISTRY_DATABASE_URL && VSR_PUBLIC_DATABASE_URL),
+                error: error instanceof Error ? error.message : "Unknown Neon projection probe failure",
+              }),
+            },
+          ],
+        };
+      }
+    },
+  );
+
+  server.tool(
+    "genesis_supabase_probe",
+    "Inspect the deferred Supabase adapter using only its publishable key. Supabase is not a deployment gate and this performs no database mutation.",
+    {},
+    async () => {
+      try {
+        const result = await probeSupabase();
+        return { content: [{ type: "text", text: JSON.stringify(result) }] };
+      } catch (error) {
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify({
+                ok: false,
+                required: false,
+                deferred: true,
+                configured: Boolean(SUPABASE_URL && effectiveSupabasePublishableKey()),
+                error: error instanceof Error ? error.message : "Unknown deferred Supabase probe failure",
               }),
             },
           ],

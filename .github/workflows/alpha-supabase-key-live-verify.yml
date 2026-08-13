@@ -1,0 +1,53 @@
+name: alpha-supabase-key-live-verify
+
+on:
+  push:
+    branches: [genesis]
+    paths:
+      - .github/workflows/alpha-supabase-key-live-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Verify Alpha Supabase binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://synnergyze-genesis-mcp.vercel.app/mcp'
+          payload='{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"genesis_status","arguments":{}}}'
+          tmp=$(mktemp)
+          code=$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$endpoint" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -H 'mcp-protocol-version: 2025-03-26' --data "$payload")
+          test "$code" = '200'
+          text=$(jq -r '.result.content[]? | select(.type=="text") | .text' "$tmp" | head -n1)
+          printf '%s' "$text" | jq -e '.supabase.configured == true and .supabase.urlConfigured == true and .supabase.publishableKeyConfigured == true and .supabase.projectBoundPublishableKey == true' >/dev/null
+          echo 'alpha_supabase_binding=PASS'
+
+      - name: Verify Supabase read-only probe
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://synnergyze-genesis-mcp.vercel.app/mcp'
+          payload='{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"genesis_supabase_probe","arguments":{}}}'
+          tmp=$(mktemp)
+          code=$(curl -sS -o "$tmp" -w '%{http_code}' -X POST "$endpoint" -H 'content-type: application/json' -H 'accept: application/json, text/event-stream' -H 'mcp-protocol-version: 2025-03-26' --data "$payload")
+          test "$code" = '200'
+          text=$(jq -r '.result.content[]? | select(.type=="text") | .text' "$tmp" | head -n1)
+          printf '%s\n' "$text" | jq .
+          printf '%s' "$text" | jq -e '.ok == true and .configured == true and .status >= 200 and .status < 300' >/dev/null
+          echo 'supabase_probe=PASS'
+
+      - name: Verify Registry bridge wrong-bearer rejection
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://synnergyze-genesis-mcp.vercel.app/registry-bridge?limit=1'
+          tmp=$(mktemp)
+          code=$(curl -sS -o "$tmp" -w '%{http_code}' "$endpoint" -H 'Authorization: Bearer deliberately-wrong-alpha-verification-token')
+          test "$code" = '401'
+          jq -e '.ok == false and .error == "unauthorized"' "$tmp" >/dev/null
+          echo 'registry_bridge_wrong_bearer=PASS'
