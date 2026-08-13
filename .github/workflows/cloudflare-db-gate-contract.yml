@@ -1,0 +1,42 @@
+name: Cloudflare DB Gate Contract
+
+on:
+  pull_request:
+    paths:
+      - "cloudflare/db-gate/**"
+      - "docs/alpha-node/BNR-DB-GATE-001.md"
+      - "docs/alpha-node/BNR-DB-GATE-MUTATION-001.md"
+      - ".github/workflows/cloudflare-db-gate-contract.yml"
+  push:
+    branches:
+      - "agent/cloudflare-hyperdrive-db-gate-001"
+    paths:
+      - "cloudflare/db-gate/**"
+      - "docs/alpha-node/BNR-DB-GATE-001.md"
+      - "docs/alpha-node/BNR-DB-GATE-MUTATION-001.md"
+      - ".github/workflows/cloudflare-db-gate-contract.yml"
+
+permissions:
+  contents: read
+
+jobs:
+  contract-test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: cloudflare/db-gate
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install DB Gate dependencies
+        run: npm install
+
+      - name: Run governance contract tests
+        run: npm test
