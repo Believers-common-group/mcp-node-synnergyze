@@ -1,0 +1,31 @@
+name: alpha-supabase-binding-diagnostic
+
+on:
+  push:
+    branches: [genesis]
+    paths:
+      - .github/workflows/alpha-supabase-binding-diagnostic.yml
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Read non-secret Supabase project binding
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://synnergyze-genesis-mcp.vercel.app/api/supabase-binding'
+          for i in {1..18}; do
+            body=$(curl -fsS "$endpoint" 2>/dev/null || true)
+            if printf '%s' "$body" | jq -e '.supabaseUrlConfigured == true and (.projectRef | type == "string")' >/dev/null 2>&1; then
+              printf '%s\n' "$body" | jq '{service,supabaseUrlConfigured,projectRef}'
+              exit 0
+            fi
+            sleep 5
+          done
+          echo 'binding_read=FAIL'
+          exit 1
