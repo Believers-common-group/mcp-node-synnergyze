@@ -78,6 +78,35 @@ export async function runProgramEvent(
     });
   }
 
+  if (event.executionDeviceRef) {
+    const deviceSecurity = resolution.deviceSecurityContext;
+    trace(
+      entries,
+      "CHECK_DEVICE_SECURITY",
+      "READY_FOR_RESOLUTION",
+      event.executionDeviceRef,
+      deviceSecurity?.state ?? "UNRESOLVED",
+    );
+
+    if (!deviceSecurity) {
+      return result(program, event, "BLOCKED_REQUIREMENT", "BLOCKED_REQUIREMENT", entries, {
+        reason: "DEVICE_SECURITY_STATE_UNRESOLVED",
+      });
+    }
+
+    if (deviceSecurity.deviceRef !== event.executionDeviceRef) {
+      return result(program, event, "BLOCKED_REQUIREMENT", "BLOCKED_REQUIREMENT", entries, {
+        reason: "DEVICE_SECURITY_CONTEXT_MISMATCH",
+      });
+    }
+
+    if (deviceSecurity.state !== "ACTIVE") {
+      return result(program, event, "BLOCKED_REQUIREMENT", "BLOCKED_REQUIREMENT", entries, {
+        reason: `DEVICE_SECURITY_STATE_${deviceSecurity.state}`,
+      });
+    }
+  }
+
   if (resolution.r4 === "REQUIRES_EVIDENCE" || resolution.unmetRequirementRefs.length > 0) {
     return result(program, event, "BLOCKED_REQUIREMENT", "BLOCKED_REQUIREMENT", entries, {
       reason: resolution.unmetRequirementRefs.length
