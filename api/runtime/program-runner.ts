@@ -45,7 +45,6 @@ function resolutionFailure(resolution: RegistryResolutionBundle): string | null 
   if (resolution.r3 !== "RESOLVED" && resolution.r3 !== "REQUIRES_AUTHORIZATION") {
     return `R3_${resolution.r3}`;
   }
-  if (resolution.r5 !== "RESOLVED" || !resolution.candidateAction) return `R5_${resolution.r5}`;
   return null;
 }
 
@@ -92,6 +91,12 @@ export async function runProgramEvent(
     });
   }
 
+  if (resolution.r5 !== "RESOLVED" || !resolution.candidateAction) {
+    return result(program, event, "EXCEPTION", "EXCEPTION", entries, {
+      reason: `R5_${resolution.r5}`,
+    });
+  }
+
   const action: PreparedProgramAction = {
     correlationId,
     idempotencyKey,
@@ -101,7 +106,7 @@ export async function runProgramEvent(
     actingCapacityRef: event.actingCapacityRef,
     targetRef: event.thingRef,
     requestedCapability: event.requestedCapability,
-    candidateAction: resolution.candidateAction!,
+    candidateAction: resolution.candidateAction,
     authorityRefs: [...new Set([...event.authorityRefs, ...resolution.authorityRefs])],
     evidenceRequirementRefs: [
       ...new Set([...event.requirementRefs, ...resolution.evidenceRequirementRefs]),
