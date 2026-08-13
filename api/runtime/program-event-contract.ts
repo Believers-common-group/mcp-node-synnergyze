@@ -14,6 +14,26 @@ export type RegistryResolutionStatus =
   | "SUPERSEDED"
   | "UNSUPPORTED";
 
+export type DeviceSecurityState =
+  | "ACTIVE"
+  | "BAG_LOCK_REQUESTED"
+  | "SEALED"
+  | "SEALED_ALERT"
+  | "UNSEAL_PENDING"
+  | "WARDEN_REAUTH"
+  | "CONTROLLED_RECONNECT"
+  | "RECOVERY_REQUIRED";
+
+export type DeviceSecurityAssuranceLevel = "L0" | "L1" | "L2" | "L3" | "L4";
+
+export interface DeviceSecurityContext {
+  deviceRef: string;
+  state: DeviceSecurityState;
+  policyRef?: string;
+  evidenceRef?: string;
+  assuranceLevel?: DeviceSecurityAssuranceLevel;
+}
+
 export type ProgramState =
   | "DRAFT"
   | "READY_FOR_RESOLUTION"
@@ -75,6 +95,7 @@ export interface EventContractV1 {
   actingCapacityRef?: string;
   placeRef?: string;
   thingRef: string;
+  executionDeviceRef?: string;
   requestedCapability: string;
   dependencyRefs: string[];
   constraintRefs: string[];
@@ -96,6 +117,7 @@ export interface RegistryResolutionBundle {
   evidenceRequirementRefs: string[];
   expectedEffectRefs: string[];
   economicContextRefs: string[];
+  deviceSecurityContext?: DeviceSecurityContext;
 }
 
 export interface PreparedProgramAction {
@@ -150,6 +172,7 @@ export interface EconomicConsequenceReceipt {
 
 export type ProgramTraceStep =
   | "RESOLVE_R1_R5"
+  | "CHECK_DEVICE_SECURITY"
   | "PREPARE_ACTION"
   | "WARDEN_AUTHORIZE"
   | "RIVER_RESERVE"
