@@ -163,12 +163,15 @@ interface MutableSession {
 
 interface SwapMemo {
   bindingRef: string;
-  adapterRef: string;
-  decisionRef: string;
+  requestFingerprint: string;
+}
+
+function uniqueStrings(values: readonly string[]): string[] {
+  return [...new Set(values)];
 }
 
 function immutableStrings(values: readonly string[]): readonly string[] {
-  return Object.freeze([...values]);
+  return Object.freeze(uniqueStrings(values));
 }
 
 function makeAuthorityFingerprint(input: {
@@ -196,11 +199,23 @@ function makeAuthorityFingerprint(input: {
   ].join("|");
 }
 
+function makeSwapRequestFingerprint(input: SwapModelInput): string {
+  return [
+    input.bindingRef,
+    input.bindingDecision.adapterRef,
+    input.bindingDecision.decisionRef,
+    input.identityGuard.agentId,
+    input.identityGuard.issuanceId,
+    input.identityGuard.representedEntityRef,
+    input.identityGuard.authorityFingerprint,
+    input.purpose,
+    [...input.capabilityProfile].sort().join(","),
+    input.activatedAt,
+  ].join("|");
+}
+
 function cloneBinding(binding: ModelBinding): ModelBinding {
-  return {
-    ...binding,
-    capabilityProfile: [...binding.capabilityProfile],
-  };
+  return { ...binding, capabilityProfile: [...binding.capabilityProfile] };
 }
 
 export class DeterministicModelAdapter implements ModelAdapter {
@@ -229,7 +244,7 @@ export class SyntheticWardenAgentAuthority {
   private readonly issuanceDecision: AgentIssuanceDecision;
   private readonly approvedPackRefs: ReadonlySet<string>;
   private readonly approvedAdapterRefs: ReadonlySet<string>;
-  private readonly allowedCapabilities: readonly string[];
+  private readonly allowedCapabilities: ReadonlySet<string>;
   private readonly deniedCapabilities: readonly string[];
 
   constructor(input?: {
@@ -240,22 +255,27 @@ export class SyntheticWardenAgentAuthority {
     deniedCapabilities?: readonly string[];
   }) {
     this.issuanceDecision = input?.issuanceDecision ?? "ALLOW";
-    this.approvedPackRefs = new Set(
-      input?.approvedPackRefs ?? [AGENT_RC1_IDENTITIES.packRef],
-    );
+    this.approvedPackRefs = new Set(input?.approvedPackRefs ?? [AGENT_RC1_IDENTITIES.packRef]);
     this.approvedAdapterRefs = new Set(
       input?.approvedAdapterRefs ?? ["MODEL-ADAPTER-A-001", "MODEL-ADAPTER-B-001"],
     );
-    this.allowedCapabilities = immutableStrings(
+    this.allowedCapabilities = new Set(
       input?.allowedCapabilities ?? ["entity.profile.read", "service_request.create"],
     );
-    this.deniedCapabilities = immutableStrings(
-      input?.deniedCapabilities ?? ["contract.execute"],
-    );
+    this.deniedCapabilities = immutableStrings(input?.deniedCapabilities ?? ["contract.execute"]);
   }
 
   issue(request: WardenIssuanceRequest): AgentIssuanceResult {
     const decisionRef = `WARDEN-AGENT-ISSUANCE:${request.requestedIssuanceId}`;
+
+    if (
+      request.requesterRef !== AGENT_RC1_IDENTITIES.requesterRef ||
+      request.representedEntityRef !== AGENT_RC1_IDENTITIES.representedEntityRef ||
+      request.requestedAgentId !== AGENT_RC1_IDENTITIES.agentId ||
+      request.requestedIssuanceId !== AGENT_RC1_IDENTITIES.issuanceId
+    ) {
+      return { decision: "DENY", decisionRef, reason: "registry_identity_resolution_mismatch" };
+    }
 
     if (!this.approvedPackRefs.has(request.packRef)) {
       return { decision: "DENY", decisionRef, reason: "agent_pack_not_approved" };
@@ -269,6 +289,14 @@ export class SyntheticWardenAgentAuthority {
       return { decision: "ESCALATE", decisionRef, reason: "manual_review_required" };
     }
 
+    const requestedCapabilities = uniqueStrings(request.requestedCapabilities);
+    const allowedCapabilities = immutableStrings(
+      requestedCapabilities.filter((capability) => this.allowedCapabilities.has(capability)),
+    );
+    const deniedCapabilities = immutableStrings([
+      ...this.deniedCapabilities,
+      ...requestedCapabilities.filter((capability) => !this.allowedCapabilities.has(capability)),
+    ]);
     const validFrom = request.requestedAt;
     const validUntil = "2026-08-14T07:10:00.000Z";
     const authorityFingerprint = makeAuthorityFingerprint({
@@ -277,8 +305,8 @@ export class SyntheticWardenAgentAuthority {
       representedEntityRef: request.representedEntityRef,
       requesterRef: request.requesterRef,
       packRef: request.packRef,
-      allowedCapabilities: this.allowedCapabilities,
-      deniedCapabilities: this.deniedCapabilities,
+      allowedCapabilities,
+      deniedCapabilities,
       validFrom,
       validUntil,
     });
@@ -292,8 +320,8 @@ export class SyntheticWardenAgentAuthority {
       wardenRef: AGENT_RC1_IDENTITIES.wardenRef,
       issuanceDecisionRef: decisionRef,
       decision: "ALLOW" as const,
-      allowedCapabilities: this.allowedCapabilities,
-      deniedCapabilities: this.deniedCapabilities,
+      allowedCapabilities,
+      deniedCapabilities,
       validFrom,
       validUntil,
       issuedAt: request.requestedAt,
@@ -364,13 +392,14 @@ export class AgentRuntime {
       throw new Error("warden_issuance_required");
     }
 
+    AgentRuntime.assertBindingDecision(input.issuance, input.initialBindingDecision);
+    AgentRuntime.assertCapabilityProfile(input.issuance, input.capabilityProfile);
+
     const adapters = new Map(input.adapterRegistry.map((adapter) => [adapter.adapterRef, adapter]));
     const adapter = adapters.get(input.initialBindingDecision.adapterRef);
     if (!adapter) {
       throw new Error("model_adapter_not_registered");
     }
-
-    AgentRuntime.assertBindingDecision(input.issuance, input.initialBindingDecision);
 
     const initialBinding: ModelBinding = {
       bindingRef: input.initialBindingRef,
@@ -408,6 +437,16 @@ export class AgentRuntime {
     }
     if (decision.authorityFingerprint !== issuance.authorityFingerprint) {
       throw new Error("binding_authority_mismatch");
+    }
+  }
+
+  private static assertCapabilityProfile(
+    issuance: WardenAuthorityEnvelope,
+    capabilityProfile: readonly string[],
+  ): void {
+    const allowed = new Set(issuance.allowedCapabilities);
+    if (capabilityProfile.some((capability) => !allowed.has(capability))) {
+      throw new Error("model_binding_capability_expansion");
     }
   }
 
@@ -540,14 +579,12 @@ export class AgentRuntime {
   swapModel(input: SwapModelInput): ModelBinding {
     this.assertActive();
     this.assertIdentityGuard(input.identityGuard);
+    AgentRuntime.assertCapabilityProfile(this.issuance, input.capabilityProfile);
 
+    const requestFingerprint = makeSwapRequestFingerprint(input);
     const memo = this.swapMemos.get(input.idempotencyKey);
     if (memo) {
-      if (
-        memo.bindingRef !== input.bindingRef ||
-        memo.adapterRef !== input.bindingDecision.adapterRef ||
-        memo.decisionRef !== input.bindingDecision.decisionRef
-      ) {
+      if (memo.bindingRef !== input.bindingRef || memo.requestFingerprint !== requestFingerprint) {
         throw new Error("model_swap_idempotency_conflict");
       }
       const replay = this.bindings.find((binding) => binding.bindingRef === memo.bindingRef);
@@ -595,8 +632,7 @@ export class AgentRuntime {
     this.activeBindingRef = nextBinding.bindingRef;
     this.swapMemos.set(input.idempotencyKey, {
       bindingRef: nextBinding.bindingRef,
-      adapterRef: nextBinding.adapterRef,
-      decisionRef: input.bindingDecision.decisionRef,
+      requestFingerprint,
     });
     return cloneBinding(nextBinding);
   }
