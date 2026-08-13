@@ -5,12 +5,13 @@
   "scripts": {
     "start": "node --experimental-strip-types --no-warnings=ExperimentalWarnings src/app.ts",
     "type-check": "tsc --noEmit",
-    "lint": "eslint --ext .ts src api rc1 compute",
+    "lint": "eslint --ext .ts src api rc1 compute agent-fabric",
     "test": "vitest",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
     "test:rc1": "vitest run rc1/runtime.test.ts",
     "test:compute": "vitest run api/compute-plane.test.ts compute/runtime.test.ts",
     "test:compute-proof": "vitest run compute/runtime.test.ts",
+    "test:agent": "vitest run agent-fabric/runtime.test.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
     "debug": "mcp-inspector npm start"

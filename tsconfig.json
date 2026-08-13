@@ -13,6 +13,6 @@
     "noUnusedLocals": true,
     "resolveJsonModule": true
   },
-  "include": ["api/**/*.ts", "rc1/**/*.ts", "compute/**/*.ts"],
+  "include": ["api/**/*.ts", "rc1/**/*.ts", "compute/**/*.ts", "agent-fabric/**/*.ts"],
   "exclude": ["src/**", "node_modules"]
 }
