@@ -6,16 +6,44 @@ import { z } from "zod";
 const SUPABASE_URL = process.env.SUPABASE_URL;
 const SUPABASE_PUBLISHABLE_KEY = process.env.SUPABASE_PUBLISHABLE_KEY;
 
+// Alpha-safe public client configuration. Supabase publishable keys are designed
+// for public clients; secret/service-role keys must never be added here.
+const ALPHA_SUPABASE_PUBLISHABLE_KEYS: Readonly<Record<string, string>> = {
+  ayrivdysmbphhlqjmdtc: "sb_publishable_u0-I8HkVLnTOyV_tjVO8Pw_B-RkrpJj",
+};
+
+function configuredSupabaseProjectRef() {
+  if (!SUPABASE_URL) return undefined;
+  try {
+    const hostname = new URL(SUPABASE_URL).hostname;
+    return hostname.match(/^([a-z0-9]+)\.supabase\.co$/i)?.[1];
+  } catch {
+    return undefined;
+  }
+}
+
+function effectiveSupabasePublishableKey() {
+  const projectRef = configuredSupabaseProjectRef();
+  if (projectRef && ALPHA_SUPABASE_PUBLISHABLE_KEYS[projectRef]) {
+    return ALPHA_SUPABASE_PUBLISHABLE_KEYS[projectRef];
+  }
+  return SUPABASE_PUBLISHABLE_KEY;
+}
+
 function supabaseConfiguration() {
+  const projectRef = configuredSupabaseProjectRef();
+  const publishableKey = effectiveSupabasePublishableKey();
   return {
-    configured: Boolean(SUPABASE_URL && SUPABASE_PUBLISHABLE_KEY),
+    configured: Boolean(SUPABASE_URL && publishableKey),
     urlConfigured: Boolean(SUPABASE_URL),
-    publishableKeyConfigured: Boolean(SUPABASE_PUBLISHABLE_KEY),
+    publishableKeyConfigured: Boolean(publishableKey),
+    projectBoundPublishableKey: Boolean(projectRef && ALPHA_SUPABASE_PUBLISHABLE_KEYS[projectRef]),
   };
 }
 
 async function probeSupabase() {
-  if (!SUPABASE_URL || !SUPABASE_PUBLISHABLE_KEY) {
+  const publishableKey = effectiveSupabasePublishableKey();
+  if (!SUPABASE_URL || !publishableKey) {
     return {
       ok: false,
       configured: false,
@@ -27,7 +55,7 @@ async function probeSupabase() {
   const response = await fetch(`${SUPABASE_URL.replace(/\/$/, "")}/rest/v1/`, {
     method: "GET",
     headers: {
-      apikey: SUPABASE_PUBLISHABLE_KEY,
+      apikey: publishableKey,
       accept: "application/openapi+json, application/json",
       "user-agent": "synnergyze-genesis-mcp/0.1.0",
     },
