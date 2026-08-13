@@ -1,0 +1,38 @@
+{
+  "schema_version": "1.0",
+  "registration_type": "compute-runner",
+  "node_id": "ALPHA-NODE-001",
+  "runner_id": "GENESIS-APPLE-RUNNER-001",
+  "provider": "apple-mpp-local",
+  "status": "PENDING_ENROLMENT",
+  "hardware": {
+    "family": "apple-m5",
+    "architecture": "arm64",
+    "device_ref": "REPLACE_WITH_REGISTRY_DEVICE_REF"
+  },
+  "runtime": {
+    "name": "metal4-mpp",
+    "toolchain_status": "PENDING_NATIVE_PROBE",
+    "readiness_evidence_ref": null
+  },
+  "trust": {
+    "attestation_required": true,
+    "attestation_evidence_ref": null
+  },
+  "warden": {
+    "compute_grant_required": true,
+    "direct_dispatch_permitted": false
+  },
+  "evidence": {
+    "reservation_required_before_dispatch": true,
+    "seal_required_after_verification": true,
+    "mode": "envelope"
+  },
+  "fallback": {
+    "implicit_provider_fallback": false
+  },
+  "activation": {
+    "allowed": false,
+    "required_proof": "ALPHA-COMPUTE-MPP-PROOF-001"
+  }
+}
