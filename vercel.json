@@ -14,6 +14,9 @@
     "api/sites.ts": {
       "maxDuration": 10
     },
+    "api/site-handoff.ts": {
+      "maxDuration": 10
+    },
     "api/mcp.ts": {
       "maxDuration": 60
     },
@@ -37,6 +40,10 @@
     {
       "source": "/.well-known/estate-sites",
       "destination": "/api/sites"
+    },
+    {
+      "source": "/site-handoff",
+      "destination": "/api/site-handoff"
     },
     {
       "source": "/mcp",
