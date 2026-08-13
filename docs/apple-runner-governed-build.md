@@ -36,13 +36,15 @@ A separate `ALPHA_ARTIFACT_HMAC_SECRET` signs the artifact manifest. Separating 
 
 The MCP tool accepts no executable, shell expression, package path, output path, build flags or user-defined script. Internally it may run only the fixed sequence:
 
-1. `xcrun swift build -c release --product alpha-metal-artifact`
-2. `xcrun swift test -c release`
-3. `xcrun swift build -c release --show-bin-path`
+1. `xcrun swift build --scratch-path <runner-controlled> -c release --product alpha-metal-artifact`
+2. `xcrun swift test --scratch-path <runner-controlled> -c release`
+3. `xcrun swift build --scratch-path <runner-controlled> -c release --show-bin-path`
 4. the built fixed executable with zero arguments
 5. `sw_vers -productVersion`
 6. `xcodebuild -version`
 7. `xcrun swift --version`
+
+The SwiftPM scratch path is generated inside the adapter's temporary work directory. The binary path returned by SwiftPM is rejected unless it resolves inside that work directory. This keeps compiler/build output within the runner-owned envelope instead of relying on SwiftPM's host defaults.
 
 All child processes use `shell: false`, bounded output and a hard execution timeout.
 
