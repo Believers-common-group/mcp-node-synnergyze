@@ -1,0 +1,28 @@
+name: live-bridge-auth-verify
+
+on:
+  push:
+    branches: [ops/env-refresh-2026-08-13]
+    paths:
+      - .github/workflows/live-bridge-auth-verify.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify wrong bearer rejected
+        shell: bash
+        run: |
+          set -euo pipefail
+          endpoint='https://synnergyze-genesis-mcp.vercel.app/registry-bridge?limit=1'
+          tmp=$(mktemp)
+          code=$(curl -sS -o "$tmp" -w '%{http_code}' "$endpoint" -H 'Authorization: Bearer deliberately-wrong-verification-token')
+          echo "bridge_wrong_bearer_http=$code"
+          jq . "$tmp"
+          test "$code" = '401'
+          jq -e '.ok == false and .error == "unauthorized"' "$tmp" >/dev/null
+          echo 'bridge_wrong_bearer=PASS'
