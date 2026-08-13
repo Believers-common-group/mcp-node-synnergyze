@@ -9,6 +9,8 @@
     "test": "vitest",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
     "test:rc1": "vitest run rc1/runtime.test.ts",
+    "test:compute": "vitest run api/compute-plane.test.ts",
+    "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "debug": "mcp-inspector npm start"
   },
   "type": "module",
