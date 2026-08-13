@@ -1,0 +1,27 @@
+{
+  "schema_version": "1.0",
+  "registry_object": "REG-SITE-APP-001",
+  "alpha_node_id": "ALPHA-NODE-001",
+  "authority_boundary": "WARDEN",
+  "registration_contact": "warden@believerscommon.com",
+  "apps": [
+    {
+      "app_id": "APP-BC-001",
+      "site_id": "bc",
+      "name": "Believers Common",
+      "canonical_url": "https://believerscommon.com",
+      "contact_email": "warden@believerscommon.com",
+      "handoff_audiences": ["cc", "vsr"],
+      "status": "REGISTERED"
+    },
+    {
+      "app_id": "APP-CC-001",
+      "site_id": "cc",
+      "name": "Creators Common",
+      "canonical_url": "https://creators-common.org",
+      "contact_email": "warden@believerscommon.com",
+      "handoff_audiences": ["bc", "vsr"],
+      "status": "REGISTERED"
+    }
+  ]
+}
