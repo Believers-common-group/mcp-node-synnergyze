@@ -13,6 +13,6 @@
     "noUnusedLocals": true,
     "resolveJsonModule": true
   },
-  "include": ["api/**/*.ts"],
+  "include": ["api/**/*.ts", "rc1/**/*.ts"],
   "exclude": ["src/**", "node_modules"]
 }

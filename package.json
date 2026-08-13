@@ -5,9 +5,10 @@
   "scripts": {
     "start": "node --experimental-strip-types --no-warnings=ExperimentalWarnings src/app.ts",
     "type-check": "tsc --noEmit",
-    "lint": "eslint --ext .ts src api",
+    "lint": "eslint --ext .ts src api rc1",
     "test": "vitest",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
+    "test:rc1": "vitest run rc1/runtime.test.ts",
     "debug": "mcp-inspector npm start"
   },
   "type": "module",
