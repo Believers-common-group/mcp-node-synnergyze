@@ -5,12 +5,6 @@ import { ZodError } from "zod";
 const program = new Command("algolia-mcp");
 
 const DEFAULT_ALLOW_TOOLS = [
-  // Alpha Node / Newton agentic builder
-  "alphaNewtonListCapabilities",
-  "alphaNewtonPlanMetalWorkload",
-  "alphaNewtonRouteExecutionTarget",
-  "alphaNewtonPlanDevOpsRun",
-  "alphaNewtonCreateAuthorityEnvelope",
   // Dashboard API Tools
   "getUserInfo",
   "getApplications",
@@ -102,6 +96,19 @@ program
     try {
       const { startServer } = await import("./commands/start-server.ts");
       await startServer(opts);
+    } catch (error) {
+      console.error(formatErrorForCli(error));
+      process.exit(1);
+    }
+  });
+
+program
+  .command("start-alpha-newton-server")
+  .description("Starts the Alpha Node / Newton agentic-builder MCP tool surface")
+  .action(async () => {
+    try {
+      const { startAlphaNewtonServer } = await import("./commands/start-alpha-newton-server.ts");
+      await startAlphaNewtonServer();
     } catch (error) {
       console.error(formatErrorForCli(error));
       process.exit(1);
