@@ -421,28 +421,46 @@ export function registerAppleRunnerBuild(server: CustomMcpServer) {
       const workDir = await mkdtemp(join(tmpdir(), "alpha-apple-build-"));
       try {
         const sourceSha256 = await writeFixedPackage(workDir);
+        const scratchDir = join(workDir, ".alpha-build");
         const build = await requireSuccessful(
           "APPLE_SWIFT_BUILD",
           "xcrun",
-          ["swift", "build", "-c", "release", "--product", PRODUCT_NAME],
+          [
+            "swift",
+            "build",
+            "--scratch-path",
+            scratchDir,
+            "-c",
+            "release",
+            "--product",
+            PRODUCT_NAME,
+          ],
           workDir,
         );
         const tests = await requireSuccessful(
           "APPLE_SWIFT_TEST",
           "xcrun",
-          ["swift", "test", "-c", "release"],
+          ["swift", "test", "--scratch-path", scratchDir, "-c", "release"],
           workDir,
         );
         const binPathResult = await requireSuccessful(
           "APPLE_SWIFT_BIN_PATH",
           "xcrun",
-          ["swift", "build", "-c", "release", "--show-bin-path"],
+          ["swift", "build", "--scratch-path", scratchDir, "-c", "release", "--show-bin-path"],
           workDir,
         );
 
-        const binRoot = resolve(binPathResult.stdout);
+        const binPathLine = binPathResult.stdout
+          .split(/\r?\n/)
+          .map((line) => line.trim())
+          .filter(Boolean)
+          .at(-1);
+        if (!binPathLine) {
+          throw new Error("APPLE_BUILD_BIN_PATH_EMPTY");
+        }
+        const binRoot = resolve(workDir, binPathLine);
         const resolvedWorkDir = resolve(workDir);
-        if (!binRoot.startsWith(`${resolvedWorkDir}${sep}`)) {
+        if (binRoot !== resolvedWorkDir && !binRoot.startsWith(`${resolvedWorkDir}${sep}`)) {
           throw new Error("APPLE_BUILD_BIN_PATH_OUTSIDE_WORKDIR");
         }
         const executablePath = join(binRoot, PRODUCT_NAME);
@@ -547,9 +565,9 @@ export function registerAppleRunnerBuild(server: CustomMcpServer) {
             shell: false,
             arbitraryCommandExecution: false,
             allowedCommands: [
-              "xcrun swift build -c release --product alpha-metal-artifact",
-              "xcrun swift test -c release",
-              "xcrun swift build -c release --show-bin-path",
+              "xcrun swift build --scratch-path <runner-controlled> -c release --product alpha-metal-artifact",
+              "xcrun swift test --scratch-path <runner-controlled> -c release",
+              "xcrun swift build --scratch-path <runner-controlled> -c release --show-bin-path",
               "<built-fixed-artifact>",
               "sw_vers -productVersion",
               "xcodebuild -version",
