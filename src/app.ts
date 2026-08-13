@@ -5,6 +5,12 @@ import { ZodError } from "zod";
 const program = new Command("algolia-mcp");
 
 const DEFAULT_ALLOW_TOOLS = [
+  // Alpha Node / Newton agentic builder
+  "alphaNewtonListCapabilities",
+  "alphaNewtonPlanMetalWorkload",
+  "alphaNewtonRouteExecutionTarget",
+  "alphaNewtonPlanDevOpsRun",
+  "alphaNewtonCreateAuthorityEnvelope",
   // Dashboard API Tools
   "getUserInfo",
   "getApplications",
