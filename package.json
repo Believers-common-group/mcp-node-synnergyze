@@ -17,6 +17,7 @@
     "test:qel": "vitest run modules/qel/normalizer.test.ts",
     "test:program-bridge": "vitest run modules/synnergyze/program-bridge.test.ts",
     "test:warden-request": "vitest run modules/synnergyze/warden-request-bridge.test.ts",
+    "test:warden-decision": "vitest run modules/warden/decision-service.test.ts",
     "test:sites": "vitest run api/sites.test.ts",
     "test:site-handoff": "vitest run site-handoff/runtime.test.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
