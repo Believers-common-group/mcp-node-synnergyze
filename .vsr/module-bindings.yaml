@@ -1,0 +1,222 @@
+schema: vsr.module-bindings/v1
+repository: Believers-common-group/mcp-node-synnergyze
+base_branch: genesis
+primary_network_object: SYNNERGYZE-RUNTIME-001
+canonical_governance:
+  repository: Believers-common-group/SynergyzeGovernance
+  branch: HQ
+  contract: docs/network/VSR-NETWORK-MODULE-BOUNDARIES-001.md
+  issue: 31
+
+rules:
+  co_location_merges_identity: false
+  implementation_presence_implies_activation: false
+  module_may_bypass_public_contract: false
+  model_or_orchestrator_may_self_authorize: false
+  sealed_evidence_may_be_rewritten: false
+  economic_calculation_implies_settlement_finality: false
+
+modules:
+  - module_id: MOD-WARDEN-001
+    network_object: WARDEN-RUNTIME-001
+    role: authority-policy-decision
+    state: conformance_only
+    intended_path: modules/warden
+    current_lineage:
+      - agent-fabric/runtime.ts
+      - docs/alpha-node/ALPHA-AGENT-RUNTIME-BINDING-001.md
+    public_contracts:
+      input:
+        - WardenDecisionRequestV1
+      output:
+        - WardenDecisionV1
+    depends_on:
+      - REGISTRY-R1-R4
+      - DIGITALME-CONTEXT
+      - AUTHORITY-POLICY-ASSETS
+      - EVIDENCE-READINESS-WHEN-REQUIRED
+    consumers:
+      - SYNNERGYZE-RUNTIME-001
+      - BNR-RUNTIME-001
+    forbidden:
+      - accept-model-output-as-authorization
+      - accept-ui-visibility-as-authorization
+      - revive-expired-or-revoked-decision-by-retry
+      - treat-provider-storage-state-as-authority
+    activation_gate: SynergyzeGovernance#27:L-001
+    tests:
+      - agent-fabric/authority-boundary.test.ts
+      - agent-fabric/runtime.test.ts
+      - rc1/runtime.test.ts
+
+  - module_id: MOD-QEL3-001
+    network_object: QEL-3-001
+    role: expression-parser-compiler-normalizer
+    state: specified_only
+    intended_path: modules/qel
+    current_lineage: []
+    public_contracts:
+      input:
+        - QelExpressionRequestV1
+      output:
+        - NormalizedIntentV1
+        - ProgramPlanDraftV1
+    depends_on:
+      - QEL-GRAMMAR-SPEC
+      - REGISTRY-REFERENCE-RESOLUTION
+      - DETERMINISTIC-CAPABILITY-LIBRARIES
+    consumers:
+      - SYNNERGYZE-RUNTIME-001
+      - BNR-RUNTIME-001
+    forbidden:
+      - issue-action-authorization
+      - convert-inference-to-authority
+      - mark-intended-effect-verified
+      - execute-connector-effect-directly
+    activation_gate: contract-tests-and-compiler-conformance
+    tests: []
+
+  - module_id: MOD-RIVEROS-001
+    network_object: RIVEROS-001
+    role: evidence-event-provenance-continuity
+    state: synthetic_conformance
+    intended_path: modules/river
+    current_lineage:
+      - rc1/runtime.ts
+      - rc1/runtime.test.ts
+      - docs/alpha-node/ALPHA-RC1-PROGRAM-001.md
+    public_contracts:
+      input:
+        - ActionEnvelopeV1
+        - EventEnvelopeV1
+        - EffectReceiptV1
+      output:
+        - EvidenceReservationV1
+        - EventReceiptV1
+        - EvidenceSealV1
+        - CausalTraceV1
+    depends_on:
+      - CANONICAL-REGISTRY-REFS
+      - INTEGRITY-TIME-CORRELATION
+      - GOVERNED-OBJECT-STORAGE-ADAPTERS-OPTIONAL
+    consumers:
+      - SYNNERGYZE-RUNTIME-001
+      - BNR-RUNTIME-001
+      - SENTINEL-ALPHA-OBSERVABILITY-001
+      - EMPIRE-BACK-GATE-001
+      - SILK-DAM-001
+    forbidden:
+      - authorize-action
+      - rewrite-sealed-evidence
+      - mutate-history-during-replay
+      - treat-object-store-location-as-evidence-authority
+    activation_gate: separately-testable-evidence-service-boundary
+    tests:
+      - rc1/runtime.test.ts
+
+  - module_id: MOD-BNR-001
+    network_object: BNR-RUNTIME-001
+    role: node-runtime-composition
+    state: alpha_reference_composition
+    intended_path: modules/bnr
+    current_lineage:
+      - src/app.ts
+      - docs/alpha-node/ALPHA-NODE-001-OPERATING-BOUNDARY.md
+      - docs/alpha-node/ALPHA-RC1-PROGRAM-001.md
+    public_contracts:
+      input:
+        - BnrNodeManifestV1
+      output:
+        - BnrResolvedCompositionV1
+        - BnrReadinessStateV1
+    depends_on:
+      - REGISTRY
+      - WARDEN-RUNTIME-001
+      - QEL-3-001
+      - SYNNERGYZE-RUNTIME-001
+      - RIVEROS-001
+      - SILK-DAM-001
+      - SILK-001
+    consumers:
+      - BNR-NODE-FAMILY
+    forbidden:
+      - bypass-registry-or-warden-through-provider-call
+      - bypass-river-evidence-boundary
+      - infer-authorization-from-service-health
+      - promote-empty-rail-repository-to-active
+    activation_gate: per-node-boot-identity-authority-evidence-release-acceptance
+    tests:
+      - rc1/runtime.test.ts
+
+  - module_id: MOD-SILK-DAM-001
+    network_object: SILK-DAM-001
+    role: economic-rule-distribution-adapter
+    state: specified_only
+    intended_path: modules/silk-dam
+    current_lineage: []
+    public_contracts:
+      input:
+        - EconomicEffectInputV1
+      output:
+        - EconomicConsequenceDraftV1
+    depends_on:
+      - VERIFIED-REGISTRY-EFFECT
+      - RIVEROS-EVIDENCE-REF
+      - EMR-ECONOMIC-OBJECTS
+      - VERSIONED-ECONOMIC-POLICY
+    consumers:
+      - SILK-001
+      - SYNNERGYZE-RUNTIME-001
+    forbidden:
+      - treat-modelled-value-as-cash
+      - declare-settlement-finality
+      - bypass-required-economic-authority
+      - convert-spreadsheet-assumption-to-obligation
+    activation_gate: explicit-economic-policy-and-applicable-authority
+    tests: []
+
+  - module_id: MOD-SILK-001
+    network_object: SILK-001
+    role: settlement-reconciliation-finality-adapter
+    state: specified_only
+    intended_path: modules/silk
+    current_lineage: []
+    public_contracts:
+      input:
+        - SettlementIntentV1
+      output:
+        - SettlementStateV1
+    depends_on:
+      - AUTHORIZED-OBLIGATION
+      - APPLICABLE-FINANCIAL-AUTHORITY
+      - RIVEROS-EVIDENCE-READINESS
+      - SETTLEMENT-PROVIDER-ADAPTER
+      - RECONCILIATION-FINALITY-RULES
+    consumers:
+      - SYNNERGYZE-RUNTIME-001
+      - BNR-RUNTIME-001
+    forbidden:
+      - financial-effect-from-ui-or-model-output
+      - retry-uncertain-provider-result-before-reconciliation
+      - interpret-provider-acceptance-as-finality-without-proof
+      - activate-bank-connector-from-repository-presence
+    activation_gate: SynergyzeGovernance#27:L-008
+    tests: []
+
+cross_boundary_tests:
+  - no-warden-decision-means-no-controlled-execution
+  - failed-river-reservation-means-no-controlled-mutation
+  - river-seal-mismatch-means-no-verified-effect
+  - unverified-effect-means-no-silk-dam-obligation-preparation
+  - silk-cannot-mark-final-without-reconciliation-finality-evidence
+  - bnr-cannot-bypass-registry-warden-river
+
+promotion_lifecycle:
+  - SPECIFIED
+  - CONTRACT_TESTED
+  - CONFORMANCE_IMPLEMENTED
+  - INTEGRATED
+  - RELEASE_CANDIDATE
+  - AUTHORIZATION_READY
+  - AUTHORIZED
+  - ACTIVE
