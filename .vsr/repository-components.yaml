@@ -10,6 +10,7 @@ canonical_governance:
     - issue:35
     - issue:38
     - issue:39
+    - issue:41
 
 components:
   - component_id: CMP-SYNNERGYZE-PROGRAM-EVENT-001
@@ -164,4 +165,52 @@ components:
       - modules/river/reservation-service.test.ts
       - modules/warden/decision-service.test.ts
     activation_gate: explicit-controlled-connector-integration-and-authorization
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-EFFECT-VERIFY-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: post-execution-observation-to-verified-effect
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/effect-verification.ts
+    contract_paths:
+      - modules/synnergyze/contracts.ts
+      - modules/river/contracts.ts
+    input_contracts:
+      - SynnergyzeExecutionReceiptV1
+      - PostExecutionObservationV1
+      - EffectVerificationRequestV1
+    output_contracts:
+      - VerifiedEffectReceiptV1
+      - EffectVerificationResultV1
+    effect_states:
+      - VERIFIED_EFFECT
+      - EXCEPTION
+    depends_on:
+      - CMP-SYNNERGYZE-CONTROLLED-EXECUTION-001
+      - RIVEROS-001
+    observation_sources:
+      - SYNTHETIC-SERVICE-REQUEST-OBSERVER-001
+    required_guards:
+      - execution-must-be-executed-unverified
+      - post-execution-observation-required
+      - execution-action-program-event-target-correlation-lineage-match
+      - observation-not-before-execution
+      - verification-not-before-observation
+      - observed-state-required
+      - source-evidence-required
+      - idempotent-verification-replay
+      - conflicting-verification-fails-closed
+    forbidden:
+      - infer-effect-from-requested-effect
+      - infer-effect-from-execution-receipt-alone
+      - seal-river-evidence
+      - mutate-registry-effect
+      - evaluate-objective-acceptance
+      - create-economic-obligation
+      - imply-settlement-finality
+      - invoke-real-external-provider
+    tests:
+      - modules/synnergyze/effect-verification.test.ts
+      - modules/synnergyze/execution-gate.test.ts
+    activation_gate: river-seal-registry-effect-and-objective-acceptance-integration
     activation_implied: false
