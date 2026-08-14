@@ -112,10 +112,7 @@ function assertCheckpoint(
   if (checked > executed) throw new Error("execution_checkpoint_from_future");
 }
 
-function executionFingerprint(
-  input: ControlledExecutionRequestV1,
-  adapterRef: string,
-): string {
+function executionFingerprint(input: ControlledExecutionRequestV1, adapterRef: string): string {
   return digest(
     JSON.stringify({
       actionRef: input.action.actionRef,
@@ -136,6 +133,7 @@ export class SyntheticServiceRequestCreateAdapterV1 implements SyntheticCapabili
   readonly adapterRef = "SYNTHETIC-SERVICE-REQUEST-ADAPTER-001";
   readonly capabilityRef = "service_request.create";
   private invocations = 0;
+  private readonly createdResults = new Set<string>();
 
   execute(input: SyntheticCapabilityAdapterInputV1): SyntheticCapabilityAdapterResultV1 {
     if (input.action.capabilityRef !== this.capabilityRef) {
@@ -150,7 +148,13 @@ export class SyntheticServiceRequestCreateAdapterV1 implements SyntheticCapabili
         input.action.correlationId,
       ].join("|"),
     ).slice(0, 24);
-    return { adapterResultRef: `SYNTHETIC-SERVICE-REQUEST:${identity}` };
+    const adapterResultRef = `SYNTHETIC-SERVICE-REQUEST:${identity}`;
+    this.createdResults.add(adapterResultRef);
+    return { adapterResultRef };
+  }
+
+  hasResult(adapterResultRef: string): boolean {
+    return this.createdResults.has(adapterResultRef);
   }
 
   invocationCount(): number {
