@@ -91,8 +91,10 @@ modules:
   - module_id: MOD-RIVEROS-001
     network_object: RIVEROS-001
     role: evidence-event-provenance-continuity
-    state: contract_typed_synthetic_conformance
+    state: conformance_implemented
     intended_path: modules/river
+    implementation_file: modules/river/reservation-service.ts
+    conformance_controller: SynergyzeGovernance#38
     current_lineage:
       - rc1/runtime.ts
       - rc1/runtime.test.ts
@@ -126,6 +128,8 @@ modules:
     activation_gate: separately-testable-evidence-service-boundary
     tests:
       - modules/contracts.test.ts
+      - modules/river/reservation-service.test.ts
+      - modules/rc1-adapters.test.ts
       - rc1/runtime.test.ts
 
   - module_id: MOD-BNR-001
