@@ -7,6 +7,7 @@ canonical_governance:
   refs:
     - issue:13
     - issue:34
+    - issue:35
 
 components:
   - component_id: CMP-SYNNERGYZE-PROGRAM-EVENT-001
@@ -55,4 +56,58 @@ components:
     tests:
       - modules/synnergyze/program-bridge.test.ts
     activation_gate: integration-with-explicit-warden-and-river-boundaries
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-WARDEN-REQUEST-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: prepared-event-to-warden-request-adapter
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/warden-request-bridge.ts
+    contract_paths:
+      - modules/synnergyze/contracts.ts
+      - modules/warden/contracts.ts
+    identity_invariant:
+      - actor-is-not-represented-principal
+      - represented-principal-is-not-acting-capacity
+      - acting-capacity-is-not-authority
+    input_contracts:
+      - SynnergyzeProgramDraftV1
+      - SynnergyzeEventDraftV1
+      - ResolvedRepresentationContextV1
+      - WardenRequestBridgeInputV1
+    output_contracts:
+      - WardenDecisionRequestV1
+      - WardenRequestBridgeResultV1
+    depends_on:
+      - CMP-SYNNERGYZE-PROGRAM-EVENT-001
+      - REGISTRY-REPRESENTATION-RESOLUTION
+      - WARDEN-RUNTIME-001-CONTRACT
+    downstream_boundaries:
+      - WARDEN-RUNTIME-001
+    required_request_fields:
+      - actorRef
+      - representedPrincipalRef
+      - actingCapacityRef
+      - contextRef
+      - programRef
+      - eventRef
+      - action
+      - capabilityRef
+      - targetRef
+      - representationSourceRefs
+      - correlationId
+    forbidden:
+      - infer-represented-principal-from-actor
+      - infer-acting-capacity-from-ui-or-provider-state
+      - evaluate-warden-policy
+      - issue-action-token
+      - reserve-or-seal-river-evidence
+      - execute-connector-capability
+      - mark-effect-verified
+      - create-economic-obligation
+      - imply-settlement-finality
+    tests:
+      - modules/synnergyze/warden-request-bridge.test.ts
+      - modules/rc1-adapters.test.ts
+    activation_gate: integration-with-real-warden-decision-boundary
     activation_implied: false
