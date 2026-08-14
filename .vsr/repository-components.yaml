@@ -8,6 +8,8 @@ canonical_governance:
     - issue:13
     - issue:34
     - issue:35
+    - issue:38
+    - issue:39
 
 components:
   - component_id: CMP-SYNNERGYZE-PROGRAM-EVENT-001
@@ -110,4 +112,56 @@ components:
       - modules/synnergyze/warden-request-bridge.test.ts
       - modules/rc1-adapters.test.ts
     activation_gate: integration-with-real-warden-decision-boundary
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-CONTROLLED-EXECUTION-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: reserved-authorized-action-to-synthetic-execution
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/execution-gate.ts
+    contract_paths:
+      - modules/synnergyze/contracts.ts
+      - modules/warden/contracts.ts
+      - modules/river/contracts.ts
+    input_contracts:
+      - ActionEnvelopeV1
+      - EvidenceReservationV1
+      - WardenDecisionV1
+      - WardenExecutionCheckpointV1
+      - ControlledExecutionRequestV1
+    output_contracts:
+      - SynnergyzeExecutionReceiptV1
+    execution_states:
+      - EXECUTED_UNVERIFIED
+    depends_on:
+      - WARDEN-RUNTIME-001
+      - RIVEROS-001
+      - CMP-SYNNERGYZE-WARDEN-REQUEST-001
+    adapter_allowlist:
+      - SYNTHETIC-SERVICE-REQUEST-ADAPTER-001
+    required_guards:
+      - warden-allow-and-action-token
+      - decision-validity-window
+      - fresh-warden-execution-checkpoint
+      - reservation-action-decision-correlation-match
+      - reservation-authorization-digest-match
+      - capability-adapter-registration
+      - idempotent-execution-replay
+    forbidden:
+      - execute-non-allow-decision
+      - execute-revoked-expired-or-superseded-checkpoint
+      - execute-without-river-reservation
+      - execute-unregistered-capability
+      - create-effect-receipt
+      - mark-effect-verified
+      - seal-river-evidence
+      - mutate-registry-effect
+      - create-economic-obligation
+      - imply-settlement-finality
+      - invoke-real-external-provider
+    tests:
+      - modules/synnergyze/execution-gate.test.ts
+      - modules/river/reservation-service.test.ts
+      - modules/warden/decision-service.test.ts
+    activation_gate: explicit-controlled-connector-integration-and-authorization
     activation_implied: false
