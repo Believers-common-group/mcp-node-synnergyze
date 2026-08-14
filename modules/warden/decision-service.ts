@@ -41,6 +41,11 @@ function stableUnique(values: readonly string[]): readonly string[] {
   return [...new Set(values)].sort();
 }
 
+function timestamp(value: string): number | undefined {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function baseDecision(
   request: WardenDecisionRequestV1,
   policy: SyntheticWardenDecisionPolicyV1,
@@ -113,11 +118,26 @@ export function evaluateSyntheticWardenDecisionV1(
     return deny(request, policy, decidedAt, "authority_revoked");
   }
 
-  if (decidedAt < policy.validFrom || request.requestedAt < policy.validFrom) {
+  const requestedAtMs = timestamp(request.requestedAt);
+  const decidedAtMs = timestamp(decidedAt);
+  const validFromMs = timestamp(policy.validFrom);
+  const validUntilMs = timestamp(policy.validUntil);
+
+  if (
+    requestedAtMs === undefined ||
+    decidedAtMs === undefined ||
+    validFromMs === undefined ||
+    validUntilMs === undefined ||
+    validUntilMs < validFromMs
+  ) {
+    return deny(request, policy, decidedAt, "invalid_time_context");
+  }
+
+  if (decidedAtMs < validFromMs || requestedAtMs < validFromMs) {
     return deny(request, policy, decidedAt, "authority_not_yet_valid");
   }
 
-  if (decidedAt > policy.validUntil || request.requestedAt > policy.validUntil) {
+  if (decidedAtMs > validUntilMs || requestedAtMs > validUntilMs) {
     return deny(request, policy, decidedAt, "authority_expired");
   }
 
