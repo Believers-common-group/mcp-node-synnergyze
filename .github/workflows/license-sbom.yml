@@ -55,6 +55,30 @@ jobs:
           NODE
           sha256sum /tmp/npm-sbom.cdx.json
 
+      - name: Summarize npm audit findings
+        run: |
+          npm audit --json > /tmp/npm-audit.json || true
+          node - <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
+          const vulnerabilities = audit.vulnerabilities || {};
+          const rows = Object.entries(vulnerabilities)
+            .map(([name, value]) => ({
+              name,
+              severity: value.severity,
+              direct: Boolean(value.isDirect),
+              via: (value.via || []).map(item => typeof item === 'string' ? item : item.title).filter(Boolean),
+              range: value.range,
+              fixAvailable: value.fixAvailable
+            }))
+            .sort((a, b) => `${a.severity}:${a.name}`.localeCompare(`${b.severity}:${b.name}`));
+          const highCritical = rows.filter(row => row.severity === 'high' || row.severity === 'critical');
+          console.log(`Audit metadata: ${JSON.stringify(audit.metadata?.vulnerabilities || {})}`);
+          console.log(`High/critical vulnerable packages: ${highCritical.length}`);
+          for (const row of highCritical) console.log(JSON.stringify(row));
+          fs.writeFileSync('/tmp/npm-audit-summary.json', JSON.stringify({metadata: audit.metadata, highCritical}, null, 2));
+          NODE
+
       - name: Emit dependency licence inventory
         run: |
           node - <<'NODE'
