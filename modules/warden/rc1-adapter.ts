@@ -6,11 +6,11 @@ import type {
 
 const RC1_CONSTRAINTS = ["SYNTHETIC_RC1_ONLY"] as const;
 
-function asRc1Capability(action: string): Rc1Capability {
-  if (action === "service_request.create" || action === "contract.execute") {
-    return action;
+function asRc1Capability(capabilityRef: string): Rc1Capability {
+  if (capabilityRef === "service_request.create" || capabilityRef === "contract.execute") {
+    return capabilityRef;
   }
-  throw new Error(`unsupported_rc1_capability:${action}`);
+  throw new Error(`unsupported_rc1_capability:${capabilityRef}`);
 }
 
 export function toRc1ActionIntent(request: WardenDecisionRequestV1): Rc1ActionIntent {
@@ -19,10 +19,10 @@ export function toRc1ActionIntent(request: WardenDecisionRequestV1): Rc1ActionIn
   }
 
   return {
-    programRef: request.contextRef,
+    programRef: request.programRef,
     actorRef: request.actorRef,
     representedEntityRef: request.representedPrincipalRef,
-    capability: asRc1Capability(request.action),
+    capability: asRc1Capability(request.capabilityRef),
     correlationId: request.correlationId,
     targetRef: request.targetRef,
   };
