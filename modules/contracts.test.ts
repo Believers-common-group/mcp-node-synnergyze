@@ -40,9 +40,9 @@ const normalizedIntent: NormalizedIntentV1 = {
   correlationId: "CORR-001",
 };
 
-// @ts-expect-error QEL normalization cannot mark an intent authorized.
 const invalidAuthorizedIntent: NormalizedIntentV1 = {
   ...normalizedIntent,
+  // @ts-expect-error QEL normalization cannot mark an intent authorized.
   authorized: true,
 };
 void invalidAuthorizedIntent;
@@ -76,9 +76,9 @@ const economicDraft: EconomicConsequenceDraftV1 = {
   correlationId: "CORR-001",
 };
 
-// @ts-expect-error SILK Dam cannot declare settlement finality.
 const invalidEconomicFinality: EconomicConsequenceDraftV1 = {
   ...economicDraft,
+  // @ts-expect-error SILK Dam cannot declare settlement finality.
   settlementFinality: true,
 };
 void invalidEconomicFinality;
