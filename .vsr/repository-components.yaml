@@ -1,0 +1,58 @@
+schema: vsr.repository-components/v1
+repository: Believers-common-group/mcp-node-synnergyze
+primary_network_object: SYNNERGYZE-RUNTIME-001
+module_binding_ref: .vsr/module-bindings.yaml
+canonical_governance:
+  repository: Believers-common-group/SynergyzeGovernance
+  refs:
+    - issue:13
+    - issue:34
+
+components:
+  - component_id: CMP-SYNNERGYZE-PROGRAM-EVENT-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: qel-program-event-planning-compiler
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/program-bridge.ts
+    contract_path: modules/synnergyze/contracts.ts
+    input_contracts:
+      - NormalizedIntentV1
+      - ProgramPlanDraftV1
+      - SynnergyzeProgramCompileRequestV1
+    output_contracts:
+      - SynnergyzeProgramDraftV1
+      - SynnergyzeEventDraftV1
+      - SynnergyzeProgramEventDraftBundleV1
+      - SynnergyzeProgramCompileResultV1
+    planning_states:
+      - DRAFT
+      - READY_FOR_RESOLUTION
+      - BLOCKED_REQUIREMENT
+      - READY_FOR_AUTHORIZATION
+    forbidden_states:
+      - AUTHORIZED
+      - RUNNING
+      - VERIFIED
+      - EFFECT_RECORDED
+      - SETTLED
+      - CLOSED
+    depends_on:
+      - QEL-3-001
+      - REGISTRY-CONTEXT-REFS
+    downstream_boundaries:
+      - WARDEN-RUNTIME-001
+      - RIVEROS-001
+      - BNR-RUNTIME-001
+      - SILK-DAM-001
+      - SILK-001
+    forbidden:
+      - call-warden-or-issue-action-token
+      - reserve-or-seal-river-evidence
+      - execute-connector-capability
+      - mark-effect-verified
+      - create-economic-obligation
+      - imply-settlement-finality
+    tests:
+      - modules/synnergyze/program-bridge.test.ts
+    activation_gate: integration-with-explicit-warden-and-river-boundaries
+    activation_implied: false
