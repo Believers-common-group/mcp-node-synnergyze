@@ -54,8 +54,10 @@ modules:
   - module_id: MOD-QEL3-001
     network_object: QEL-3-001
     role: expression-parser-compiler-normalizer
-    state: contract_typed
+    state: conformance_implemented
     intended_path: modules/qel
+    grammar_version: QEL-3.0
+    implementation_file: modules/qel/normalizer.ts
     current_lineage: []
     public_contracts:
       input:
@@ -63,6 +65,7 @@ modules:
       output:
         - NormalizedIntentV1
         - ProgramPlanDraftV1
+        - QelNormalizationResultV1
       type_file: modules/qel/contracts.ts
     depends_on:
       - QEL-GRAMMAR-SPEC
@@ -79,6 +82,7 @@ modules:
     activation_gate: contract-tests-and-compiler-conformance
     tests:
       - modules/contracts.test.ts
+      - modules/qel/normalizer.test.ts
 
   - module_id: MOD-RIVEROS-001
     network_object: RIVEROS-001
