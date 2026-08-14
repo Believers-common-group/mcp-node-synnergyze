@@ -20,7 +20,7 @@ modules:
   - module_id: MOD-WARDEN-001
     network_object: WARDEN-RUNTIME-001
     role: authority-policy-decision
-    state: conformance_only
+    state: contract_typed_conformance_pending
     intended_path: modules/warden
     current_lineage:
       - agent-fabric/runtime.ts
@@ -30,6 +30,7 @@ modules:
         - WardenDecisionRequestV1
       output:
         - WardenDecisionV1
+      type_file: modules/warden/contracts.ts
     depends_on:
       - REGISTRY-R1-R4
       - DIGITALME-CONTEXT
@@ -45,6 +46,7 @@ modules:
       - treat-provider-storage-state-as-authority
     activation_gate: SynergyzeGovernance#27:L-001
     tests:
+      - modules/contracts.test.ts
       - agent-fabric/authority-boundary.test.ts
       - agent-fabric/runtime.test.ts
       - rc1/runtime.test.ts
@@ -52,7 +54,7 @@ modules:
   - module_id: MOD-QEL3-001
     network_object: QEL-3-001
     role: expression-parser-compiler-normalizer
-    state: specified_only
+    state: contract_typed
     intended_path: modules/qel
     current_lineage: []
     public_contracts:
@@ -61,6 +63,7 @@ modules:
       output:
         - NormalizedIntentV1
         - ProgramPlanDraftV1
+      type_file: modules/qel/contracts.ts
     depends_on:
       - QEL-GRAMMAR-SPEC
       - REGISTRY-REFERENCE-RESOLUTION
@@ -74,12 +77,13 @@ modules:
       - mark-intended-effect-verified
       - execute-connector-effect-directly
     activation_gate: contract-tests-and-compiler-conformance
-    tests: []
+    tests:
+      - modules/contracts.test.ts
 
   - module_id: MOD-RIVEROS-001
     network_object: RIVEROS-001
     role: evidence-event-provenance-continuity
-    state: synthetic_conformance
+    state: contract_typed_synthetic_conformance
     intended_path: modules/river
     current_lineage:
       - rc1/runtime.ts
@@ -95,6 +99,7 @@ modules:
         - EventReceiptV1
         - EvidenceSealV1
         - CausalTraceV1
+      type_file: modules/river/contracts.ts
     depends_on:
       - CANONICAL-REGISTRY-REFS
       - INTEGRITY-TIME-CORRELATION
@@ -112,12 +117,13 @@ modules:
       - treat-object-store-location-as-evidence-authority
     activation_gate: separately-testable-evidence-service-boundary
     tests:
+      - modules/contracts.test.ts
       - rc1/runtime.test.ts
 
   - module_id: MOD-BNR-001
     network_object: BNR-RUNTIME-001
     role: node-runtime-composition
-    state: alpha_reference_composition
+    state: contract_typed_alpha_reference_composition
     intended_path: modules/bnr
     current_lineage:
       - src/app.ts
@@ -129,6 +135,7 @@ modules:
       output:
         - BnrResolvedCompositionV1
         - BnrReadinessStateV1
+      type_file: modules/bnr/contracts.ts
     depends_on:
       - REGISTRY
       - WARDEN-RUNTIME-001
@@ -146,12 +153,13 @@ modules:
       - promote-empty-rail-repository-to-active
     activation_gate: per-node-boot-identity-authority-evidence-release-acceptance
     tests:
+      - modules/contracts.test.ts
       - rc1/runtime.test.ts
 
   - module_id: MOD-SILK-DAM-001
     network_object: SILK-DAM-001
     role: economic-rule-distribution-adapter
-    state: specified_only
+    state: contract_typed
     intended_path: modules/silk-dam
     current_lineage: []
     public_contracts:
@@ -159,6 +167,7 @@ modules:
         - EconomicEffectInputV1
       output:
         - EconomicConsequenceDraftV1
+      type_file: modules/silk-dam/contracts.ts
     depends_on:
       - VERIFIED-REGISTRY-EFFECT
       - RIVEROS-EVIDENCE-REF
@@ -173,12 +182,13 @@ modules:
       - bypass-required-economic-authority
       - convert-spreadsheet-assumption-to-obligation
     activation_gate: explicit-economic-policy-and-applicable-authority
-    tests: []
+    tests:
+      - modules/contracts.test.ts
 
   - module_id: MOD-SILK-001
     network_object: SILK-001
     role: settlement-reconciliation-finality-adapter
-    state: specified_only
+    state: contract_typed
     intended_path: modules/silk
     current_lineage: []
     public_contracts:
@@ -186,6 +196,7 @@ modules:
         - SettlementIntentV1
       output:
         - SettlementStateV1
+      type_file: modules/silk/contracts.ts
     depends_on:
       - AUTHORIZED-OBLIGATION
       - APPLICABLE-FINANCIAL-AUTHORITY
@@ -201,7 +212,8 @@ modules:
       - interpret-provider-acceptance-as-finality-without-proof
       - activate-bank-connector-from-repository-presence
     activation_gate: SynergyzeGovernance#27:L-008
-    tests: []
+    tests:
+      - modules/contracts.test.ts
 
 cross_boundary_tests:
   - no-warden-decision-means-no-controlled-execution
@@ -213,6 +225,7 @@ cross_boundary_tests:
 
 promotion_lifecycle:
   - SPECIFIED
+  - CONTRACT_TYPED
   - CONTRACT_TESTED
   - CONFORMANCE_IMPLEMENTED
   - INTEGRATED
