@@ -123,6 +123,22 @@ describe("VSR-NETWORK-WARDEN-DECISION-SERVICE-001", () => {
     expect(expired.reasonCodes).toEqual(["authority_expired"]);
   });
 
+  it("fails closed on malformed or inverted time context", () => {
+    const malformed = decide(request({ requestedAt: "not-a-time" }));
+    expect(malformed.decision).toBe("DENY");
+    expect(malformed.reasonCodes).toEqual(["invalid_time_context"]);
+
+    const inverted = decide(
+      request(),
+      policy({
+        validFrom: "2026-08-14T07:10:00.000Z",
+        validUntil: "2026-08-14T07:00:00.000Z",
+      }),
+    );
+    expect(inverted.decision).toBe("DENY");
+    expect(inverted.reasonCodes).toEqual(["invalid_time_context"]);
+  });
+
   it("fails closed on actor, principal, capacity, context or program mismatch", () => {
     const mismatches: Array<Partial<WardenDecisionRequestV1>> = [
       { actorRef: "DIGITALME-IMPOSTOR-001" },
