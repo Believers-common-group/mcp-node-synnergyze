@@ -44,3 +44,19 @@ export interface WardenNonAllowDecisionV1 extends WardenDecisionBaseV1 {
 }
 
 export type WardenDecisionV1 = WardenAllowDecisionV1 | WardenNonAllowDecisionV1;
+
+export type WardenExecutionCheckpointStateV1 =
+  | "VALID"
+  | "REVOKED"
+  | "EXPIRED"
+  | "SUPERSEDED";
+
+export interface WardenExecutionCheckpointV1 {
+  checkpointRef: string;
+  decisionRef: string;
+  wardenRef: string;
+  correlationId: string;
+  state: WardenExecutionCheckpointStateV1;
+  checkedAt: string;
+  reasonCodes: readonly string[];
+}
