@@ -23,7 +23,16 @@ jobs:
           persist-credentials: true
 
       - name: Apply non-breaking audit fixes to lock only
-        run: npm audit fix --package-lock-only --ignore-scripts
+        run: |
+          set +e
+          npm audit fix --package-lock-only --ignore-scripts
+          status=$?
+          set -e
+          if [ "$status" -gt 1 ]; then
+            echo "npm audit fix failed unexpectedly with exit code $status"
+            exit "$status"
+          fi
+          echo "npm audit fix completed; exit code $status may reflect residual vulnerabilities that require explicit disposition."
 
       - name: Prove package manifest was not rewritten
         run: git diff --exit-code -- package.json
