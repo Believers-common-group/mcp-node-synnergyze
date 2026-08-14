@@ -53,6 +53,16 @@ export interface EffectReceiptV1 {
   verificationRef: string;
 }
 
+export interface VerifiedEffectReceiptV1 extends EffectReceiptV1 {
+  executionReceiptRef: string;
+  reservationRef: string;
+  wardenDecisionRef: string;
+  programRef: string;
+  eventRef: string;
+  state: "VERIFIED_EFFECT";
+  synthetic: true;
+}
+
 export interface EvidenceSealV1 {
   sealRef: string;
   reservationRef: string;
