@@ -606,9 +606,10 @@ export class InMemoryHandoffExecutionJournalV1 implements HandoffExecutionJourna
       return { state: "CONFLICT" };
     }
     if (current.state === "COMPLETED" && current.result) {
-      return { state: "COMPLETED", result: { ...current.result } };
-    }
-    return { state: current.state };
+    return { state: "COMPLETED", result: { ...current.result } };
+  }
+  if (current.state === "IN_PROGRESS") return { state: "IN_PROGRESS" };
+  return { state: "FAILED" };
   }
 
   async complete(input: {

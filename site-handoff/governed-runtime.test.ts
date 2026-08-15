@@ -7,6 +7,7 @@ import {
   issueGovernedHandoffGrantV2,
   type DestinationSessionGatewayV1,
   type DestinationSessionReceiptV1,
+  type HandoffClaimsV2,
   type HandoffPostDeploymentVerifierV1,
   type RiverHandoffEvidenceGatewayV1,
   type VerifiedWardenHandoffGrantV1,
@@ -63,8 +64,11 @@ class RecordingRiver implements RiverHandoffEvidenceGatewayV1 {
 class RecordingDestination implements DestinationSessionGatewayV1 {
   calls = 0;
   async openSession(input: {
-    claims: { digitalme_id: string; dst: "BC" | "CC" | "VSR"; capabilities: string[] };
+    handoffRef: string;
+    reservationRef: string;
+    claims: HandoffClaimsV2;
     roles: readonly string[];
+    idempotencyKey: string;
     createdAt: string;
   }): Promise<DestinationSessionReceiptV1> {
     this.calls += 1;
@@ -84,7 +88,8 @@ class ExactSessionVerifier implements HandoffPostDeploymentVerifierV1 {
   constructor(private readonly forceFailure = false) {}
 
   async verify(input: {
-    claims: { digitalme_id: string; dst: "BC" | "CC" | "VSR"; capabilities: string[] };
+    handoffRef: string;
+    claims: HandoffClaimsV2;
     session: DestinationSessionReceiptV1;
     checkedAt: string;
   }) {
