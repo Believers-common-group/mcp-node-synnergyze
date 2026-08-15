@@ -20,9 +20,12 @@ modules:
   - module_id: MOD-WARDEN-001
     network_object: WARDEN-RUNTIME-001
     role: authority-policy-decision
-    state: contract_typed_conformance_pending
+    state: conformance_implemented
     intended_path: modules/warden
+    implementation_file: modules/warden/decision-service.ts
+    conformance_controller: SynergyzeGovernance#37
     current_lineage:
+      - rc1/runtime.ts
       - agent-fabric/runtime.ts
       - docs/alpha-node/ALPHA-AGENT-RUNTIME-BINDING-001.md
     public_contracts:
@@ -47,6 +50,7 @@ modules:
     activation_gate: SynergyzeGovernance#27:L-001
     tests:
       - modules/contracts.test.ts
+      - modules/warden/decision-service.test.ts
       - agent-fabric/authority-boundary.test.ts
       - agent-fabric/runtime.test.ts
       - rc1/runtime.test.ts
