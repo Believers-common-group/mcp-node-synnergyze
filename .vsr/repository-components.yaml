@@ -10,6 +10,7 @@ canonical_governance:
     - issue:35
     - issue:38
     - issue:39
+    - issue:41
 
 components:
   - component_id: CMP-SYNNERGYZE-PROGRAM-EVENT-001
@@ -164,4 +165,49 @@ components:
       - modules/river/reservation-service.test.ts
       - modules/warden/decision-service.test.ts
     activation_gate: explicit-controlled-connector-integration-and-authorization
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-EFFECT-VERIFY-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: executed-unverified-to-observed-verified-effect
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/effect-verifier.ts
+    contract_paths:
+      - modules/synnergyze/contracts.ts
+      - modules/river/contracts.ts
+    input_contracts:
+      - SynnergyzeExecutionReceiptV1
+      - PostExecutionObservationV1
+    output_contracts:
+      - VerifiedEffectV1
+      - EffectVerificationResultV1
+    verification_states:
+      - VERIFIED_EFFECT
+      - EXCEPTION
+    depends_on:
+      - CMP-SYNNERGYZE-CONTROLLED-EXECUTION-001
+      - RIVEROS-001-CONTRACT
+    required_guards:
+      - execution-receipt-must-be-executed-unverified
+      - exact-execution-observation-lineage
+      - exact-action-program-event-target-correlation-lineage
+      - observation-after-execution
+      - verification-after-observation
+      - observed-state-from-observation-source
+      - source-evidence-required
+      - idempotent-verification-replay
+      - conflicting-replay-fails-closed
+    forbidden:
+      - infer-effect-from-requested-effect
+      - infer-effect-from-execution-receipt-alone
+      - seal-river-evidence
+      - mutate-registry-effect
+      - close-objective
+      - create-economic-obligation
+      - imply-settlement-finality
+      - invoke-real-external-provider
+    tests:
+      - modules/synnergyze/effect-verifier.test.ts
+      - modules/synnergyze/execution-gate.test.ts
+    activation_gate: river-seal-and-registry-effect-boundary-not-yet-implemented
     activation_implied: false
