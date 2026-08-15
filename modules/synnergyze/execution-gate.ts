@@ -5,13 +5,17 @@ import type {
   WardenDecisionV1,
   WardenExecutionCheckpointV1,
 } from "../warden/contracts.ts";
-import type { SynnergyzeExecutionReceiptV1 } from "./contracts.ts";
+import type {
+  ResolvedDeviceSecurityContextV1,
+  SynnergyzeExecutionReceiptV1,
+} from "./contracts.ts";
 
 export interface ControlledExecutionRequestV1 {
   action: ActionEnvelopeV1;
   reservation: EvidenceReservationV1;
   decision: WardenDecisionV1;
   checkpoint: WardenExecutionCheckpointV1;
+  executionDeviceSecurity?: ResolvedDeviceSecurityContextV1;
   executedAt: string;
 }
 
@@ -112,6 +116,45 @@ function assertCheckpoint(
   if (checked > executed) throw new Error("execution_checkpoint_from_future");
 }
 
+function assertDeviceSecurity(
+  action: ActionEnvelopeV1,
+  security: ResolvedDeviceSecurityContextV1 | undefined,
+  executedAt: string,
+): void {
+  if (!action.executionDeviceRef) {
+    if (security) throw new Error("execution_device_security_unexpected");
+    return;
+  }
+
+  if (!action.deviceSecurityRequestDigest) {
+    throw new Error("execution_device_security_request_binding_required");
+  }
+  if (!security) throw new Error("execution_device_security_required");
+  if (security.deviceRef !== action.executionDeviceRef) {
+    throw new Error("execution_device_security_context_mismatch");
+  }
+  if (security.state !== "ACTIVE") {
+    throw new Error(`execution_device_security_state_${security.state.toLowerCase()}`);
+  }
+  if (!security.resolutionRef || !security.evidenceRef) {
+    throw new Error("execution_device_security_evidence_required");
+  }
+  if (action.deviceSecurityPolicyRef && security.policyRef !== action.deviceSecurityPolicyRef) {
+    throw new Error("execution_device_security_policy_mismatch");
+  }
+
+  const resolved = parseInstant(security.resolvedAt, "execution_invalid_device_security_time");
+  const executed = parseInstant(executedAt, "execution_invalid_execution_time");
+  if (resolved > executed) throw new Error("execution_device_security_from_future");
+  if (security.validUntil) {
+    const validUntil = parseInstant(
+      security.validUntil,
+      "execution_invalid_device_security_validity",
+    );
+    if (executed > validUntil) throw new Error("execution_device_security_expired");
+  }
+}
+
 function executionFingerprint(
   input: ControlledExecutionRequestV1,
   adapterRef: string,
@@ -126,6 +169,20 @@ function executionFingerprint(
       capabilityRef: input.action.capabilityRef,
       targetRef: input.action.targetRef,
       correlationId: input.action.correlationId,
+      executionDeviceRef: input.action.executionDeviceRef ?? null,
+      deviceSecurityRequestDigest: input.action.deviceSecurityRequestDigest ?? null,
+      executionDeviceSecurity: input.executionDeviceSecurity
+        ? {
+            resolutionRef: input.executionDeviceSecurity.resolutionRef,
+            deviceRef: input.executionDeviceSecurity.deviceRef,
+            state: input.executionDeviceSecurity.state,
+            policyRef: input.executionDeviceSecurity.policyRef ?? null,
+            evidenceRef: input.executionDeviceSecurity.evidenceRef,
+            assuranceLevel: input.executionDeviceSecurity.assuranceLevel ?? null,
+            resolvedAt: input.executionDeviceSecurity.resolvedAt,
+            validUntil: input.executionDeviceSecurity.validUntil ?? null,
+          }
+        : null,
       adapterRef,
       executedAt: input.executedAt,
     }),
@@ -177,6 +234,7 @@ export class ControlledExecutionGateV1 {
       input.checkpoint,
       input.executedAt,
     );
+    assertDeviceSecurity(input.action, input.executionDeviceSecurity, input.executedAt);
 
     const adapter = this.adapters.get(input.action.capabilityRef);
     if (!adapter) throw new Error(`execution_capability_not_registered:${input.action.capabilityRef}`);
@@ -204,6 +262,8 @@ export class ControlledExecutionGateV1 {
         input.reservation.reservationRef,
         input.decision.decisionRef,
         input.checkpoint.checkpointRef,
+        input.executionDeviceSecurity?.resolutionRef ?? "NO-DEVICE-SECURITY",
+        input.executionDeviceSecurity?.evidenceRef ?? "NO-DEVICE-EVIDENCE",
         adapter.adapterRef,
         adapterResult.adapterResultRef,
       ].join("|"),
@@ -221,6 +281,11 @@ export class ControlledExecutionGateV1 {
       correlationId: input.action.correlationId,
       adapterRef: adapter.adapterRef,
       adapterResultRef: adapterResult.adapterResultRef,
+      executionDeviceRef: input.action.executionDeviceRef,
+      deviceSecurityResolutionRef: input.executionDeviceSecurity?.resolutionRef,
+      deviceSecurityEvidenceRef: input.executionDeviceSecurity?.evidenceRef,
+      deviceSecurityPolicyRef: input.executionDeviceSecurity?.policyRef,
+      deviceSecurityAssuranceLevel: input.executionDeviceSecurity?.assuranceLevel,
       state: "EXECUTED_UNVERIFIED",
       executedAt: input.executedAt,
       synthetic: true,

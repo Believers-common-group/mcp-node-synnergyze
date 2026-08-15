@@ -4,6 +4,29 @@ export type SynnergyzePlanningStateV1 =
   | "BLOCKED_REQUIREMENT"
   | "READY_FOR_AUTHORIZATION";
 
+export type DeviceSecurityStateV1 =
+  | "ACTIVE"
+  | "BAG_LOCK_REQUESTED"
+  | "SEALED"
+  | "SEALED_ALERT"
+  | "UNSEAL_PENDING"
+  | "WARDEN_REAUTH"
+  | "CONTROLLED_RECONNECT"
+  | "RECOVERY_REQUIRED";
+
+export type DeviceSecurityAssuranceLevelV1 = "L0" | "L1" | "L2" | "L3" | "L4";
+
+export interface ResolvedDeviceSecurityContextV1 {
+  resolutionRef: string;
+  deviceRef: string;
+  state: DeviceSecurityStateV1;
+  policyRef?: string;
+  evidenceRef: string;
+  assuranceLevel?: DeviceSecurityAssuranceLevelV1;
+  resolvedAt: string;
+  validUntil?: string;
+}
+
 export interface SynnergyzeEventDraftV1 {
   eventRef: string;
   programRef: string;
@@ -15,6 +38,7 @@ export interface SynnergyzeEventDraftV1 {
   contextRef: string;
   placeRef?: string;
   targetRef?: string;
+  executionDeviceRef?: string;
   action: string;
   capabilityRef?: string;
   requestedEffect?: string;
@@ -90,6 +114,11 @@ export interface SynnergyzeExecutionReceiptV1 {
   correlationId: string;
   adapterRef: string;
   adapterResultRef: string;
+  executionDeviceRef?: string;
+  deviceSecurityResolutionRef?: string;
+  deviceSecurityEvidenceRef?: string;
+  deviceSecurityPolicyRef?: string;
+  deviceSecurityAssuranceLevel?: DeviceSecurityAssuranceLevelV1;
   state: "EXECUTED_UNVERIFIED";
   executedAt: string;
   synthetic: true;

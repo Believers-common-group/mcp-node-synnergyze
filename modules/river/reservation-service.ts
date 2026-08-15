@@ -31,6 +31,30 @@ function actionAuthorizationDigest(actionToken: string): string {
   return `sha256:${digest(actionToken)}`;
 }
 
+function stableUnique(values: readonly string[]): readonly string[] {
+  return [...new Set(values)].sort();
+}
+
+function requestDeviceSecurityDigest(request: WardenDecisionRequestV1): string | undefined {
+  if (!request.executionDeviceRef) return undefined;
+  if (request.deviceSecurityState !== "ACTIVE") {
+    throw new Error("river_device_security_active_request_required");
+  }
+  if (!request.deviceSecuritySourceRefs?.length || !request.deviceSecurityResolvedAt) {
+    throw new Error("river_device_security_request_evidence_required");
+  }
+  return `sha256:${digest(
+    JSON.stringify({
+      deviceRef: request.executionDeviceRef,
+      state: request.deviceSecurityState,
+      policyRef: request.deviceSecurityPolicyRef ?? null,
+      sourceRefs: stableUnique(request.deviceSecuritySourceRefs),
+      resolvedAt: request.deviceSecurityResolvedAt,
+      validUntil: request.deviceSecurityValidUntil ?? null,
+    }),
+  )}`;
+}
+
 function canonicalActionPayload(request: WardenDecisionRequestV1, decision: WardenDecisionV1) {
   if (decision.decision !== "ALLOW") {
     throw new Error("river_warden_allow_required");
@@ -62,6 +86,9 @@ function canonicalActionPayload(request: WardenDecisionRequestV1, decision: Ward
     action: request.action,
     capabilityRef: request.capabilityRef,
     targetRef: request.targetRef,
+    executionDeviceRef: request.executionDeviceRef,
+    deviceSecurityPolicyRef: request.deviceSecurityPolicyRef,
+    deviceSecurityRequestDigest: requestDeviceSecurityDigest(request),
     wardenDecisionRef: decision.decisionRef,
     actionToken: decision.actionToken,
     requestedAt: request.requestedAt,
@@ -107,6 +134,9 @@ function assertExactAction(expected: ActionEnvelopeV1, actual: ActionEnvelopeV1)
     "action",
     "capabilityRef",
     "targetRef",
+    "executionDeviceRef",
+    "deviceSecurityPolicyRef",
+    "deviceSecurityRequestDigest",
     "wardenDecisionRef",
     "actionToken",
     "requestedAt",
