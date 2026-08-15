@@ -25,7 +25,7 @@
     "test:objective": "vitest run modules/objective/inventory-transfer.test.ts",
     "test:bag-lock-runtime": "vitest run modules/synnergyze/warden-request-bridge.test.ts modules/synnergyze/execution-gate.test.ts",
     "test:sites": "vitest run api/sites.test.ts",
-    "test:site-handoff": "vitest run site-handoff/runtime.test.ts",
+    "test:site-handoff": "vitest run site-handoff",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
     "debug": "mcp-inspector npm start"

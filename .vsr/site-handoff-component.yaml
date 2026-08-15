@@ -1,0 +1,70 @@
+schema: vsr.site-handoff-component/v1
+component_id: CMP-SITE-HANDOFF-V2-001
+network_object: SYNNERGYZE-RUNTIME-001
+role: governed-bc-cc-vsr-cross-site-handoff
+state: conformance_implemented
+
+implementation:
+  legacy_compatibility_path: site-handoff/runtime.ts
+  governed_runtime_path: site-handoff/governed-runtime.ts
+  durable_journal_path: site-handoff/postgres-journal.ts
+  journal_schema_path: site-handoff/sql/001_handoff_execution_journal.sql
+
+canonical_sequence:
+  - VERIFY_SIGNED_HANDOFF_TOKEN
+  - REVERIFY_WARDEN_GRANT
+  - BEGIN_DURABLE_IDEMPOTENCY_JOURNAL
+  - RIVER_RESERVE
+  - OPEN_DESTINATION_SESSION
+  - POST_DEPLOYMENT_VERIFY
+  - RIVER_SEAL
+  - COMPLETE_DURABLE_JOURNAL
+
+required_guards:
+  - key-reference-bound-token-signature
+  - bounded-token-ttl
+  - token-expiry-cannot-exceed-warden-grant
+  - exact-actor-digitalme-source-destination-match
+  - requested-capabilities-subset-of-warden-grant
+  - consume-time-warden-grant-reverification
+  - durable-nonce-and-token-digest-replay-guard
+  - river-reservation-before-destination-session
+  - destination-session-idempotency-key
+  - post-deployment-session-verification
+  - river-seal-after-verification
+  - exception-evidence-after-post-reservation-failure
+  - successful-replay-returns-prior-completed-result
+
+production_requirements:
+  - non-exportable-or-secret-manager-backed-signing-key
+  - durable-postgres-journal-or-equivalent-authorized-store
+  - real-warden-grant-verifier
+  - real-river-reserve-seal-adapter
+  - destination-session-adapter
+  - post-deployment-verifier
+  - observability-for-exception-seal-failure
+
+forbidden:
+  - arbitrary-warden-grant-id-without-verification
+  - raw-signing-secret-in-handoff-request
+  - memory-only-replay-store-for-production
+  - destination-session-before-river-reservation
+  - success-without-post-deployment-verification
+  - active-state-from-handoff-conformance
+  - provider-session-as-authority
+  - handoff-token-as-standing-authority
+  - bypass-river-seal
+
+result_state:
+  success: HANDOFF_VERIFIED
+  activation_implied: false
+
+live_gate:
+  finishing_gate: B-010
+  activation_gate: L-012
+  rule: B-010 conformance may close when code and durable-provider contract are verified; L-012 stays open until real BC/CC/VSR cross-site evidence exists.
+
+tests:
+  - site-handoff/runtime.test.ts
+  - site-handoff/governed-runtime.test.ts
+  - site-handoff/postgres-journal.test.ts

@@ -18,6 +18,7 @@
     "rc1/**/*.ts",
     "compute/**/*.ts",
     "agent-fabric/**/*.ts",
+    "site-handoff/**/*.ts",
     "modules/**/*.ts"
   ],
   "exclude": ["src/**", "node_modules"]
