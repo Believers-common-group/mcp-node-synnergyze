@@ -5,20 +5,27 @@ import {
   timingSafeEqual,
 } from "node:crypto";
 
-import {
-  authorizeBackGate,
-  authorizeFrontGate,
-  type HandoffClaims,
-  type Site,
-} from "./runtime.ts";
+export type Site = "BC" | "CC" | "VSR";
 
 const ALGORITHM = "HS256" as const;
 const TOKEN_TYPE = "VSR-HANDOFF-2" as const;
 const TOKEN_VERSION = 2 as const;
 const MAX_TTL_SECONDS = 300;
 
-export interface HandoffClaimsV2 extends HandoffClaims {
+export interface HandoffClaimsV2 {
   ver: typeof TOKEN_VERSION;
+  iss: string;
+  aud: Site;
+  iat: number;
+  exp: number;
+  jti: string;
+  nonce: string;
+  src: Site;
+  dst: Site;
+  digitalme_id: string;
+  actor_id: string;
+  warden_grant_id: string;
+  capabilities: readonly string[];
   handoff_ref: string;
   warden_decision_ref: string;
   warden_evidence_ref: string;
@@ -335,8 +342,14 @@ function validateClaims(claims: HandoffClaimsV2, expectedDestination: Site, nowM
 }
 
 function rolesForDestination(claims: HandoffClaimsV2): string[] {
-  if (claims.dst === "VSR") return authorizeFrontGate(claims).roles;
-  return authorizeBackGate(claims).roles;
+  const prefix = claims.dst;
+  const roles = new Set<string>();
+  for (const capability of claims.capabilities) {
+    if (capability === "program:read") roles.add(`${prefix}_VIEWER`);
+    if (capability === "evidence:submit") roles.add(`${prefix}_EVIDENCE_CONTRIBUTOR`);
+  }
+  if (roles.size === 0) throw new Error("handoff_destination_role_mapping_missing");
+  return [...roles].sort();
 }
 
 export async function issueGovernedHandoffGrantV2(
