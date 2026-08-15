@@ -76,14 +76,18 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
   const { credentials, ...opts } = StartServerOptionsSchema.parse(options);
   const toolFilter = getToolFilter(opts);
 
-  const server = new CustomMcpServer({
-    name: "algolia",
-    version: CONFIG.version,
-    capabilities: {
-      resources: {},
-      tools: {},
+  const server = new CustomMcpServer(
+    {
+      name: "algolia",
+      version: CONFIG.version,
     },
-  });
+    {
+      capabilities: {
+        resources: {},
+        tools: {},
+      },
+    },
+  );
 
   const regionHotFixMiddlewares: RequestMiddleware[] = [];
   let processCallbackArguments: ProcessCallbackArguments;
@@ -184,15 +188,12 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
       async ({ request }) => {
         const url = new URL(request.url);
         const nameParams = url.searchParams.get("name");
-
         if (!nameParams) {
           return new Request(url, request.clone());
         }
 
         const nameValues = nameParams.split(",");
-
         url.searchParams.delete("name");
-
         nameValues.forEach((value) => {
           url.searchParams.append("name", value);
         });
