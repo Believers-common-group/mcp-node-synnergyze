@@ -1,3 +1,5 @@
+import type { VerifiedEffectV1 } from "../river/contracts.ts";
+
 export type SynnergyzePlanningStateV1 =
   | "DRAFT"
   | "READY_FOR_RESOLUTION"
@@ -95,3 +97,54 @@ export interface SynnergyzeExecutionReceiptV1 {
   synthetic: true;
   idempotentReplay: boolean;
 }
+
+export interface PostExecutionObservationV1 {
+  observationRef: string;
+  executionReceiptRef: string;
+  actionRef: string;
+  programRef: string;
+  eventRef: string;
+  targetRef: string;
+  correlationId: string;
+  observerRef: string;
+  observedStateRef: string;
+  observedAt: string;
+  sourceEvidenceRef: string;
+  synthetic: true;
+}
+
+export type EffectVerificationFailureCodeV1 =
+  | "MISSING_OBSERVATION"
+  | "EXECUTION_STATE_INVALID"
+  | "EXECUTION_RECEIPT_MISMATCH"
+  | "ACTION_MISMATCH"
+  | "PROGRAM_MISMATCH"
+  | "EVENT_MISMATCH"
+  | "TARGET_MISMATCH"
+  | "CORRELATION_MISMATCH"
+  | "INVALID_TIMESTAMP"
+  | "OBSERVATION_BEFORE_EXECUTION"
+  | "VERIFICATION_BEFORE_OBSERVATION"
+  | "OBSERVED_STATE_MISSING"
+  | "SOURCE_EVIDENCE_MISSING"
+  | "IDEMPOTENCY_CONFLICT";
+
+export interface EffectVerificationSuccessV1 {
+  ok: true;
+  state: "VERIFIED_EFFECT";
+  effect: VerifiedEffectV1;
+  idempotentReplay: boolean;
+}
+
+export interface EffectVerificationFailureV1 {
+  ok: false;
+  state: "EXCEPTION";
+  code: EffectVerificationFailureCodeV1;
+  reason: string;
+  executionReceiptRef: string;
+  observationRef?: string;
+}
+
+export type EffectVerificationResultV1 =
+  | EffectVerificationSuccessV1
+  | EffectVerificationFailureV1;
