@@ -23,7 +23,7 @@ lineage:
 status: active
 provenance:
   upstream: []
-  licence_review_required: true
+  licence_review_required: false
 contribution:
   architecture_decisions_repo: Believers-common-group/SynergyzeGovernance
   architectural_change_requires_network_object_id: true
