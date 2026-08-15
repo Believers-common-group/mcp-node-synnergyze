@@ -17,18 +17,24 @@ import {
 } from "./warden/rc1-adapter.ts";
 
 function decisionRequest(
-  action: "service_request.create" | "contract.execute",
+  capabilityRef: "service_request.create" | "contract.execute",
   correlationId: string,
 ): WardenDecisionRequestV1 {
   return {
     requestRef: `REQUEST:${correlationId}`,
     actorRef: RC1_IDENTITIES.actorRef,
     representedPrincipalRef: RC1_IDENTITIES.entityRef,
+    actingCapacityRef: "LAB-COMPANY-OPERATOR-001",
     contextRef: RC1_IDENTITIES.programRef,
-    action,
-    targetRef: action === "service_request.create" ? "LAB-SERVICE-DESK-001" : "LAB-CONTRACT-001",
+    programRef: RC1_IDENTITIES.programRef,
+    eventRef: `RC1-EVENT:${correlationId}`,
+    action: capabilityRef,
+    capabilityRef,
+    targetRef:
+      capabilityRef === "service_request.create" ? "LAB-SERVICE-DESK-001" : "LAB-CONTRACT-001",
     authorityRefs: [RC1_IDENTITIES.wardenRef],
     policyRefs: ["RC1-SYNTHETIC-POLICY"],
+    representationSourceRefs: ["RC1-SYNTHETIC-REPRESENTATION"],
     requestedAt: "2026-08-14T05:30:00.000Z",
     correlationId,
   };
@@ -73,10 +79,10 @@ describe("RC1 Warden compatibility adapter", () => {
     expect(typedRevoked.reasonCodes).toEqual(["authority_revoked"]);
   });
 
-  it("rejects actions outside the bounded RC1 capability surface", () => {
+  it("rejects capabilities outside the bounded RC1 capability surface", () => {
     const request = {
       ...decisionRequest("service_request.create", "ADAPTER-UNSUPPORTED-001"),
-      action: "bank.transfer",
+      capabilityRef: "bank.transfer",
     };
     expect(() => toRc1ActionIntent(request)).toThrow("unsupported_rc1_capability:bank.transfer");
   });
