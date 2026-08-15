@@ -24,80 +24,66 @@ jobs:
         run: |
           python - <<'PY'
           from pathlib import Path
+          import re
 
           runtime = Path('site-handoff/governed-runtime.ts')
           text = runtime.read_text()
-          old = '''    if (current.state === "COMPLETED" && current.result) {
-              return { state: "COMPLETED", result: { ...current.result } };
-            }
-            return { state: current.state };
-          }
-          '''
-          new = '''    if (current.state === "COMPLETED" && current.result) {
+          pattern = re.compile(
+              r'if \(current\.state === "COMPLETED" && current\.result\) \{\s*'
+              r'return \{ state: "COMPLETED", result: \{ \.\.\.current\.result \} \};\s*'
+              r'\}\s*return \{ state: current\.state \};'
+          )
+          replacement = '''if (current.state === "COMPLETED" && current.result) {
               return { state: "COMPLETED", result: { ...current.result } };
             }
             if (current.state === "IN_PROGRESS") return { state: "IN_PROGRESS" };
-            return { state: "FAILED" };
-          }
-          '''
-          if old not in text:
-              raise SystemExit('journal return block not found')
-          runtime.write_text(text.replace(old, new, 1))
+            return { state: "FAILED" };'''
+          text, count = pattern.subn(replacement, text, count=1)
+          if count != 1:
+              raise SystemExit(f'journal return repair count={count}')
+          runtime.write_text(text)
 
           test = Path('site-handoff/governed-runtime.test.ts')
           t = test.read_text()
-          old_import = '''  type HandoffPostDeploymentVerifierV1,
-            type RiverHandoffEvidenceGatewayV1,
-            type VerifiedWardenHandoffGrantV1,
-            type WardenHandoffGrantVerifierV1,
-          } from "./governed-runtime.ts";
-          '''
-          new_import = '''  type HandoffClaimsV2,
-            type HandoffPostDeploymentVerifierV1,
-            type RiverHandoffEvidenceGatewayV1,
-            type VerifiedWardenHandoffGrantV1,
-            type WardenHandoffGrantVerifierV1,
-          } from "./governed-runtime.ts";
-          '''
-          if old_import not in t:
-              raise SystemExit('test import block not found')
-          t = t.replace(old_import, new_import, 1)
+          import_anchor = '  type DestinationSessionReceiptV1,\n'
+          if '  type HandoffClaimsV2,\n' not in t:
+              if import_anchor not in t:
+                  raise SystemExit('test import anchor not found')
+              t = t.replace(import_anchor, import_anchor + '  type HandoffClaimsV2,\n', 1)
 
-          old_dest = '''  async openSession(input: {
-            claims: { digitalme_id: string; dst: "BC" | "CC" | "VSR"; capabilities: string[] };
-            roles: readonly string[];
-            createdAt: string;
-          }): Promise<DestinationSessionReceiptV1> {
-          '''
-          new_dest = '''  async openSession(input: {
-            handoffRef: string;
-            reservationRef: string;
-            claims: HandoffClaimsV2;
-            roles: readonly string[];
-            idempotencyKey: string;
-            createdAt: string;
-          }): Promise<DestinationSessionReceiptV1> {
-          '''
-          if old_dest not in t:
-              raise SystemExit('RecordingDestination signature not found')
-          t = t.replace(old_dest, new_dest, 1)
+          dest_pattern = re.compile(
+              r'async openSession\(input: \{\s*'
+              r'claims: \{ digitalme_id: string; dst: "BC" \| "CC" \| "VSR"; capabilities: string\[\] \};\s*'
+              r'roles: readonly string\[\];\s*createdAt: string;\s*'
+              r'\}\): Promise<DestinationSessionReceiptV1> \{'
+          )
+          dest_replacement = '''async openSession(input: {
+              handoffRef: string;
+              reservationRef: string;
+              claims: HandoffClaimsV2;
+              roles: readonly string[];
+              idempotencyKey: string;
+              createdAt: string;
+            }): Promise<DestinationSessionReceiptV1> {'''
+          t, dest_count = dest_pattern.subn(dest_replacement, t, count=1)
+          if dest_count != 1:
+              raise SystemExit(f'RecordingDestination repair count={dest_count}')
 
-          old_verify = '''  async verify(input: {
-            claims: { digitalme_id: string; dst: "BC" | "CC" | "VSR"; capabilities: string[] };
-            session: DestinationSessionReceiptV1;
-            checkedAt: string;
-          }) {
-          '''
-          new_verify = '''  async verify(input: {
-            handoffRef: string;
-            claims: HandoffClaimsV2;
-            session: DestinationSessionReceiptV1;
-            checkedAt: string;
-          }) {
-          '''
-          if old_verify not in t:
-              raise SystemExit('ExactSessionVerifier signature not found')
-          t = t.replace(old_verify, new_verify, 1)
+          verify_pattern = re.compile(
+              r'async verify\(input: \{\s*'
+              r'claims: \{ digitalme_id: string; dst: "BC" \| "CC" \| "VSR"; capabilities: string\[\] \};\s*'
+              r'session: DestinationSessionReceiptV1;\s*checkedAt: string;\s*'
+              r'\}\) \{'
+          )
+          verify_replacement = '''async verify(input: {
+              handoffRef: string;
+              claims: HandoffClaimsV2;
+              session: DestinationSessionReceiptV1;
+              checkedAt: string;
+            }) {'''
+          t, verify_count = verify_pattern.subn(verify_replacement, t, count=1)
+          if verify_count != 1:
+              raise SystemExit(f'ExactSessionVerifier repair count={verify_count}')
           test.write_text(t)
           PY
 
