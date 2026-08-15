@@ -12,6 +12,12 @@ export interface WardenDecisionRequestV1 {
   capabilityRef: string;
   targetRef: string;
   requestedEffect?: string;
+  executionDeviceRef?: string;
+  deviceSecurityState?: "ACTIVE";
+  deviceSecurityPolicyRef?: string;
+  deviceSecuritySourceRefs?: readonly string[];
+  deviceSecurityResolvedAt?: string;
+  deviceSecurityValidUntil?: string;
   authorityRefs: readonly string[];
   policyRefs: readonly string[];
   representationSourceRefs: readonly string[];
