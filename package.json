@@ -12,6 +12,7 @@
     "test:compute": "vitest run api/compute-plane.test.ts compute/runtime.test.ts",
     "test:compute-proof": "vitest run compute/runtime.test.ts",
     "test:agent": "vitest run agent-fabric/runtime.test.ts",
+    "test:agent-action": "vitest run agent-fabric/action-gateway.test.ts",
     "test:contracts": "vitest run modules/contracts.test.ts",
     "test:adapters": "vitest run modules/rc1-adapters.test.ts",
     "test:qel": "vitest run modules/qel/normalizer.test.ts",
