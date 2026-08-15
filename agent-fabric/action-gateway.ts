@@ -54,6 +54,8 @@ export interface AgentActionCausalEnvelopeV1 {
   modelRef: string;
   actorRef: string;
   representedEntityRef: string;
+  actingCapacityRef: string;
+  targetRef: string;
   capability: Rc1Capability;
   correlationRef: string;
   wardenDecisionRef?: string;
@@ -116,6 +118,10 @@ function mapCapability(capability: string): Rc1Capability {
   throw new Error(`agent_action_capability_not_supported:${capability}`);
 }
 
+function expectedRc1Target(capability: Rc1Capability): string {
+  return capability === "service_request.create" ? "LAB-SERVICE-DESK-001" : "LAB-CONTRACT-001";
+}
+
 function evidenceForCorrelation(
   entries: readonly Rc1EvidenceEntry[],
   correlationId: string,
@@ -159,6 +165,11 @@ function assertProposalBoundToRuntime(
   }
   if (context.representedEntityRef !== issuance.representedEntityRef) {
     throw new Error("agent_action_represented_entity_mismatch");
+  }
+
+  const capability = mapCapability(proposal.requestedCapability);
+  if (context.targetRef !== expectedRc1Target(capability)) {
+    throw new Error("agent_action_target_mismatch");
   }
 
   const binding = runtime
@@ -296,6 +307,8 @@ export class AgentActionGatewayBridgeV1 {
       modelRef: proposal.modelRef,
       actorRef: context.actorRef,
       representedEntityRef: context.representedEntityRef,
+      actingCapacityRef: context.actingCapacityRef,
+      targetRef: context.targetRef,
       capability: intent.capability,
       correlationRef: context.correlationId,
       wardenDecisionRef: attempt.decision?.decisionRef,
