@@ -1,0 +1,98 @@
+name: B-009 full dependency security baseline
+
+on:
+  push:
+    branches:
+      - fix/b009-dev-security-baseline
+  pull_request:
+    branches:
+      - genesis
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/b009-dev-security-baseline.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit-all-dependencies:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Use governed Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Install exact full dependency graph
+        run: npm ci --ignore-scripts
+
+      - name: Record full audit baseline
+        shell: bash
+        run: |
+          npm audit --json > /tmp/npm-audit-full.json || true
+          node - <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('/tmp/npm-audit-full.json', 'utf8'));
+          const vulnerabilities = audit.vulnerabilities || {};
+          const rows = Object.entries(vulnerabilities)
+            .map(([name, value]) => ({
+              name,
+              severity: value.severity,
+              direct: Boolean(value.isDirect),
+              range: value.range,
+              nodes: value.nodes || [],
+              via: (value.via || []).map(item => typeof item === 'string' ? item : {
+                source: item.source,
+                name: item.name,
+                title: item.title,
+                severity: item.severity,
+                range: item.range,
+                url: item.url
+              }),
+              effects: value.effects || [],
+              fixAvailable: value.fixAvailable
+            }))
+            .filter(row => row.severity === 'high' || row.severity === 'critical')
+            .sort((a, b) => `${a.severity}:${a.name}`.localeCompare(`${b.severity}:${b.name}`));
+          console.log(`FULL_AUDIT_METADATA=${JSON.stringify(audit.metadata?.vulnerabilities || {})}`);
+          console.log(`FULL_HIGH_CRITICAL_COUNT=${rows.length}`);
+          for (const row of rows) console.log(`FULL_HIGH_CRITICAL=${JSON.stringify(row)}`);
+          NODE
+
+      - name: Prove production install excludes dev dependency roots
+        shell: bash
+        run: |
+          rm -rf node_modules
+          npm ci --omit=dev --ignore-scripts
+          node - <<'NODE'
+          const pkg = require('./package.json');
+          const fs = require('fs');
+          for (const name of Object.keys(pkg.devDependencies || {})) {
+            const path = `node_modules/${name}/package.json`;
+            if (fs.existsSync(path)) {
+              throw new Error(`dev dependency leaked into production install: ${name}`);
+            }
+          }
+          console.log(`DEV_ROOTS_EXCLUDED=${Object.keys(pkg.devDependencies || {}).length}`);
+          NODE
+
+      - name: Verify production high/critical baseline remains clean
+        shell: bash
+        run: |
+          npm audit --omit=dev --json > /tmp/npm-audit-runtime.json || true
+          node - <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('/tmp/npm-audit-runtime.json', 'utf8'));
+          const vulnerabilities = audit.vulnerabilities || {};
+          const rows = Object.entries(vulnerabilities)
+            .filter(([, value]) => value.severity === 'high' || value.severity === 'critical')
+            .map(([name, value]) => ({name, severity: value.severity, direct: Boolean(value.isDirect)}));
+          console.log(`RUNTIME_AUDIT_METADATA=${JSON.stringify(audit.metadata?.vulnerabilities || {})}`);
+          console.log(`RUNTIME_HIGH_CRITICAL_COUNT=${rows.length}`);
+          for (const row of rows) console.log(`RUNTIME_HIGH_CRITICAL=${JSON.stringify(row)}`);
+          if (rows.length) process.exit(1);
+          NODE
