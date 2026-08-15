@@ -32,11 +32,15 @@ export interface ObjectiveAuthorityEnvelopeV1 {
   objectiveRef: string;
   principalRef: string;
   actorRef: string;
+  actingCapacityRef: string;
+  contextRef: string;
   wardenRef: string;
   wardenDecisionRef: string;
   decision: "ALLOW" | "ESCALATE" | "DENY";
   state: "ACTIVE" | "EXPIRED" | "REVOKED" | "SUPERSEDED";
   allowedCapabilityRefs: readonly string[];
+  resourceRefs: readonly string[];
+  evidenceRequirementRefs: readonly string[];
   validFrom: string;
   validUntil: string;
   constraintRefs: readonly string[];
