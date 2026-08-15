@@ -31,7 +31,7 @@
   "type": "module",
   "keywords": ["mcp", "synnergyze", "genesis", "vsr"],
   "author": "Believers Common Group",
-  "license": "ISC",
+  "license": "MIT",
   "description": "Synnergyze Genesis MCP service for governed VSR/Genesis integrations.",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
