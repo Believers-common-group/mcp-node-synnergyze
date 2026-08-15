@@ -20,6 +20,7 @@
     "test:warden-decision": "vitest run modules/warden/decision-service.test.ts",
     "test:river-reservation": "vitest run modules/river/reservation-service.test.ts",
     "test:controlled-execution": "vitest run modules/synnergyze/execution-gate.test.ts",
+    "test:effect-verification": "vitest run modules/synnergyze/effect-verifier.test.ts",
     "test:sites": "vitest run api/sites.test.ts",
     "test:site-handoff": "vitest run site-handoff/runtime.test.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
