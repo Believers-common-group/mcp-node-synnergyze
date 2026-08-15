@@ -76,3 +76,22 @@ export interface SynnergyzeProgramCompileSuccessV1 {
 export type SynnergyzeProgramCompileResultV1 =
   | SynnergyzeProgramCompileSuccessV1
   | SynnergyzeProgramCompileFailureV1;
+
+export interface SynnergyzeExecutionReceiptV1 {
+  receiptRef: string;
+  actionRef: string;
+  reservationRef: string;
+  wardenDecisionRef: string;
+  checkpointRef: string;
+  programRef: string;
+  eventRef: string;
+  capabilityRef: string;
+  targetRef: string;
+  correlationId: string;
+  adapterRef: string;
+  adapterResultRef: string;
+  state: "EXECUTED_UNVERIFIED";
+  executedAt: string;
+  synthetic: true;
+  idempotentReplay: boolean;
+}
