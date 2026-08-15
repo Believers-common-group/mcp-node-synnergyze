@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { Rc1EvidenceEntry } from "../../rc1/runtime.ts";
 import type {
   ActionEnvelopeV1,
@@ -14,6 +16,10 @@ function entriesForCorrelation(
   return entries.filter((entry) => entry.correlationId === correlationId);
 }
 
+function authorizationDigest(actionToken: string): string {
+  return `sha256:${createHash("sha256").update(actionToken, "utf8").digest("hex")}`;
+}
+
 export function adaptRc1EvidenceReservation(
   action: ActionEnvelopeV1,
   entries: readonly Rc1EvidenceEntry[],
@@ -28,7 +34,9 @@ export function adaptRc1EvidenceReservation(
   return {
     reservationRef: reserved.evidenceRef,
     actionRef: action.actionRef,
+    wardenDecisionRef: action.wardenDecisionRef,
     correlationId: action.correlationId,
+    authorizationDigest: authorizationDigest(action.actionToken),
     state: "RESERVED",
     reservedAt: action.requestedAt,
   };

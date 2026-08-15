@@ -1,9 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import {
-  AlphaRc1Harness,
-  RC1_IDENTITIES,
-} from "../rc1/runtime.ts";
+import { AlphaRc1Harness, RC1_IDENTITIES } from "../rc1/runtime.ts";
 import type { ActionEnvelopeV1, EffectReceiptV1 } from "./river/contracts.ts";
 import {
   adaptRc1CausalTrace,
@@ -11,10 +8,7 @@ import {
   adaptRc1EvidenceSeal,
 } from "./river/rc1-adapter.ts";
 import type { WardenDecisionRequestV1 } from "./warden/contracts.ts";
-import {
-  adaptRc1WardenDecision,
-  toRc1ActionIntent,
-} from "./warden/rc1-adapter.ts";
+import { adaptRc1WardenDecision, toRc1ActionIntent } from "./warden/rc1-adapter.ts";
 
 function decisionRequest(
   capabilityRef: "service_request.create" | "contract.execute",
@@ -36,6 +30,32 @@ function decisionRequest(
     policyRefs: ["RC1-SYNTHETIC-POLICY"],
     representationSourceRefs: ["RC1-SYNTHETIC-REPRESENTATION"],
     requestedAt: "2026-08-14T05:30:00.000Z",
+    correlationId,
+  };
+}
+
+function rc1ActionEnvelope(
+  correlationId: string,
+  decisionRef: string,
+  actionToken: string,
+  requestedAt: string,
+): ActionEnvelopeV1 {
+  const request = decisionRequest("service_request.create", correlationId);
+  return {
+    actionRef: `ACTION:${correlationId}`,
+    requestRef: request.requestRef,
+    actorRef: request.actorRef,
+    representedPrincipalRef: request.representedPrincipalRef,
+    actingCapacityRef: request.actingCapacityRef,
+    contextRef: request.contextRef,
+    programRef: request.programRef,
+    eventRef: request.eventRef,
+    action: request.action,
+    capabilityRef: request.capabilityRef,
+    targetRef: request.targetRef,
+    wardenDecisionRef: decisionRef,
+    actionToken,
+    requestedAt,
     correlationId,
   };
 }
@@ -96,16 +116,15 @@ describe("RC1 River compatibility adapter", () => {
 
     expect(result.status).toBe("VERIFIED");
     expect(result.decision).toBeDefined();
+    expect(result.decision!.actionToken).toBeDefined();
     expect(result.effectRef).toBeDefined();
 
-    const action: ActionEnvelopeV1 = {
-      actionRef: `ACTION:${correlationId}`,
-      actorRef: RC1_IDENTITIES.actorRef,
-      targetRef: "LAB-SERVICE-DESK-001",
-      wardenDecisionRef: result.decision!.decisionRef,
-      requestedAt: "2026-08-14T05:31:00.000Z",
+    const action = rc1ActionEnvelope(
       correlationId,
-    };
+      result.decision!.decisionRef,
+      result.decision!.actionToken!,
+      "2026-08-14T05:31:00.000Z",
+    );
     const entries = harness.riverEntries();
     const reservation = adaptRc1EvidenceReservation(action, entries);
     const effect: EffectReceiptV1 = {
@@ -120,6 +139,8 @@ describe("RC1 River compatibility adapter", () => {
     const trace = adaptRc1CausalTrace(correlationId, entries);
 
     expect(reservation.reservationRef).toBe(`RC1-EVIDENCE-RESERVATION:${correlationId}`);
+    expect(reservation.wardenDecisionRef).toBe(result.decision!.decisionRef);
+    expect(reservation.authorizationDigest).toMatch(/^sha256:/);
     expect(seal.sealRef).toBe(`RC1-EVIDENCE-SEALED:${correlationId}`);
     expect(seal.state).toBe("SEALED");
     expect(trace.reservationRef).toBe(reservation.reservationRef);
@@ -135,14 +156,14 @@ describe("RC1 River compatibility adapter", () => {
     const result = harness.attempt("service_request.create", correlationId);
 
     expect(result.status).toBe("BLOCKED_REQUIREMENT");
-    const action: ActionEnvelopeV1 = {
-      actionRef: `ACTION:${correlationId}`,
-      actorRef: RC1_IDENTITIES.actorRef,
-      targetRef: "LAB-SERVICE-DESK-001",
-      wardenDecisionRef: result.decision!.decisionRef,
-      requestedAt: "2026-08-14T05:32:00.000Z",
+    expect(result.decision).toBeDefined();
+    expect(result.decision!.actionToken).toBeDefined();
+    const action = rc1ActionEnvelope(
       correlationId,
-    };
+      result.decision!.decisionRef,
+      result.decision!.actionToken!,
+      "2026-08-14T05:32:00.000Z",
+    );
 
     expect(() => adaptRc1EvidenceReservation(action, harness.riverEntries())).toThrow(
       "rc1_evidence_reservation_not_found",

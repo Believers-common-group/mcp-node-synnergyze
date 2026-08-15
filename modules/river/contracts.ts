@@ -1,8 +1,17 @@
 export interface ActionEnvelopeV1 {
   actionRef: string;
+  requestRef: string;
   actorRef: string;
+  representedPrincipalRef: string;
+  actingCapacityRef: string;
+  contextRef: string;
+  programRef: string;
+  eventRef: string;
+  action: string;
+  capabilityRef: string;
   targetRef: string;
   wardenDecisionRef: string;
+  actionToken: string;
   requestedAt: string;
   correlationId: string;
 }
@@ -10,7 +19,9 @@ export interface ActionEnvelopeV1 {
 export interface EvidenceReservationV1 {
   reservationRef: string;
   actionRef: string;
+  wardenDecisionRef: string;
   correlationId: string;
+  authorizationDigest: string;
   state: "RESERVED";
   reservedAt: string;
 }
