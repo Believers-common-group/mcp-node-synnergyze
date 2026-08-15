@@ -58,6 +58,7 @@ function baseDecision(
       authorityRefs: stableUnique(request.authorityRefs),
       policyRefs: stableUnique(request.policyRefs),
       representationSourceRefs: stableUnique(request.representationSourceRefs),
+      deviceSecuritySourceRefs: stableUnique(request.deviceSecuritySourceRefs ?? []),
     },
     policy: {
       ...policy,
