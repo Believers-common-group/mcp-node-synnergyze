@@ -1,0 +1,111 @@
+name: B-010 fix strict site handoff types
+
+on:
+  push:
+    branches:
+      - fix/b010-governed-site-handoff-v2
+    paths:
+      - .github/workflows/b010-fix-strict-types.yml
+
+permissions:
+  contents: write
+
+jobs:
+  repair:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/b010-governed-site-handoff-v2
+          fetch-depth: 0
+
+      - name: Repair strict handoff typings
+        shell: bash
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+
+          runtime = Path('site-handoff/governed-runtime.ts')
+          text = runtime.read_text()
+          old = '''    if (current.state === "COMPLETED" && current.result) {
+              return { state: "COMPLETED", result: { ...current.result } };
+            }
+            return { state: current.state };
+          }
+          '''
+          new = '''    if (current.state === "COMPLETED" && current.result) {
+              return { state: "COMPLETED", result: { ...current.result } };
+            }
+            if (current.state === "IN_PROGRESS") return { state: "IN_PROGRESS" };
+            return { state: "FAILED" };
+          }
+          '''
+          if old not in text:
+              raise SystemExit('journal return block not found')
+          runtime.write_text(text.replace(old, new, 1))
+
+          test = Path('site-handoff/governed-runtime.test.ts')
+          t = test.read_text()
+          old_import = '''  type HandoffPostDeploymentVerifierV1,
+            type RiverHandoffEvidenceGatewayV1,
+            type VerifiedWardenHandoffGrantV1,
+            type WardenHandoffGrantVerifierV1,
+          } from "./governed-runtime.ts";
+          '''
+          new_import = '''  type HandoffClaimsV2,
+            type HandoffPostDeploymentVerifierV1,
+            type RiverHandoffEvidenceGatewayV1,
+            type VerifiedWardenHandoffGrantV1,
+            type WardenHandoffGrantVerifierV1,
+          } from "./governed-runtime.ts";
+          '''
+          if old_import not in t:
+              raise SystemExit('test import block not found')
+          t = t.replace(old_import, new_import, 1)
+
+          old_dest = '''  async openSession(input: {
+            claims: { digitalme_id: string; dst: "BC" | "CC" | "VSR"; capabilities: string[] };
+            roles: readonly string[];
+            createdAt: string;
+          }): Promise<DestinationSessionReceiptV1> {
+          '''
+          new_dest = '''  async openSession(input: {
+            handoffRef: string;
+            reservationRef: string;
+            claims: HandoffClaimsV2;
+            roles: readonly string[];
+            idempotencyKey: string;
+            createdAt: string;
+          }): Promise<DestinationSessionReceiptV1> {
+          '''
+          if old_dest not in t:
+              raise SystemExit('RecordingDestination signature not found')
+          t = t.replace(old_dest, new_dest, 1)
+
+          old_verify = '''  async verify(input: {
+            claims: { digitalme_id: string; dst: "BC" | "CC" | "VSR"; capabilities: string[] };
+            session: DestinationSessionReceiptV1;
+            checkedAt: string;
+          }) {
+          '''
+          new_verify = '''  async verify(input: {
+            handoffRef: string;
+            claims: HandoffClaimsV2;
+            session: DestinationSessionReceiptV1;
+            checkedAt: string;
+          }) {
+          '''
+          if old_verify not in t:
+              raise SystemExit('ExactSessionVerifier signature not found')
+          t = t.replace(old_verify, new_verify, 1)
+          test.write_text(t)
+          PY
+
+      - name: Commit repair
+        shell: bash
+        run: |
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add site-handoff/governed-runtime.ts site-handoff/governed-runtime.test.ts
+          git commit -m 'Fix governed handoff strict interface typings'
+          git push origin HEAD:fix/b010-governed-site-handoff-v2
