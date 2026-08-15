@@ -10,6 +10,9 @@ export interface ActionEnvelopeV1 {
   action: string;
   capabilityRef: string;
   targetRef: string;
+  executionDeviceRef?: string;
+  deviceSecurityPolicyRef?: string;
+  deviceSecurityRequestDigest?: string;
   wardenDecisionRef: string;
   actionToken: string;
   requestedAt: string;
