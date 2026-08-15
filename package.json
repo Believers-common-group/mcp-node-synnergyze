@@ -13,6 +13,7 @@
     "test:compute-proof": "vitest run compute/runtime.test.ts",
     "test:agent": "vitest run agent-fabric/runtime.test.ts",
     "test:contracts": "vitest run modules/contracts.test.ts",
+    "test:adapters": "vitest run modules/rc1-adapters.test.ts",
     "test:sites": "vitest run api/sites.test.ts",
     "test:site-handoff": "vitest run site-handoff/runtime.test.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
