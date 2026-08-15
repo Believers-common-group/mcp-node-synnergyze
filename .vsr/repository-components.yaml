@@ -8,8 +8,10 @@ canonical_governance:
     - issue:13
     - issue:34
     - issue:35
+    - issue:36
     - issue:38
     - issue:39
+    - issue:40
     - issue:41
 
 components:
@@ -213,4 +215,73 @@ components:
       - modules/synnergyze/effect-verification.test.ts
     downstream_boundary: river-seal-to-registry-effect-to-objective-acceptance
     activation_gate: post-execution-observation-and-effect-verification-conformance-only
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-OBJECTIVE-INVENTORY-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: governed-objective-to-synthetic-inventory-transfer-acceptance
+    state: conformance_implemented
+    implementation_path: modules/objective/inventory-transfer.ts
+    contract_paths:
+      - modules/objective/contracts.ts
+      - modules/warden/contracts.ts
+      - modules/river/contracts.ts
+      - modules/synnergyze/contracts.ts
+      - modules/synnergyze/effect-verification.ts
+    purpose_lineage:
+      - PRINCIPAL
+      - OBJECTIVE
+      - AUTHORITY
+      - PROGRAM
+      - EVENT
+      - EXECUTION
+      - EVIDENCE
+      - EFFECT
+      - ACCEPTANCE
+    input_contracts:
+      - ObjectiveRefV1
+      - ObjectiveAuthorityEnvelopeV1
+      - InventoryTransferSpecV1
+    output_contracts:
+      - ObjectiveProgramBundleV1
+      - ObjectiveEffectV1
+      - AcceptanceResultV1
+      - InventoryTransferProofV1
+    depends_on:
+      - CMP-SYNNERGYZE-CONTROLLED-EXECUTION-001
+      - CMP-SYNNERGYZE-EFFECT-VERIFY-001
+      - WARDEN-RUNTIME-001
+      - RIVEROS-001
+    capability_allowlist:
+      - inventory.transfer
+    required_guards:
+      - objective-authorized-and-in-window
+      - explicit-principal-actor-capacity-context
+      - explicit-resource-scope
+      - fresh-warden-action-decision
+      - river-reservation-before-execution
+      - fresh-warden-execution-checkpoint
+      - post-execution-read-after-write-observation
+      - effect-verification-before-river-seal
+      - river-seal-before-objective-effect-record
+      - purpose-lineage-on-every-program-event-effect
+      - duplicate-effect-rejection
+      - front-back-projection-equivalence
+      - acceptance-only-from-observed-sealed-effects
+    forbidden:
+      - infer-objective-authority-from-model-or-agent
+      - infer-effect-from-intended-outcome
+      - accept-without-sealed-evidence
+      - duplicate-effect-on-replay
+      - provider-or-database-authority
+      - real-external-inventory-write
+      - create-financial-or-legal-effect
+      - create-economic-obligation
+      - imply-settlement-finality
+      - activate-real-location-canary
+    tests:
+      - modules/objective/inventory-transfer.test.ts
+      - modules/synnergyze/execution-gate.test.ts
+      - modules/synnergyze/effect-verification.test.ts
+    activation_gate: synthetic-objective-proof-only-real-canary-separately-authorized
     activation_implied: false
