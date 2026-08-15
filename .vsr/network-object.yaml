@@ -1,0 +1,29 @@
+schema: vsr.network-object/v1
+network_object: SYNNERGYZE-RUNTIME-001
+repo_role: runtime
+authority_boundary: WARDEN
+canonical_source:
+  repository: Believers-common-group/SynergyzeGovernance
+  branch: HQ
+  contract: docs/CANONICAL-INDEX.md
+depends_on:
+  - GENESIS
+  - REGISTRY
+  - WARDEN
+  - RIVEROS
+consumed_by:
+  - ALPHA-NODE-001
+  - BNR
+  - VSR
+  - EMPIRE
+lineage:
+  predecessor: null
+  supersedes: null
+  superseded_by: null
+status: active
+provenance:
+  upstream: []
+  licence_review_required: false
+contribution:
+  architecture_decisions_repo: Believers-common-group/SynergyzeGovernance
+  architectural_change_requires_network_object_id: true
