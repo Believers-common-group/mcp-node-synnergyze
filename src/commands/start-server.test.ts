@@ -48,16 +48,20 @@ describe("when specifying credentials flag", () => {
       ),
     );
     const client = new Client({ name: "test client", version: "1.0.0" });
-    const server = await startServer({
-      credentials: {
-        apiKey: "apiKey",
-        applicationId: "appId",
-      },
-      allowTools: ["setSettings"],
-    });
-
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+    const [server] = await Promise.all([
+      startServer(
+        {
+          credentials: {
+            apiKey: "apiKey",
+            applicationId: "appId",
+          },
+          allowTools: ["setSettings"],
+        },
+        serverTransport,
+      ),
+      client.connect(clientTransport),
+    ]);
 
     const { tools } = await client.listTools();
 
@@ -85,7 +89,7 @@ describe("when specifying credentials flag", () => {
       }
     `);
 
-    await server.close();
+    await Promise.all([client.close(), server.close()]);
   });
 });
 
@@ -109,15 +113,19 @@ describe("default behavior", () => {
 
   it("should list dashboard tools", async () => {
     const client = new Client({ name: "test client", version: "1.0.0" });
-    const server = await startServer({});
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+    const [server] = await Promise.all([
+      startServer({}, serverTransport),
+      client.connect(clientTransport),
+    ]);
 
     expect(AppStateManager.load).toHaveBeenCalled();
 
     const { tools } = await client.listTools();
     expect(tools).toHaveLength(176);
     expect(tools.some((t) => t.name === "getUserInfo")).toBe(true);
+
+    await Promise.all([client.close(), server.close()]);
   });
 
   it("should fetch the api key automatically", async () => {
@@ -128,9 +136,11 @@ describe("default behavior", () => {
       http.get("https://appid.algolia.net/1/indexes/indexName/settings", () => Response.json({})),
     );
     const client = new Client({ name: "test client", version: "1.0.0" });
-    const server = await startServer({ allowTools: ["getSettings"] });
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
-    await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
+    const [server] = await Promise.all([
+      startServer({ allowTools: ["getSettings"] }, serverTransport),
+      client.connect(clientTransport),
+    ]);
 
     const result = await client.callTool({
       name: "getSettings",
@@ -150,5 +160,7 @@ describe("default behavior", () => {
         ],
       }
     `);
+
+    await Promise.all([client.close(), server.close()]);
   });
 });

@@ -12,6 +12,7 @@ import {
   registerGetApplications,
 } from "../tools/registerGetApplications.ts";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import type { Transport } from "@modelcontextprotocol/sdk/shared/transport.js";
 import type {
   ProcessCallbackArguments,
   ProcessInputSchema,
@@ -72,17 +73,16 @@ function makeRegionRequestMiddleware(dashboardApi: DashboardApi): RequestMiddlew
   };
 }
 
-export async function startServer(options: StartServerOptions): Promise<CustomMcpServer> {
+export async function startServer(
+  options: StartServerOptions,
+  transport: Transport = new StdioServerTransport(),
+): Promise<CustomMcpServer> {
   const { credentials, ...opts } = StartServerOptionsSchema.parse(options);
   const toolFilter = getToolFilter(opts);
 
   const server = new CustomMcpServer({
     name: "algolia",
     version: CONFIG.version,
-    capabilities: {
-      resources: {},
-      tools: {},
-    },
   });
 
   const regionHotFixMiddlewares: RequestMiddleware[] = [];
@@ -103,7 +103,6 @@ export async function startServer(options: StartServerOptions): Promise<CustomMc
   if (credentials) {
     processCallbackArguments = async (params, securityKeys) => {
       const result = { ...params };
-
       if (securityKeys.has("applicationId")) {
         result.applicationId = credentials.applicationId;
       }
@@ -221,7 +220,6 @@ export async function startServer(options: StartServerOptions): Promise<CustomMc
     ],
   });
 
-  const transport = new StdioServerTransport();
   await server.connect(transport);
   return server;
 }

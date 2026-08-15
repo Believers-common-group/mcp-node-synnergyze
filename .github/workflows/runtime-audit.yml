@@ -1,0 +1,50 @@
+name: runtime-audit
+
+on:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/runtime-audit.yml
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - package-lock.json
+      - .github/workflows/runtime-audit.yml
+
+permissions:
+  contents: read
+
+jobs:
+  audit-runtime:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Install production dependency graph only
+        run: npm ci --omit=dev --ignore-scripts
+
+      - name: Report production audit posture
+        run: |
+          npm audit --omit=dev --json > /tmp/npm-runtime-audit.json || true
+          node - <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('/tmp/npm-runtime-audit.json', 'utf8'));
+          const vulnerabilities = audit.vulnerabilities || {};
+          const rows = Object.entries(vulnerabilities)
+            .map(([name, value]) => ({
+              name,
+              severity: value.severity,
+              direct: Boolean(value.isDirect),
+              via: (value.via || []).map(item => typeof item === 'string' ? item : item.title).filter(Boolean),
+              range: value.range,
+              fixAvailable: value.fixAvailable
+            }))
+            .filter(row => row.severity === 'high' || row.severity === 'critical')
+            .sort((a, b) => `${a.severity}:${a.name}`.localeCompare(`${b.severity}:${b.name}`));
+          console.log(`Production audit metadata: ${JSON.stringify(audit.metadata?.vulnerabilities || {})}`);
+          console.log(`Production high/critical vulnerable packages: ${rows.length}`);
+          for (const row of rows) console.log(JSON.stringify(row));
+          NODE

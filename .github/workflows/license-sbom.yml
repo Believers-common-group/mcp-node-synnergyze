@@ -1,0 +1,113 @@
+name: licence-sbom
+
+on:
+  pull_request:
+    paths:
+      - package.json
+      - package-lock.json
+      - LICENSE
+      - README.md
+      - .github/workflows/license-sbom.yml
+  push:
+    branches: [main]
+    paths:
+      - package.json
+      - package-lock.json
+      - LICENSE
+      - README.md
+      - .github/workflows/license-sbom.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+
+      - name: Record toolchain
+        run: |
+          node --version
+          npm --version
+
+      - name: Verify root licence metadata
+        run: |
+          node - <<'NODE'
+          const pkg = require('./package.json');
+          const lock = require('./package-lock.json');
+          if (pkg.license !== 'MIT') throw new Error(`package.json license is ${pkg.license}`);
+          if (lock.packages?.['']?.license !== 'MIT') throw new Error(`package-lock root license is ${lock.packages?.['']?.license}`);
+          NODE
+          grep -q '^MIT License$' LICENSE
+
+      - name: Install exact locked dependency graph
+        run: npm ci --ignore-scripts
+
+      - name: Generate CycloneDX SBOM
+        run: |
+          npm sbom --sbom-format cyclonedx > /tmp/npm-sbom.cdx.json
+          node - <<'NODE'
+          const fs = require('fs');
+          const sbom = JSON.parse(fs.readFileSync('/tmp/npm-sbom.cdx.json', 'utf8'));
+          console.log(`CycloneDX components: ${sbom.components?.length ?? 0}`);
+          NODE
+          sha256sum /tmp/npm-sbom.cdx.json
+
+      - name: Summarize npm audit findings
+        run: |
+          npm audit --json > /tmp/npm-audit.json || true
+          node - <<'NODE'
+          const fs = require('fs');
+          const audit = JSON.parse(fs.readFileSync('/tmp/npm-audit.json', 'utf8'));
+          const vulnerabilities = audit.vulnerabilities || {};
+          const rows = Object.entries(vulnerabilities)
+            .map(([name, value]) => ({
+              name,
+              severity: value.severity,
+              direct: Boolean(value.isDirect),
+              via: (value.via || []).map(item => typeof item === 'string' ? item : item.title).filter(Boolean),
+              range: value.range,
+              fixAvailable: value.fixAvailable
+            }))
+            .sort((a, b) => `${a.severity}:${a.name}`.localeCompare(`${b.severity}:${b.name}`));
+          const highCritical = rows.filter(row => row.severity === 'high' || row.severity === 'critical');
+          console.log(`Audit metadata: ${JSON.stringify(audit.metadata?.vulnerabilities || {})}`);
+          console.log(`High/critical vulnerable packages: ${highCritical.length}`);
+          for (const row of highCritical) console.log(JSON.stringify(row));
+          fs.writeFileSync('/tmp/npm-audit-summary.json', JSON.stringify({metadata: audit.metadata, highCritical}, null, 2));
+          NODE
+
+      - name: Emit dependency licence inventory
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const lock = require('./package-lock.json');
+          const inventory = [];
+          for (const [path] of Object.entries(lock.packages || {})) {
+            if (!path.startsWith('node_modules/')) continue;
+            const manifestPath = `${path}/package.json`;
+            if (!fs.existsSync(manifestPath)) continue;
+            const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+            inventory.push({
+              name: manifest.name,
+              version: manifest.version,
+              license: manifest.license ?? manifest.licenses ?? 'UNDECLARED'
+            });
+          }
+          inventory.sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`));
+          fs.writeFileSync('/tmp/npm-licences.json', JSON.stringify(inventory, null, 2));
+          const counts = new Map();
+          for (const item of inventory) {
+            const key = typeof item.license === 'string' ? item.license : JSON.stringify(item.license);
+            counts.set(key, (counts.get(key) || 0) + 1);
+          }
+          console.log(`Dependency packages inventoried: ${inventory.length}`);
+          for (const [license, count] of [...counts.entries()].sort()) console.log(`${license}: ${count}`);
+          const undeclared = inventory.filter(item => item.license === 'UNDECLARED');
+          if (undeclared.length) {
+            console.error('Undeclared dependency licences:', undeclared);
+            process.exit(1);
+          }
+          NODE
