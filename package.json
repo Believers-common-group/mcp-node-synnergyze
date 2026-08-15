@@ -14,6 +14,7 @@
     "test:agent": "vitest run agent-fabric/runtime.test.ts",
     "test:contracts": "vitest run modules/contracts.test.ts",
     "test:adapters": "vitest run modules/rc1-adapters.test.ts",
+    "test:qel": "vitest run modules/qel/normalizer.test.ts",
     "test:sites": "vitest run api/sites.test.ts",
     "test:site-handoff": "vitest run site-handoff/runtime.test.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",

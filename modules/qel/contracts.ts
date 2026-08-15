@@ -6,6 +6,7 @@ export interface QelExpressionRequestV1 {
   sourceRef: string;
   submittedAt: string;
   correlationId: string;
+  grammarVersion?: string;
 }
 
 export interface NormalizedIntentV1 {
