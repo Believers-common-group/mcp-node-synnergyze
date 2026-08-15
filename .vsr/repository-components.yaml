@@ -6,6 +6,8 @@ canonical_governance:
   repository: Believers-common-group/SynergyzeGovernance
   refs:
     - issue:13
+    - issue:19
+    - issue:20
     - issue:34
     - issue:35
     - issue:36
@@ -75,10 +77,12 @@ components:
       - actor-is-not-represented-principal
       - represented-principal-is-not-acting-capacity
       - acting-capacity-is-not-authority
+      - device-security-state-is-not-warden-authority
     input_contracts:
       - SynnergyzeProgramDraftV1
       - SynnergyzeEventDraftV1
       - ResolvedRepresentationContextV1
+      - ResolvedDeviceSecurityContextV1
       - WardenRequestBridgeInputV1
     output_contracts:
       - WardenDecisionRequestV1
@@ -86,7 +90,9 @@ components:
     depends_on:
       - CMP-SYNNERGYZE-PROGRAM-EVENT-001
       - REGISTRY-REPRESENTATION-RESOLUTION
+      - REGISTRY-DEVICE-SECURITY-RESOLUTION
       - WARDEN-RUNTIME-001-CONTRACT
+      - BAG-LOCK-001
     downstream_boundaries:
       - WARDEN-RUNTIME-001
     required_request_fields:
@@ -101,9 +107,17 @@ components:
       - targetRef
       - representationSourceRefs
       - correlationId
+    conditional_device_guards:
+      - device-bound-event-requires-security-resolution
+      - exact-device-reference-match
+      - device-state-active-before-warden-request
+      - security-resolution-and-evidence-required
+      - security-resolution-not-future-or-expired
+      - security-evidence-bound-into-request-identity
     forbidden:
       - infer-represented-principal-from-actor
       - infer-acting-capacity-from-ui-or-provider-state
+      - authorize-device-bound-event-with-unresolved-or-non-active-device-security
       - evaluate-warden-policy
       - issue-action-token
       - reserve-or-seal-river-evidence
@@ -131,6 +145,7 @@ components:
       - EvidenceReservationV1
       - WardenDecisionV1
       - WardenExecutionCheckpointV1
+      - ResolvedDeviceSecurityContextV1
       - ControlledExecutionRequestV1
     output_contracts:
       - SynnergyzeExecutionReceiptV1
@@ -140,6 +155,7 @@ components:
       - WARDEN-RUNTIME-001
       - RIVEROS-001
       - CMP-SYNNERGYZE-WARDEN-REQUEST-001
+      - BAG-LOCK-001
     adapter_allowlist:
       - SYNTHETIC-SERVICE-REQUEST-ADAPTER-001
     required_guards:
@@ -148,12 +164,19 @@ components:
       - fresh-warden-execution-checkpoint
       - reservation-action-decision-correlation-match
       - reservation-authorization-digest-match
+      - request-time-device-security-binding-if-device-bound
+      - fresh-device-security-recheck-if-device-bound
+      - device-security-device-and-policy-match
+      - device-security-active-and-evidenced-at-execution
+      - device-security-time-validity-at-execution
       - capability-adapter-registration
       - idempotent-execution-replay
     forbidden:
       - execute-non-allow-decision
       - execute-revoked-expired-or-superseded-checkpoint
       - execute-without-river-reservation
+      - execute-device-bound-action-with-missing-stale-mismatched-or-non-active-device-security
+      - claim-hardware-port-or-radio-enforcement
       - execute-unregistered-capability
       - create-effect-receipt
       - mark-effect-verified
@@ -164,6 +187,7 @@ components:
       - invoke-real-external-provider
     tests:
       - modules/synnergyze/execution-gate.test.ts
+      - modules/synnergyze/warden-request-bridge.test.ts
       - modules/river/reservation-service.test.ts
       - modules/warden/decision-service.test.ts
     activation_gate: explicit-controlled-connector-integration-and-authorization
