@@ -1,0 +1,56 @@
+name: Generate governed genesis package lock
+
+on:
+  push:
+    branches:
+      - fix/b003-genesis-release-hygiene
+    paths:
+      - package.json
+      - .github/workflows/generate-genesis-package-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  generate-lock:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout branch
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: fix/b003-genesis-release-hygiene
+          fetch-depth: 0
+
+      - name: Use repository Node version
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Generate package lock from exact package manifest
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Verify root package identity and licence
+        run: |
+          node - <<'NODE'
+          const pkg = require('./package.json');
+          const lock = require('./package-lock.json');
+          if (pkg.name !== 'synnergyze-genesis-mcp') throw new Error('unexpected package identity');
+          if (pkg.license !== 'MIT') throw new Error(`package.json licence is ${pkg.license}`);
+          if (lock.packages?.['']?.license !== 'MIT') throw new Error(`package-lock root licence is ${lock.packages?.['']?.license}`);
+          if (lock.packages?.['']?.dependencies?.['@neondatabase/serverless'] !== pkg.dependencies['@neondatabase/serverless']) {
+            throw new Error('Neon dependency drift between package.json and package-lock');
+          }
+          NODE
+
+      - name: Commit generated lock if changed
+        shell: bash
+        run: |
+          if git diff --quiet -- package-lock.json && git ls-files --error-unmatch package-lock.json >/dev/null 2>&1; then
+            echo 'package-lock.json already current'
+            exit 0
+          fi
+          git config user.name 'github-actions[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add package-lock.json
+          git commit -m 'Lock governed genesis npm dependency graph'
+          git push origin HEAD:fix/b003-genesis-release-hygiene
