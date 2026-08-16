@@ -1,0 +1,91 @@
+name: ESO-83 Alpha Warden Build Attestation Proof
+
+on:
+  push:
+    branches:
+      - eso-83-alpha-attestation-build-proof
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  warden-build-proof:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout control workflow
+        uses: actions/checkout@v4
+        with:
+          path: control
+
+      - name: Checkout currently bounded Warden implementation
+        uses: actions/checkout@v4
+        with:
+          ref: genesis
+          path: candidate
+          fetch-depth: 1
+
+      - name: Set up Node.js 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: candidate/package-lock.json
+
+      - name: Install exact locked dependencies
+        working-directory: candidate
+        run: npm ci
+
+      - name: Verify Warden decision service
+        working-directory: candidate
+        run: |
+          npm run type-check
+          npm run test:warden-decision
+
+      - name: Build deterministic deployable source artifact
+        working-directory: candidate
+        shell: bash
+        run: |
+          set -euo pipefail
+          SOURCE_SHA="$(git rev-parse HEAD)"
+          VERSION="$(node -p "require('./package.json').version")"
+          mkdir -p ../evidence
+          git archive --format=tar --prefix=warden-runtime/ "$SOURCE_SHA" | gzip -n > ../evidence/warden-runtime-${SOURCE_SHA}.tar.gz
+          DIGEST="$(sha256sum ../evidence/warden-runtime-${SOURCE_SHA}.tar.gz | awk '{print $1}')"
+          SOURCE_SHA="$SOURCE_SHA" VERSION="$VERSION" DIGEST="$DIGEST" python3 - <<'PY'
+          import json
+          import os
+          from pathlib import Path
+
+          evidence = {
+              "schema": "vsr.warden-build-evidence/v1",
+              "runtime_identity": "WARDEN-RUNTIME-001",
+              "repository_identity": "Believers-common-group/mcp-node-synnergyze",
+              "repository_ref": "genesis",
+              "source_commit_sha": os.environ["SOURCE_SHA"],
+              "runtime_version": os.environ["VERSION"],
+              "build_artifact_digest": os.environ["DIGEST"],
+              "digest_algorithm": "SHA-256",
+              "artifact_profile": "git-archive+gzip-n",
+              "verification": {
+                  "npm_ci": "passed",
+                  "type_check": "passed",
+                  "warden_decision_tests": "passed"
+              },
+              "authority_effect": "NONE",
+              "note": "Build/source evidence only. Does not attest ALPHA-NODE-001, authorize deployment, start runtime, or prove production activation."
+          }
+          Path("../evidence/warden-build-evidence.json").write_text(
+              json.dumps(evidence, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          cat ../evidence/warden-build-evidence.json
+          sha256sum ../evidence/warden-runtime-${SOURCE_SHA}.tar.gz
+
+      - name: Upload Warden build proof
+        uses: actions/upload-artifact@v4
+        with:
+          name: eso-83-warden-build-proof
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
