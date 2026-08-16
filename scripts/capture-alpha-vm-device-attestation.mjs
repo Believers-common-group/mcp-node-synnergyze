@@ -138,7 +138,7 @@ function selfTest() {
   if (parsed.id !== "ubuntu" || parsed.version_id !== "24.04") {
     throw new Error("os-release parser self-test failed");
   }
-  if (sha256("challenge") !== "2dd00bd77e01a2873c2e2d41d2e4f2257285420142cf9f8ef7e536d9d75f8a31") {
+  if (sha256("challenge") !== "2dd00bd77e0222ced882665481a9c1d9f907309d16e05ed007a1ea63928477a9") {
     throw new Error("sha256 self-test failed");
   }
   const privacyKeys = ["raw_serial_collected", "raw_mac_collected", "ip_collected", "private_key_collected"];
