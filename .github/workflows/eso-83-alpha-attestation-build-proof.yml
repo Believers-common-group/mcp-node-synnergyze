@@ -18,6 +18,10 @@ jobs:
         with:
           path: control
 
+      - name: Verify Alpha VM capture utility
+        working-directory: control
+        run: node scripts/capture-alpha-vm-device-attestation.mjs --self-test
+
       - name: Checkout currently bounded Warden implementation
         uses: actions/checkout@v4
         with:
