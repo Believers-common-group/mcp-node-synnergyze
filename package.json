@@ -15,7 +15,7 @@
     "test:agent-action": "vitest run agent-fabric/action-gateway.test.ts",
     "test:contracts": "vitest run modules/contracts.test.ts",
     "test:adapters": "vitest run modules/rc1-adapters.test.ts",
-    "test:qel": "vitest run modules/qel/normalizer.test.ts",
+    "test:qel": "vitest run modules/qel",
     "test:program-bridge": "vitest run modules/synnergyze/program-bridge.test.ts",
     "test:warden-request": "vitest run modules/synnergyze/warden-request-bridge.test.ts",
     "test:warden-decision": "vitest run modules/warden/decision-service.test.ts",
