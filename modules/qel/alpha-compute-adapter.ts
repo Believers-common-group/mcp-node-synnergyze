@@ -149,7 +149,7 @@ export function mapAlphaComputeRunnerToQelFrameV01(
     },
     outcome: mapAttemptOutcome(attempt),
     native: {
-      provider: "SYNNEGYZE_COMPUTE_RUNTIME",
+      provider: "SYNNERGYZE_COMPUTE_RUNTIME",
       protocol: "LOCAL_RUNTIME",
       sourceRef: registration.runnerId,
       rawValue: {
@@ -166,7 +166,9 @@ export function mapAlphaComputeRunnerToQelFrameV01(
   };
 }
 
-export function buildAlphaComputePodPulseV01(input: AlphaComputeQelInputV01 & { podRef: string }): QelPodPulseV01 {
+export function buildAlphaComputePodPulseV01(
+  input: AlphaComputeQelInputV01 & { podRef: string },
+): QelPodPulseV01 {
   const frame = mapAlphaComputeRunnerToQelFrameV01(input);
   return buildQelPodPulseV01({
     podRef: input.podRef,
