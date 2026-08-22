@@ -27,6 +27,8 @@
     "test:sites": "vitest run api/sites.test.ts",
     "test:site-handoff": "vitest run site-handoff",
     "test:pef-contracts": "vitest run packages/contracts/contracts.test.ts modules/pef/ingestion.test.ts",
+    "test:pef-persistence": "vitest run modules/pef/persistence.test.ts",
+    "test:pef": "vitest run packages/contracts/contracts.test.ts modules/pef/ingestion.test.ts modules/pef/persistence.test.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
     "debug": "mcp-inspector npm start"
