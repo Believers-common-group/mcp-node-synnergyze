@@ -1,0 +1,112 @@
+name: pef-alpha-m1-m2
+
+on:
+  push:
+    branches:
+      - feat/vsr-pef-alpha-0.1-m1-m2
+  pull_request:
+    paths:
+      - "packages/contracts/**"
+      - "schemas/**"
+      - "modules/pef/**"
+      - "package.json"
+      - "tsconfig.json"
+      - ".github/workflows/pef-alpha-m1-m2.yml"
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: pef_alpha
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres -d pef_alpha"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: ".nvmrc"
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Type check
+        run: npm run type-check
+
+      - name: Lint PEF surface
+        run: npm run lint:pef
+
+      - name: M1 + M2 acceptance tests
+        run: npm run test:pef
+
+      - name: PostgreSQL migration and append-only audit
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -U postgres -d pef_alpha -v ON_ERROR_STOP=1 -f modules/pef/sql/001_pef_event_outbox.sql
+          psql -h localhost -U postgres -d pef_alpha -v ON_ERROR_STOP=1 <<'SQL'
+          INSERT INTO pef_event (
+            event_id, event_type, assertion_type, assurance, occurred_at, recorded_at,
+            producer_id, producer_type, payload, payload_hash
+          ) VALUES (
+            'evt-ci-001', 'physical.observation.temperature', 'physical_observation', 'A0',
+            '2026-08-22T12:00:00Z', '2026-08-22T12:00:01Z',
+            'TEMP-CI', 'sensor', '{"celsius":9.1}'::jsonb, 'sha256:fixture'
+          );
+
+          INSERT INTO pef_outbox (outbox_id, event_id, topic, payload, created_at)
+          VALUES (
+            'PEF-OUTBOX:CI-001', 'evt-ci-001', 'pef.v1.observation.received',
+            '{"event_id":"evt-ci-001"}'::jsonb, '2026-08-22T12:00:01Z'
+          );
+
+          DO $block$
+          BEGIN
+            BEGIN
+              UPDATE pef_event SET assurance = 'A1' WHERE event_id = 'evt-ci-001';
+              RAISE EXCEPTION 'UPDATE_GUARD_MISSING';
+            EXCEPTION WHEN OTHERS THEN
+              IF SQLERRM = 'UPDATE_GUARD_MISSING' OR
+                 POSITION('PEF_EVENT_APPEND_ONLY_UPDATE_FORBIDDEN' IN SQLERRM) = 0 THEN
+                RAISE;
+              END IF;
+            END;
+
+            BEGIN
+              DELETE FROM pef_event WHERE event_id = 'evt-ci-001';
+              RAISE EXCEPTION 'DELETE_GUARD_MISSING';
+            EXCEPTION WHEN OTHERS THEN
+              IF SQLERRM = 'DELETE_GUARD_MISSING' OR
+                 POSITION('PEF_EVENT_APPEND_ONLY_DELETE_FORBIDDEN' IN SQLERRM) = 0 THEN
+                RAISE;
+              END IF;
+            END;
+          END
+          $block$;
+
+          DO $block$
+          DECLARE
+            event_count integer;
+            outbox_count integer;
+          BEGIN
+            SELECT COUNT(*) INTO event_count FROM pef_event WHERE event_id = 'evt-ci-001';
+            SELECT COUNT(*) INTO outbox_count FROM pef_outbox WHERE event_id = 'evt-ci-001';
+            IF event_count <> 1 OR outbox_count <> 1 THEN
+              RAISE EXCEPTION 'PEF_M2_PERSISTENCE_AUDIT_FAILED';
+            END IF;
+          END
+          $block$;
+          SQL
