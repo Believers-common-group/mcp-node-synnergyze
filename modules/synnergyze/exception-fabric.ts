@@ -40,6 +40,7 @@ export interface CanonicalExceptionRecordV1 {
   eventRef: string;
   capabilityRef: string;
   targetRef: string;
+  requestedEffect?: string;
   correlationId: string;
   observationRef?: string;
   sourceEvidenceRefs: readonly string[];
@@ -208,6 +209,7 @@ export class ExceptionFabricV1 {
           eventRef: receipt.eventRef,
           capabilityRef: receipt.capabilityRef,
           targetRef: receipt.targetRef,
+          requestedEffect: receipt.requestedEffect ?? null,
           correlationId: receipt.correlationId,
           executedAt: receipt.executedAt,
         },
@@ -269,6 +271,7 @@ export class ExceptionFabricV1 {
       eventRef: receipt.eventRef,
       capabilityRef: receipt.capabilityRef,
       targetRef: receipt.targetRef,
+      requestedEffect: receipt.requestedEffect,
       correlationId: receipt.correlationId,
       observationRef: failure.observationRef,
       sourceEvidenceRefs,
