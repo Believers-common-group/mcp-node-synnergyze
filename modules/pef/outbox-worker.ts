@@ -5,9 +5,16 @@ export interface RiverPublisherPortV1 {
   publish(topic: string, event: PefEventV1): Promise<void>;
 }
 
+export type MarkOutboxPublishedV1 = (outboxId: string, publishedAt: string) => Promise<void>;
+
 export interface OutboxRepositoryPortV1 {
-  lockUnpublished(limit: number): Promise<readonly PefOutboxRecordV1[]>;
-  markPublished(outboxId: string, publishedAt: string): Promise<void>;
+  withLockedUnpublished<T>(
+    limit: number,
+    work: (
+      rows: readonly PefOutboxRecordV1[],
+      markPublished: MarkOutboxPublishedV1,
+    ) => Promise<T>,
+  ): Promise<T>;
 }
 
 export async function publishOutboxBatchV1(
@@ -16,14 +23,15 @@ export async function publishOutboxBatchV1(
   publishedAt: string,
   limit = 100,
 ): Promise<number> {
-  const rows = await repository.lockUnpublished(limit);
-  let published = 0;
-  for (const row of rows) {
-    await publisher.publish(row.topic, row.payload);
-    await repository.markPublished(row.outbox_id, publishedAt);
-    published += 1;
-  }
-  return published;
+  return repository.withLockedUnpublished(limit, async (rows, markPublished) => {
+    let published = 0;
+    for (const row of rows) {
+      await publisher.publish(row.topic, row.payload);
+      await markPublished(row.outbox_id, publishedAt);
+      published += 1;
+    }
+    return published;
+  });
 }
 
 export async function consumeIdempotentlyV1(

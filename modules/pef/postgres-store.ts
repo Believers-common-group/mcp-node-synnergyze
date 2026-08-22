@@ -1,8 +1,12 @@
 import type { PefEventV1 } from "../../packages/contracts/event.ts";
+import { validateProducerEvent } from "./ingestion.ts";
 import { eventFingerprint, makeOutboxId, type PefOutboxRecordV1 } from "./persistence.ts";
 
 export interface SqlTransactionV1 {
-  query<T = Record<string, unknown>>(sql: string, params?: readonly unknown[]): Promise<{ rows: T[] }>;
+  query<T = Record<string, unknown>>(
+    sql: string,
+    params?: readonly unknown[],
+  ): Promise<{ rows: T[] }>;
 }
 
 export interface SqlDatabaseV1 extends SqlTransactionV1 {
@@ -12,7 +16,9 @@ export interface SqlDatabaseV1 extends SqlTransactionV1 {
 export class PostgresPefEventStoreV1 {
   constructor(private readonly db: SqlDatabaseV1) {}
 
-  async ingest(event: PefEventV1): Promise<"INSERTED" | "DUPLICATE"> {
+  async ingest(input: unknown): Promise<"INSERTED" | "DUPLICATE"> {
+    const event = validateProducerEvent(input);
+
     return this.db.transaction(async (tx) => {
       const fingerprint = eventFingerprint(event);
       const existing = await tx.query<{ payload_hash: string }>(
@@ -50,31 +56,44 @@ export class PostgresPefEventStoreV1 {
       await tx.query(
         `INSERT INTO pef_outbox (outbox_id, event_id, topic, payload, created_at)
          VALUES ($1,$2,$3,$4::jsonb,$5)`,
-        [makeOutboxId(event), event.event_id, "pef.v1.observation.received", JSON.stringify(event), event.recorded_at],
+        [
+          makeOutboxId(event),
+          event.event_id,
+          "pef.v1.observation.received",
+          JSON.stringify(event),
+          event.recorded_at,
+        ],
       );
 
       return "INSERTED";
     });
   }
 
-  async lockUnpublished(limit: number): Promise<readonly PefOutboxRecordV1[]> {
-    const result = await this.db.query<PefOutboxRecordV1>(
-      `SELECT outbox_id, event_id, topic, payload, created_at, published_at
-       FROM pef_outbox
-       WHERE published_at IS NULL
-       ORDER BY created_at, outbox_id
-       FOR UPDATE SKIP LOCKED
-       LIMIT $1`,
-      [limit],
-    );
-    return result.rows;
-  }
+  async withLockedUnpublished<T>(
+    limit: number,
+    work: (
+      rows: readonly PefOutboxRecordV1[],
+      markPublished: (outboxId: string, publishedAt: string) => Promise<void>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    return this.db.transaction(async (tx) => {
+      const result = await tx.query<PefOutboxRecordV1>(
+        `SELECT outbox_id, event_id, topic, payload, created_at, published_at
+         FROM pef_outbox
+         WHERE published_at IS NULL
+         ORDER BY created_at, outbox_id
+         FOR UPDATE SKIP LOCKED
+         LIMIT $1`,
+        [limit],
+      );
 
-  async markPublished(outboxId: string, publishedAt: string): Promise<void> {
-    await this.db.query(
-      "UPDATE pef_outbox SET published_at = COALESCE(published_at, $2) WHERE outbox_id = $1",
-      [outboxId, publishedAt],
-    );
+      return work(result.rows, async (outboxId, publishedAt) => {
+        await tx.query(
+          "UPDATE pef_outbox SET published_at = COALESCE(published_at, $2) WHERE outbox_id = $1",
+          [outboxId, publishedAt],
+        );
+      });
+    });
   }
 
   async checkpointExists(consumerName: string, eventId: string): Promise<boolean> {

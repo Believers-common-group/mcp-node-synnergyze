@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { consumeIdempotentlyV1 } from "./outbox-worker.ts";
+import { consumeIdempotentlyV1, publishOutboxBatchV1 } from "./outbox-worker.ts";
 import { SyntheticRiverStoreV1 } from "./persistence.ts";
 
 function fixtureEvent() {
@@ -45,13 +45,25 @@ describe("PEF-M2 River persistence acceptance", () => {
     expect(() => store.deleteEvent()).toThrow("PEF_EVENT_APPEND_ONLY_DELETE_FORBIDDEN");
   });
 
-  it("PEF-ACC-005 outbox survives publisher crash", () => {
+  it("PEF-ACC-005 outbox survives publisher crash", async () => {
     const store = new SyntheticRiverStoreV1();
     store.ingest(fixtureEvent());
-    const beforeCrash = store.unpublishedOutbox();
-    expect(beforeCrash).toHaveLength(1);
+    let publishAttempts = 0;
 
-    // Crash before publish/ack: persisted event and outbox remain available for replay.
+    await expect(
+      publishOutboxBatchV1(
+        store,
+        {
+          publish: async () => {
+            publishAttempts += 1;
+            throw new Error("SIMULATED_PUBLISHER_CRASH");
+          },
+        },
+        "2026-08-22T12:01:00Z",
+      ),
+    ).rejects.toThrow("SIMULATED_PUBLISHER_CRASH");
+
+    expect(publishAttempts).toBe(1);
     expect(store.getEvent("evt-temp-a-1435")).toBeDefined();
     expect(store.unpublishedOutbox()).toHaveLength(1);
   });
@@ -61,16 +73,61 @@ describe("PEF-M2 River persistence acceptance", () => {
     const event = store.ingest(fixtureEvent()).event;
     let effects = 0;
     const checkpoint = {
-      exists: async (consumerName: string, eventId: string) => store.checkpointExists(consumerName, eventId),
-      commit: async (consumerName: string, eventId: string) => store.checkpoint(consumerName, eventId),
+      exists: async (consumerName: string, eventId: string) =>
+        store.checkpointExists(consumerName, eventId),
+      commit: async (consumerName: string, eventId: string) =>
+        store.checkpoint(consumerName, eventId),
     };
     const consequence = async () => {
       effects += 1;
     };
 
-    expect(await consumeIdempotentlyV1("fixture-consumer", event, checkpoint, consequence, "2026-08-22T12:01:00Z")).toBe("PROCESSED");
-    expect(await consumeIdempotentlyV1("fixture-consumer", event, checkpoint, consequence, "2026-08-22T12:01:01Z")).toBe("DUPLICATE");
+    expect(
+      await consumeIdempotentlyV1(
+        "fixture-consumer",
+        event,
+        checkpoint,
+        consequence,
+        "2026-08-22T12:01:00Z",
+      ),
+    ).toBe("PROCESSED");
+    expect(
+      await consumeIdempotentlyV1(
+        "fixture-consumer",
+        event,
+        checkpoint,
+        consequence,
+        "2026-08-22T12:01:01Z",
+      ),
+    ).toBe("DUPLICATE");
     expect(effects).toBe(1);
+  });
+
+  it("prevents two outbox workers from holding the same unpublished row", async () => {
+    const store = new SyntheticRiverStoreV1();
+    store.ingest(fixtureEvent());
+
+    let releaseFirst = () => {};
+    let signalFirstStarted = () => {};
+    const firstStarted = new Promise<void>((resolve) => {
+      signalFirstStarted = resolve;
+    });
+    const holdFirst = new Promise<void>((resolve) => {
+      releaseFirst = resolve;
+    });
+
+    const first = store.withLockedUnpublished(100, async (rows) => {
+      expect(rows).toHaveLength(1);
+      signalFirstStarted();
+      await holdFirst;
+      return rows.length;
+    });
+
+    await firstStarted;
+    const second = await store.withLockedUnpublished(100, async (rows) => rows.length);
+    expect(second).toBe(0);
+    releaseFirst();
+    await expect(first).resolves.toBe(1);
   });
 
   it("rejects conflicting reuse of an event id", () => {

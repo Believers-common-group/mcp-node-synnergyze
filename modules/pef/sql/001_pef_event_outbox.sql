@@ -10,7 +10,7 @@ CREATE TABLE IF NOT EXISTS pef_event (
   occurred_at TIMESTAMPTZ NOT NULL,
   recorded_at TIMESTAMPTZ NOT NULL,
   producer_id TEXT NOT NULL,
-  producer_type TEXT NOT NULL,
+  producer_type TEXT NOT NULL CHECK (producer_type IN ('sensor','gateway','service','fixture')),
   payload JSONB NOT NULL,
   payload_hash TEXT NOT NULL,
   source_event_id TEXT NULL,
@@ -24,7 +24,8 @@ CREATE TABLE IF NOT EXISTS pef_outbox (
   topic TEXT NOT NULL,
   payload JSONB NOT NULL,
   created_at TIMESTAMPTZ NOT NULL,
-  published_at TIMESTAMPTZ NULL
+  published_at TIMESTAMPTZ NULL,
+  UNIQUE (event_id, topic)
 );
 
 CREATE INDEX IF NOT EXISTS pef_outbox_unpublished_idx

@@ -22,13 +22,15 @@ describe("VSR-PEF-ALPHA-0.1 contract grammar", () => {
   });
 
   it("rejects a missing required field", () => {
-    const event = fixtureEvent();
-    const { event_id: _eventId, ...withoutEventId } = event;
+    const withoutEventId: Record<string, unknown> = { ...fixtureEvent() };
+    delete withoutEventId.event_id;
     expect(validatePefEventV1(withoutEventId).valid).toBe(false);
   });
 
   it("rejects an unknown assertion type", () => {
-    expect(validatePefEventV1({ ...fixtureEvent(), assertion_type: "producer_opinion" }).valid).toBe(false);
+    expect(
+      validatePefEventV1({ ...fixtureEvent(), assertion_type: "producer_opinion" }).valid,
+    ).toBe(false);
   });
 
   it("rejects an invalid assurance", () => {
@@ -40,15 +42,17 @@ describe("VSR-PEF-ALPHA-0.1 contract grammar", () => {
   });
 
   it("rejects an invalid consequence state", () => {
-    expect(validateTriggerEvaluationV1({
-      schema_version: "trigger-evaluation.v1",
-      trigger_evaluation_id: "TRIG-001",
-      evidence_bundle_ref: "EVB:001:v1",
-      inference_ref: "INF-001",
-      consequence_state: "D9",
-      result: "ELIGIBLE",
-      reason_codes: [],
-      evaluated_at: "2026-08-22T12:10:00Z",
-    }).valid).toBe(false);
+    expect(
+      validateTriggerEvaluationV1({
+        schema_version: "trigger-evaluation.v1",
+        trigger_evaluation_id: "TRIG-001",
+        evidence_bundle_ref: "EVB:001:v1",
+        inference_ref: "INF-001",
+        consequence_state: "D9",
+        result: "ELIGIBLE",
+        reason_codes: [],
+        evaluated_at: "2026-08-22T12:10:00Z",
+      }).valid,
+    ).toBe(false);
   });
 });

@@ -9,7 +9,7 @@ export interface PefOutboxRecordV1 {
   topic: string;
   payload: PefEventV1;
   created_at: string;
-  published_at?: string;
+  published_at?: string | null;
 }
 
 export interface PefConsumerCheckpointV1 {
@@ -45,7 +45,10 @@ export function eventFingerprint(event: PefEventV1): string {
 }
 
 export function makeOutboxId(event: PefEventV1): string {
-  return `PEF-OUTBOX:${sha256({ event_id: event.event_id, topic: "pef.v1.observation.received" }).slice(0, 24)}`;
+  return `PEF-OUTBOX:${sha256({
+    event_id: event.event_id,
+    topic: "pef.v1.observation.received",
+  }).slice(0, 24)}`;
 }
 
 interface StoredEvent {
@@ -61,6 +64,7 @@ interface StoredEvent {
 export class SyntheticRiverStoreV1 {
   private readonly events = new Map<string, StoredEvent>();
   private readonly outbox = new Map<string, PefOutboxRecordV1>();
+  private readonly lockedOutbox = new Set<string>();
   private readonly checkpoints = new Set<string>();
 
   ingest(input: unknown): PefIngestResultV1 {
@@ -74,7 +78,11 @@ export class SyntheticRiverStoreV1 {
       }
       const outbox = this.outbox.get(makeOutboxId(event));
       if (!outbox) throw new Error("PEF_OUTBOX_INVARIANT_BROKEN");
-      return { event: structuredClone(existing.event), outbox: structuredClone(outbox), duplicate: true };
+      return {
+        event: structuredClone(existing.event),
+        outbox: structuredClone(outbox),
+        duplicate: true,
+      };
     }
 
     const storedEvent = structuredClone(event);
@@ -89,7 +97,11 @@ export class SyntheticRiverStoreV1 {
     // One logical atomic boundary: both maps are committed together.
     this.events.set(event.event_id, { event: storedEvent, fingerprint });
     this.outbox.set(outbox.outbox_id, outbox);
-    return { event: structuredClone(storedEvent), outbox: structuredClone(outbox), duplicate: false };
+    return {
+      event: structuredClone(storedEvent),
+      outbox: structuredClone(outbox),
+      duplicate: false,
+    };
   }
 
   getEvent(eventId: string): PefEventV1 | undefined {
@@ -110,6 +122,31 @@ export class SyntheticRiverStoreV1 {
       .filter((row) => !row.published_at)
       .slice(0, limit)
       .map((row) => structuredClone(row));
+  }
+
+  async withLockedUnpublished<T>(
+    limit: number,
+    work: (
+      rows: readonly PefOutboxRecordV1[],
+      markPublished: (outboxId: string, publishedAt: string) => Promise<void>,
+    ) => Promise<T>,
+  ): Promise<T> {
+    const rows = [...this.outbox.values()]
+      .filter((row) => !row.published_at && !this.lockedOutbox.has(row.outbox_id))
+      .slice(0, limit);
+
+    for (const row of rows) this.lockedOutbox.add(row.outbox_id);
+
+    try {
+      return await work(
+        rows.map((row) => structuredClone(row)),
+        async (outboxId, publishedAt) => {
+          this.markPublished(outboxId, publishedAt);
+        },
+      );
+    } finally {
+      for (const row of rows) this.lockedOutbox.delete(row.outbox_id);
+    }
   }
 
   markPublished(outboxId: string, publishedAt: string): void {
