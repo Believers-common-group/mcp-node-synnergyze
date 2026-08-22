@@ -19,7 +19,7 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     env:
-      ASSURANCE_DIR: ${{ runner.temp }}/licence-sbom-assurance
+      ASSURANCE_DIR: assurance/licence-sbom
     steps:
       - name: Checkout exact revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
