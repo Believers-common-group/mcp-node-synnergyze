@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  bindRiverVerifiedOutcomeV01,
   validateQelOperationalFrameV01,
   VSR_QEL_CORE_CONTRACT_VERSION,
   type QelOperationalFrameV01,
@@ -131,4 +132,72 @@ describe("VSR-QEL-CORE-001 operational frame", () => {
     expect(result.ok).toBe(false);
     expect(result.issues).toContain("native_binding_incomplete");
   });
+  it("binds a correlated fresh River receipt into VERIFIED", () => {
+    const result = bindRiverVerifiedOutcomeV01({
+      correlationId: "QEL-CORR-001",
+      effectRef: "EFFECT-001",
+      observedAt: "2026-08-21T08:35:00.000Z",
+      maximumReceiptAgeMs: 30_000,
+      receipt: {
+        receiptRef: "RIVER:EFFECT-RECEIPT-001",
+        correlationId: "QEL-CORR-001",
+        effectRef: "EFFECT-001",
+        verifiedAt: "2026-08-21T08:34:59.000Z",
+        verificationState: "VERIFIED",
+      },
+    });
+
+    expect(result).toEqual({
+      outcome: {
+        state: "VERIFIED",
+        effectRef: "EFFECT-001",
+        riverReceiptRef: "RIVER:EFFECT-RECEIPT-001",
+      },
+    });
+  });
+
+  it("fails closed on mismatched, future or stale River verification evidence", () => {
+    const common = {
+      correlationId: "QEL-CORR-001",
+      effectRef: "EFFECT-001",
+      observedAt: "2026-08-21T08:35:00.000Z",
+      maximumReceiptAgeMs: 30_000,
+    };
+    const receipt = {
+      receiptRef: "RIVER:EFFECT-RECEIPT-001",
+      correlationId: "QEL-CORR-001",
+      effectRef: "EFFECT-001",
+      verifiedAt: "2026-08-21T08:34:59.000Z",
+      verificationState: "VERIFIED" as const,
+    };
+
+    expect(
+      bindRiverVerifiedOutcomeV01({
+        ...common,
+        receipt: { ...receipt, correlationId: "QEL-CORR-OTHER" },
+      }),
+    ).toMatchObject({
+      outcome: { state: "CONFLICTING_EVIDENCE" },
+      issue: "river_receipt_correlation_mismatch",
+    });
+    expect(
+      bindRiverVerifiedOutcomeV01({
+        ...common,
+        receipt: { ...receipt, verifiedAt: "2026-08-21T08:35:01.000Z" },
+      }),
+    ).toMatchObject({
+      outcome: { state: "CONFLICTING_EVIDENCE" },
+      issue: "river_receipt_from_future",
+    });
+    expect(
+      bindRiverVerifiedOutcomeV01({
+        ...common,
+        receipt: { ...receipt, verifiedAt: "2026-08-21T08:34:00.000Z" },
+      }),
+    ).toMatchObject({
+      outcome: { state: "EVIDENCE_BOUND" },
+      issue: "river_receipt_stale",
+    });
+  });
+
 });

@@ -3,8 +3,10 @@ import type {
   RunnerRegistration,
 } from "../../compute/runtime.ts";
 import {
+  bindRiverVerifiedOutcomeV01,
   VSR_QEL_CORE_CONTRACT_VERSION,
   type QelOperationalFrameV01,
+  type QelRiverVerificationReceiptV01,
 } from "./operational-contracts.ts";
 import {
   buildQelPodPulseV01,
@@ -20,16 +22,24 @@ export interface AlphaComputeQelInputV01 {
   observedAt: string;
   correlationId: string;
   attempt?: ComputeAttemptResult;
+  riverVerification?: QelRiverVerificationReceiptV01;
 }
 
-function mapAttemptOutcome(attempt: ComputeAttemptResult | undefined): QelOperationalFrameV01["outcome"] {
+function mapAttemptOutcome(
+  attempt: ComputeAttemptResult | undefined,
+  input: Pick<AlphaComputeQelInputV01, "correlationId" | "observedAt" | "riverVerification">,
+): QelOperationalFrameV01["outcome"] {
   if (!attempt) return { state: "UNKNOWN" };
 
   if (attempt.status === "VERIFIED") {
-    return {
-      state: "EVIDENCE_BOUND",
+    if (!attempt.evidenceRef) return { state: "EVIDENCE_BOUND" };
+    return bindRiverVerifiedOutcomeV01({
+      correlationId: input.correlationId,
       effectRef: attempt.evidenceRef,
-    };
+      observedAt: input.observedAt,
+      maximumReceiptAgeMs: 30_000,
+      receipt: input.riverVerification,
+    }).outcome;
   }
 
   if (attempt.status === "DENIED" || attempt.status === "BLOCKED_REQUIREMENT") {
@@ -147,7 +157,7 @@ export function mapAlphaComputeRunnerToQelFrameV01(
         },
       ],
     },
-    outcome: mapAttemptOutcome(attempt),
+    outcome: mapAttemptOutcome(attempt, input),
     native: {
       provider: "SYNNERGYZE_COMPUTE_RUNTIME",
       protocol: "LOCAL_RUNTIME",

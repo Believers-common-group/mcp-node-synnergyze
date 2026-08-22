@@ -150,6 +150,28 @@ export interface QelOutcomeV01 {
   riverReceiptRef?: string;
 }
 
+export interface QelRiverVerificationReceiptV01 {
+  receiptRef: string;
+  correlationId: string;
+  effectRef: string;
+  verifiedAt: string;
+  verificationState: "VERIFIED";
+}
+
+export type QelRiverOutcomeBindingIssueV01 =
+  | "river_receipt_missing"
+  | "river_receipt_malformed"
+  | "river_receipt_correlation_mismatch"
+  | "river_receipt_effect_mismatch"
+  | "river_receipt_time_invalid"
+  | "river_receipt_from_future"
+  | "river_receipt_stale";
+
+export interface QelRiverOutcomeBindingResultV01 {
+  outcome: QelOutcomeV01;
+  issue?: QelRiverOutcomeBindingIssueV01;
+}
+
 export interface QelOperationalFrameV01 {
   contractVersion: typeof VSR_QEL_CORE_CONTRACT_VERSION;
   frameRef: string;
@@ -180,6 +202,65 @@ function isConfidence(value: number): boolean {
   return Number.isFinite(value) && value >= 0 && value <= 1;
 }
 
+export function bindRiverVerifiedOutcomeV01(input: {
+  correlationId: string;
+  effectRef: string;
+  observedAt: string;
+  maximumReceiptAgeMs: number;
+  receipt?: QelRiverVerificationReceiptV01;
+}): QelRiverOutcomeBindingResultV01 {
+  const evidenceBound: QelOutcomeV01 = {
+    state: "EVIDENCE_BOUND",
+    effectRef: input.effectRef,
+  };
+  const conflicting: QelOutcomeV01 = {
+    state: "CONFLICTING_EVIDENCE",
+    effectRef: input.effectRef,
+  };
+  const receipt = input.receipt;
+
+  if (!receipt) return { outcome: evidenceBound, issue: "river_receipt_missing" };
+  if (
+    !receipt.receiptRef.trim() ||
+    !receipt.correlationId.trim() ||
+    !receipt.effectRef.trim() ||
+    receipt.verificationState !== "VERIFIED"
+  ) {
+    return { outcome: conflicting, issue: "river_receipt_malformed" };
+  }
+  if (receipt.correlationId !== input.correlationId) {
+    return { outcome: conflicting, issue: "river_receipt_correlation_mismatch" };
+  }
+  if (receipt.effectRef !== input.effectRef) {
+    return { outcome: conflicting, issue: "river_receipt_effect_mismatch" };
+  }
+
+  const observedAt = Date.parse(input.observedAt);
+  const verifiedAt = Date.parse(receipt.verifiedAt);
+  if (
+    !Number.isFinite(observedAt) ||
+    !Number.isFinite(verifiedAt) ||
+    !Number.isFinite(input.maximumReceiptAgeMs) ||
+    input.maximumReceiptAgeMs < 0
+  ) {
+    return { outcome: conflicting, issue: "river_receipt_time_invalid" };
+  }
+  if (verifiedAt > observedAt) {
+    return { outcome: conflicting, issue: "river_receipt_from_future" };
+  }
+  if (observedAt - verifiedAt > input.maximumReceiptAgeMs) {
+    return { outcome: evidenceBound, issue: "river_receipt_stale" };
+  }
+
+  return {
+    outcome: {
+      state: "VERIFIED",
+      effectRef: input.effectRef,
+      riverReceiptRef: receipt.receiptRef,
+    },
+  };
+}
+
 export function validateQelOperationalFrameV01(
   frame: QelOperationalFrameV01,
 ): QelFrameValidationResultV01 {
@@ -200,6 +281,9 @@ export function validateQelOperationalFrameV01(
   if (frame.evidence.freshness.ageMs < 0) issues.push("freshness_age_invalid");
   if (frame.evidence.freshness.maximumValidAgeMs < 0) issues.push("freshness_maximum_age_invalid");
   if (frame.moves.some((move) => !move.action)) issues.push("move_action_missing");
+  if (frame.outcome.state === "VERIFIED" && !frame.outcome.effectRef) {
+    issues.push("verified_outcome_requires_effect_ref");
+  }
   if (frame.outcome.state === "VERIFIED" && !frame.outcome.riverReceiptRef) {
     issues.push("verified_outcome_requires_river_receipt");
   }

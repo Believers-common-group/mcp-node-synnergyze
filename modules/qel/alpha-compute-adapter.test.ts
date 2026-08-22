@@ -131,4 +131,59 @@ describe("QEL-FIXTURE-001 Alpha compute adapter", () => {
     expect(pulse.proof.unresolvedOutcomes).toBe(1);
     expect(pulse.proof.riverBoundOutcomes).toBe(0);
   });
+  it("promotes a compute effect only with a fresh correlated River verification receipt", () => {
+    const { coordinator, runner } = makeRuntime();
+    const intent = makeSyntheticComputeIntent("QEL-COMPUTE-RIVER-001");
+    const result = coordinator.attempt(intent, makeSyntheticComputeGrant(intent));
+    if (!result.evidenceRef) throw new Error("expected_compute_evidence");
+
+    const frame = mapAlphaComputeRunnerToQelFrameV01({
+      registration: runner.registration,
+      attempt: result,
+      observedAt: OBSERVED_AT,
+      correlationId: intent.correlationId,
+      riverVerification: {
+        receiptRef: "RIVER:COMPUTE-EFFECT-001",
+        correlationId: intent.correlationId,
+        effectRef: result.evidenceRef,
+        verifiedAt: OBSERVED_AT,
+        verificationState: "VERIFIED",
+      },
+    });
+
+    expect(frame.outcome).toEqual({
+      state: "VERIFIED",
+      effectRef: result.evidenceRef,
+      riverReceiptRef: "RIVER:COMPUTE-EFFECT-001",
+    });
+    expect(validateQelOperationalFrameV01(frame)).toEqual({ ok: true, issues: [] });
+  });
+
+  it("surfaces mismatched River verification as conflicting evidence", () => {
+    const { coordinator, runner } = makeRuntime();
+    const intent = makeSyntheticComputeIntent("QEL-COMPUTE-RIVER-CONFLICT-001");
+    const result = coordinator.attempt(intent, makeSyntheticComputeGrant(intent));
+    if (!result.evidenceRef) throw new Error("expected_compute_evidence");
+
+    const frame = mapAlphaComputeRunnerToQelFrameV01({
+      registration: runner.registration,
+      attempt: result,
+      observedAt: OBSERVED_AT,
+      correlationId: intent.correlationId,
+      riverVerification: {
+        receiptRef: "RIVER:COMPUTE-EFFECT-CONFLICT-001",
+        correlationId: "QEL-COMPUTE-OTHER",
+        effectRef: result.evidenceRef,
+        verifiedAt: OBSERVED_AT,
+        verificationState: "VERIFIED",
+      },
+    });
+
+    expect(frame.outcome).toEqual({
+      state: "CONFLICTING_EVIDENCE",
+      effectRef: result.evidenceRef,
+    });
+    expect(validateQelOperationalFrameV01(frame).ok).toBe(true);
+  });
+
 });
