@@ -53,6 +53,7 @@ export interface ReconciliationDeterminationV1 {
   programRef: string;
   eventRef: string;
   targetRef: string;
+  requestedEffect?: string;
   correlationId: string;
   readbackRef?: string;
   sourceEvidenceRefs: readonly string[];
@@ -277,6 +278,7 @@ export class ReconciliationFabricV1 {
           programRef: exception.programRef,
           eventRef: exception.eventRef,
           targetRef: exception.targetRef,
+          requestedEffect: exception.requestedEffect ?? null,
           correlationId: exception.correlationId,
         },
         readback: readback
@@ -326,6 +328,7 @@ export class ReconciliationFabricV1 {
       programRef: exception.programRef,
       eventRef: exception.eventRef,
       targetRef: exception.targetRef,
+      requestedEffect: exception.requestedEffect,
       correlationId: exception.correlationId,
       readbackRef: readback?.readbackRef,
       sourceEvidenceRefs,
