@@ -3,12 +3,6 @@ name: licence-sbom
 on:
   pull_request:
     branches: [genesis]
-    paths:
-      - package.json
-      - package-lock.json
-      - LICENSE
-      - README.md
-      - .github/workflows/license-sbom.yml
   push:
     branches: [genesis]
     paths:
