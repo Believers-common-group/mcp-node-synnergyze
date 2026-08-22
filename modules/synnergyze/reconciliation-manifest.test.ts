@@ -15,6 +15,7 @@ const componentIds = [
   "CMP-SYNNERGYZE-EXCEPTION-FABRIC-001",
   "CMP-SYNNERGYZE-RECONCILIATION-FABRIC-001",
   "CMP-SYNNERGYZE-REMEDY-AUTH-001",
+  "CMP-SYNNERGYZE-REMEDY-JOURNAL-001",
   "CMP-SYNNERGYZE-REMEDY-RUNTIME-001",
 ] as const;
 
@@ -35,7 +36,7 @@ describe("WARDEN-ALPHA-REFERENCE-0.5.1 evidence registration", () => {
       "vitest run modules/synnergyze/effect-expectation.test.ts modules/synnergyze/exception-fabric.test.ts modules/synnergyze/reconciliation-fabric.test.ts modules/synnergyze/reconciliation-expectation.test.ts",
     );
     expect(packageJson.scripts?.["test:remedy-runtime"]).toBe(
-      "vitest run modules/synnergyze/remedy-authorization.test.ts modules/synnergyze/remedy-runtime.test.ts",
+      "vitest run modules/synnergyze/remedy-authorization.test.ts modules/synnergyze/remedy-execution.test.ts modules/synnergyze/remedy-runtime.test.ts",
     );
   });
 });
