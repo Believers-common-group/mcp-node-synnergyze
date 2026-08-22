@@ -86,6 +86,7 @@ export type RemedyExecutionRejectCodeV1 =
   | "REMEDY_EXECUTION_PARENT_CORRELATION_MISMATCH"
   | "REMEDY_EXECUTION_ORIGINAL_DECISION_MISMATCH"
   | "REMEDY_EXECUTION_PROPOSAL_NOT_BOUND"
+  | "REMEDY_EXECUTION_UNSUPPORTED_KIND"
   | "REMEDY_EXECUTION_INVALID_TIME"
   | "REMEDY_EXECUTION_BEFORE_AUTHORIZATION"
   | "REMEDY_EXECUTION_AUTHORIZATION_EXPIRED"
@@ -236,6 +237,12 @@ export class RemedyExecutionGateV1 {
   }): Promise<RemedyExecutionResultV1> {
     const validation = validateBoundGrant(input);
     if (validation) return validation;
+    // Recovery and compensation are effect-mutating actions. They must pass through
+    // RemedyRuntimeV1, which rechecks the fresh Warden decision, River reservation,
+    // execution checkpoint, action-token digest and child correlation.
+    if (input.proposal.kind !== "RETRY_OBSERVATION") {
+      return reject("REMEDY_EXECUTION_UNSUPPORTED_KIND");
+    }
 
     const adapter = this.adapters.get(input.grant.capabilityRef);
     if (!adapter) return reject("REMEDY_EXECUTION_ADAPTER_NOT_REGISTERED");
