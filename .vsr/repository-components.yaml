@@ -525,3 +525,54 @@ components:
     activation_gate: synthetic-remedy-execution-conformance-only
     activation_implied: false
 
+  - component_id: CMP-SYNNERGYZE-REMEDY-JOURNAL-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: durable-restart-safe-authorized-observation-retry
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/remedy-execution.ts
+    contract_paths:
+      - modules/synnergyze/remedy-execution.ts
+      - modules/synnergyze/postgres-remedy-journal.ts
+      - modules/synnergyze/sql/001_remedy_execution_journal.sql
+      - modules/synnergyze/remedy-authorization.ts
+    input_contracts:
+      - ReconciliationDeterminationV1
+      - ReconciliationRemedyProposalV1
+      - RemedyAuthorizationGrantV1
+      - RemedyExecutionJournalV1
+    output_contracts:
+      - RemedyExecutionReceiptV1
+      - RemedyExecutionResultV1
+    execution_states:
+      - EXECUTED_UNVERIFIED_REMEDY
+      - RECOVERY_REQUIRED
+    depends_on:
+      - CMP-SYNNERGYZE-REMEDY-AUTH-001
+      - CMP-SYNNERGYZE-RECONCILIATION-FABRIC-001
+    supported_remedy_kinds:
+      - RETRY_OBSERVATION
+    storage_adapters:
+      - IN_MEMORY_TEST_ONLY
+      - POSTGRES_JOURNAL
+    required_guards:
+      - exact-determination-proposal-grant-lineage
+      - authorization-validity-window
+      - authorization-ref-and-fingerprint-uniqueness
+      - durable-in-progress-before-adapter-invocation
+      - completed-replay-without-adapter-reinvocation
+      - crash-after-effect-stops-at-recovery-required
+      - failed-attempt-stops-at-recovery-required
+      - uncertain-outcome-never-automatically-retried
+    forbidden:
+      - execute-recover-or-compensate-kind
+      - bypass-controlled-remedy-runtime
+      - retry-uncertain-provider-effect
+      - treat-journal-or-provider-state-as-authority
+      - mark-remedy-effect-verified
+      - imply-objective-closure-or-settlement-finality
+    tests:
+      - modules/synnergyze/remedy-execution.test.ts
+      - modules/synnergyze/reconciliation-manifest.test.ts
+    activation_gate: postgres-journal-migration-and-restart-conformance-only
+    activation_implied: false
+
