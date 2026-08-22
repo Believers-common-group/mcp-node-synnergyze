@@ -262,4 +262,50 @@ describe("REMEDY-EXECUTION-001 restart safety", () => {
     });
     expect(adapter.invocations).toBe(1);
   });
+
+  it("cannot bypass the controlled recovery and compensation runtime", async () => {
+    for (const kind of ["RECOVER", "COMPENSATE"] as const) {
+      const capabilityRef = kind === "RECOVER" ? "effect.recover" : "effect.compensate";
+      const candidateProposal: ReconciliationRemedyProposalV1 = {
+        ...proposal,
+        proposalRef: `REMEDY-PROPOSAL:${kind}`,
+        kind,
+        capabilityRef,
+      };
+      const candidateDetermination: ReconciliationDeterminationV1 = {
+        ...determination,
+        candidateRemedies: [candidateProposal],
+      };
+      const candidateGrant = grant({
+        proposalRef: candidateProposal.proposalRef,
+        proposalKind: kind,
+        capabilityRef,
+      });
+      let invocations = 0;
+      const adapter: RemedyExecutionAdapterV1 = {
+        adapterRef: `SYNTHETIC-${kind}-BYPASS-ADAPTER-001`,
+        capabilityRef,
+        async execute() {
+          invocations += 1;
+          return { adapterResultRef: `BYPASS:${kind}` };
+        },
+      };
+      const journal = new InMemoryRemedyExecutionJournalV1();
+      const result = await new RemedyExecutionGateV1([adapter]).execute({
+        determination: candidateDetermination,
+        proposal: candidateProposal,
+        grant: candidateGrant,
+        journal,
+        executedAt: "2026-08-22T20:00:02.000Z",
+      });
+
+      expect(result).toEqual({
+        state: "REJECTED_INPUT",
+        reasonCode: "REMEDY_EXECUTION_UNSUPPORTED_KIND",
+      });
+      expect(invocations).toBe(0);
+      expect(journal.size()).toBe(0);
+    }
+  });
+
 });
