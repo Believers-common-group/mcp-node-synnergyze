@@ -5,7 +5,7 @@
   "scripts": {
     "start": "node --experimental-strip-types --no-warnings=ExperimentalWarnings src/app.ts",
     "type-check": "tsc --noEmit",
-    "lint": "eslint --ext .ts src api rc1 compute agent-fabric site-handoff modules",
+    "lint": "eslint --ext .ts src api rc1 compute agent-fabric site-handoff modules packages",
     "test": "vitest",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
     "test:rc1": "vitest run rc1/runtime.test.ts",
@@ -26,6 +26,7 @@
     "test:bag-lock-runtime": "vitest run modules/synnergyze/warden-request-bridge.test.ts modules/synnergyze/execution-gate.test.ts",
     "test:sites": "vitest run api/sites.test.ts",
     "test:site-handoff": "vitest run site-handoff",
+    "test:pef-contracts": "vitest run packages/contracts/contracts.test.ts modules/pef/ingestion.test.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
     "debug": "mcp-inspector npm start"
@@ -59,10 +60,6 @@
     "typescript-eslint": "^8.30.1",
     "vitest": "^3.1.1"
   },
-  "engines": {
-    "node": "22.x"
-  },
-  "prettier": {
-    "printWidth": 100
-  }
+  "engines": {"node": "22.x"},
+  "prettier": {"printWidth": 100}
 }
