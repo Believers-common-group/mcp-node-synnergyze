@@ -1,4 +1,3 @@
-import type { PefEventV1 } from "../../packages/contracts/event.ts";
 import { validateProducerEvent } from "./ingestion.ts";
 import { eventFingerprint, makeOutboxId, type PefOutboxRecordV1 } from "./persistence.ts";
 

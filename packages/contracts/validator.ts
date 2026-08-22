@@ -1,4 +1,4 @@
-import Ajv2020, { type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
+import { Ajv2020, type ErrorObject, type ValidateFunction } from "ajv/dist/2020.js";
 
 import pefEventSchema from "../../schemas/pef-event.v1.schema.json" with { type: "json" };
 import triggerEvaluationSchema from "../../schemas/trigger-evaluation.v1.schema.json" with { type: "json" };
