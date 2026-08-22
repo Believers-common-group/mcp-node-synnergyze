@@ -30,7 +30,7 @@
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
     "debug": "mcp-inspector npm start",
     "test:reconciliation": "vitest run modules/synnergyze/effect-expectation.test.ts modules/synnergyze/exception-fabric.test.ts modules/synnergyze/reconciliation-fabric.test.ts modules/synnergyze/reconciliation-expectation.test.ts",
-    "test:remedy-runtime": "vitest run modules/synnergyze/remedy-authorization.test.ts modules/synnergyze/remedy-runtime.test.ts"
+    "test:remedy-runtime": "vitest run modules/synnergyze/remedy-authorization.test.ts modules/synnergyze/remedy-execution.test.ts modules/synnergyze/remedy-runtime.test.ts"
   },
   "type": "module",
   "keywords": [
