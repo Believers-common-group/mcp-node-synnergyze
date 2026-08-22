@@ -111,6 +111,7 @@ export interface SynnergyzeExecutionReceiptV1 {
   eventRef: string;
   capabilityRef: string;
   targetRef: string;
+  requestedEffect?: string;
   correlationId: string;
   adapterRef: string;
   adapterResultRef: string;

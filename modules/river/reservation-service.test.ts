@@ -82,7 +82,7 @@ function allowPair(
 }
 
 describe("VSR-NETWORK-RIVER-RESERVATION-BRIDGE-001", () => {
-  it("binds one exact Warden ALLOW into an action envelope and River reservation", () => {
+  it("binds one exact Warden ALLOW including its intended effect into an action envelope and River reservation", () => {
     const service = new SyntheticRiverReservationServiceV1();
     const pair = allowPair();
     const reservation = service.reserve({ ...pair, reservedAt: RESERVED_AT });
@@ -91,6 +91,7 @@ describe("VSR-NETWORK-RIVER-RESERVATION-BRIDGE-001", () => {
     expect(pair.action.requestRef).toBe(pair.request.requestRef);
     expect(pair.action.programRef).toBe(pair.request.programRef);
     expect(pair.action.eventRef).toBe(pair.request.eventRef);
+    expect(pair.action.requestedEffect).toBe(pair.request.requestedEffect);
     expect(reservation.state).toBe("RESERVED");
     expect(reservation.wardenDecisionRef).toBe(pair.decision.decisionRef);
     expect(reservation.authorizationDigest).toMatch(/^sha256:/);
@@ -158,13 +159,14 @@ describe("VSR-NETWORK-RIVER-RESERVATION-BRIDGE-001", () => {
     expect(service.reservationCount()).toBe(0);
   });
 
-  it("rejects actor, program, event and capability drift before mutating River state", () => {
+  it("rejects actor, program, event, capability and intended-effect drift before mutating River state", () => {
     const pair = allowPair();
     const drifts: Array<Partial<ActionEnvelopeV1>> = [
       { actorRef: "DIGITALME-OTHER-001" },
       { programRef: "SYNNERGYZE-PROGRAM:OTHER" },
       { eventRef: "SYNNERGYZE-EVENT:OTHER" },
       { capabilityRef: "other.capability" },
+      { requestedEffect: "service_request.deleted" },
     ];
 
     for (const drift of drifts) {
