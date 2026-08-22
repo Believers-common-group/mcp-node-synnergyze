@@ -32,7 +32,7 @@ The operator does not need provider vocabulary to distinguish these required sta
 Run:
 
 ```sh
-npm run test:qel
+npm run test:qel:acceptance
 npm run type-check
 npm run lint
 ```
