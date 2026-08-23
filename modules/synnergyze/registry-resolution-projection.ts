@@ -1,6 +1,6 @@
 import { createHash } from "node:crypto";
 
-import type { SignedRiverPublicationAttestationV1 } from "./river-publication-attestation.ts";
+import type { RiverPublicationAttestationResultV1 } from "./river-publication-attestation.ts";
 
 export type RegistryProjectionAssuranceV1 = "A0" | "A1" | "A2" | "A3" | "A4";
 
@@ -82,7 +82,7 @@ function parseInstant(value: string): number | null {
 
 export function evaluateRegistryProjectionEligibilityV1(input: {
   intent: RegistryExceptionResolutionProjectionIntentV1;
-  attestation: SignedRiverPublicationAttestationV1;
+  attestation: RiverPublicationAttestationResultV1;
   policy: RegistryProjectionPolicyV1;
   eligibleAt: string;
 }): RegistryProjectionEligibilityResultV1 {
