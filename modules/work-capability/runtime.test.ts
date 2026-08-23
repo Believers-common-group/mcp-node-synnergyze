@@ -145,6 +145,22 @@ describe("WORK-CAPABILITY-RUNTIME-001 effect and capability evidence", () => {
     ).toBe(true);
   });
 
+  it("does not inflate an assist agent into the composite production capability", () => {
+    const result = runVerifiedWaistbandFixtureV1({
+      inputQuantity: 500,
+      acceptedQuantity: 490,
+      reworkQuantity: 10,
+    });
+
+    expect(
+      result.capabilityEvidence.some(
+        (item) =>
+          item.actorOrCompositionRef === "AGENT:WORK-INSTRUCTION-A2" &&
+          item.capabilityRef === "garment.waistband.attach",
+      ),
+    ).toBe(false);
+  });
+
   it("keeps a quantity shortfall open and proposes the exact remaining quantity", () => {
     const result = runVerifiedWaistbandFixtureV1({
       inputQuantity: 500,
