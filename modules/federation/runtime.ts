@@ -66,6 +66,12 @@ export interface FederatedLicenceBlockedSourceR1 {
   sourceDecision: WardenNonAllowDecisionV1;
 }
 
+export interface FederatedLicenceBlockedLineageR1 {
+  state: "BLOCKED_LINEAGE";
+  sourceDecision: WardenAllowDecisionV1;
+  reasonCode: "source_product_mismatch";
+}
+
 export interface FederatedLicenceBlockedDestinationR1 {
   state: "BLOCKED_DESTINATION";
   sourceDecision: WardenAllowDecisionV1;
@@ -75,6 +81,7 @@ export interface FederatedLicenceBlockedDestinationR1 {
 export type FederatedLicenceResultR1 =
   | FederatedLicenceCompletedR1
   | FederatedLicenceBlockedSourceR1
+  | FederatedLicenceBlockedLineageR1
   | FederatedLicenceBlockedDestinationR1;
 
 export interface ExecuteSyntheticFederatedLicenceInputR1 {
@@ -159,6 +166,14 @@ export function executeSyntheticFederatedLicenceR1(
     return {
       state: "BLOCKED_SOURCE",
       sourceDecision,
+    };
+  }
+
+  if (input.source.request.targetRef !== input.productRef) {
+    return {
+      state: "BLOCKED_LINEAGE",
+      sourceDecision,
+      reasonCode: "source_product_mismatch",
     };
   }
 
