@@ -21,9 +21,9 @@ import type {
   RemainingWorkProposalV1,
   WorkUnitV1,
 } from "../contracts.ts";
+import { projectProfileBoundCapabilityEvidenceV1 } from "../evidence.ts";
 import {
   executeAssignedWorkUnitV1,
-  projectCapabilityEvidenceV1,
   reconcileWorkUnitOutcomeV1,
   type AssignedWorkExecutionInputV1,
 } from "../runtime.ts";
@@ -352,9 +352,10 @@ export function runVerifiedWaistbandFixtureV1(
     firstPassQuality,
     cycleSeconds: executionInput.composition.expectedCycleSeconds,
   };
-  const capabilityEvidence = projectCapabilityEvidenceV1({
+  const capabilityEvidence = projectProfileBoundCapabilityEvidenceV1({
     workUnit: executionInput.workUnit,
     assignment: proof.assignment,
+    actorProfiles: executionInput.actorProfiles,
     capabilityRef: CAPABILITY_REF,
     execution: proof.execution,
     verifiedEffect: verificationResult.effect,
