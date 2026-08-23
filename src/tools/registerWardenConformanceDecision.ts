@@ -68,7 +68,7 @@ export const WARDEN_CONFORMANCE_POLICY: SyntheticWardenDecisionPolicyV1 = {
   constraints: ["MCP_CONFORMANCE_ONLY", "NO_EXTERNAL_EFFECT"],
 };
 
-const requestInputJsonSchema = {
+export const wardenConformanceRequestJsonSchema = {
   type: "object",
   additionalProperties: false,
   required: [
@@ -115,11 +115,17 @@ const requestInputJsonSchema = {
   },
 };
 
+export function parseWardenConformanceDecisionInput(
+  input: unknown,
+): WardenConformanceDecisionToolInput {
+  return toolInputSchema.parse(input);
+}
+
 export function evaluateWardenConformanceDecision(
   input: unknown,
   decidedAt = new Date().toISOString(),
 ) {
-  const parsed = toolInputSchema.parse(input);
+  const parsed = parseWardenConformanceDecisionInput(input);
   return evaluateSyntheticWardenDecisionV1({
     request: parsed.request as WardenDecisionRequestV1,
     policy: WARDEN_CONFORMANCE_POLICY,
@@ -140,7 +146,7 @@ export function registerWardenConformanceDecision(
       additionalProperties: false,
       required: ["request"],
       properties: {
-        request: requestInputJsonSchema,
+        request: wardenConformanceRequestJsonSchema,
       },
     },
     cb: async (args) => JSON.stringify(evaluateWardenConformanceDecision(args, clock())),

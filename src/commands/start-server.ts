@@ -12,6 +12,7 @@ import {
   registerGetApplications,
 } from "../tools/registerGetApplications.ts";
 import { maybeRegisterWardenConformanceDecision } from "../tools/registerWardenConformanceDecision.ts";
+import { maybeRegisterRiverWardenConformanceReservation } from "../tools/registerRiverWardenConformanceReservation.ts";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type {
   ProcessCallbackArguments,
@@ -90,6 +91,11 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
   // allow-list. It requires both VSR_WARDEN_MCP_CONFORMANCE=1 and an explicit
   // --allow-tools wardenEvaluateConformanceDecision opt-in.
   maybeRegisterWardenConformanceDecision(server, toolFilter);
+
+  // The composite Warden -> River reservation capability is independently
+  // gated. It requires both Warden and River conformance switches plus an
+  // explicit allow-tools entry; enabling Warden alone cannot expose River.
+  maybeRegisterRiverWardenConformanceReservation(server, toolFilter);
 
   const regionHotFixMiddlewares: RequestMiddleware[] = [];
   let processCallbackArguments: ProcessCallbackArguments;
