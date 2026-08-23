@@ -48,6 +48,9 @@ export interface WardenDecision {
   decisionId: string;
   executionId: string;
   principalId: string;
+  assetId: string;
+  operations: readonly string[];
+  selectedRoute: string;
   outcome: WardenOutcome;
   maxCost: number;
   currency: string;
