@@ -5,9 +5,17 @@ import {
   evaluateSyntheticWardenDecisionV1,
   type SyntheticWardenDecisionPolicyV1,
 } from "./decision-service.ts";
-import { buildRuntimeWardenDecisionReceipt } from "./runtime-authz-bridge.ts";
+import {
+  buildRuntimeEffectPolicyV1,
+  buildRuntimeWardenDecisionReceipt,
+} from "./runtime-authz-bridge.ts";
 
 const DECIDED_AT = "2026-08-23T08:00:30.000Z";
+const EFFECT_POLICY = buildRuntimeEffectPolicyV1({
+  "service_request.create": "WRITE",
+  "contract.execute": "EXECUTE",
+  "bank.transfer": "FINANCIAL",
+});
 
 function request(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisionRequestV1 {
   return {
@@ -23,7 +31,7 @@ function request(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisi
     targetRef: "LAB-SERVICE-DESK-001",
     requestedEffect: "service_request.created",
     authorityRefs: ["AUTHORITY:LAB-OPERATOR-001"],
-    policyRefs: ["POLICY:ALPHA-SYNTHETIC-001"],
+    policyRefs: ["POLICY:ALPHA-SYNTHETIC-001", EFFECT_POLICY.policyRef],
     representationSourceRefs: ["REGISTRY:REPRESENTATION-001"],
     requestedAt: "2026-08-23T08:00:00.000Z",
     correlationId: "CORR-RUNTIME-001",
@@ -47,7 +55,7 @@ function policy(
     contextRef: requestValue.contextRef,
     programRef: requestValue.programRef,
     requiredAuthorityRefs: ["AUTHORITY:LAB-OPERATOR-001"],
-    requiredPolicyRefs: ["POLICY:ALPHA-SYNTHETIC-001"],
+    requiredPolicyRefs: ["POLICY:ALPHA-SYNTHETIC-001", EFFECT_POLICY.policyRef],
     allowedCapabilityRefs: ["service_request.create"],
     manualReviewCapabilityRefs: ["contract.execute"],
     constraints: ["NO_EXTERNAL_EFFECT"],
@@ -76,12 +84,13 @@ describe("GCS-20260823-002 Runtime Warden receipt bridge", () => {
       request: req,
       decision,
       principal: principal(),
-      effectClass: "WRITE",
+      effectPolicy: EFFECT_POLICY,
     });
 
     expect(receipt.decision).toBe("ALLOW");
     expect(receipt.decision_receipt_id).toBe(decision.decisionRef);
     expect(receipt.action_binding.action_id).toBe(req.action);
+    expect(receipt.action_binding.effect_class).toBe("WRITE");
     expect(receipt.action_binding.request_digest).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.stringify(receipt)).not.toContain("WARDEN-ACTION-TOKEN:");
     expect(receipt.grant_binding?.authorization_token_digest).toMatch(/^[a-f0-9]{64}$/);
@@ -106,9 +115,10 @@ describe("GCS-20260823-002 Runtime Warden receipt bridge", () => {
       request: req,
       decision,
       principal: principal(),
-      effectClass: "EXECUTE",
+      effectPolicy: EFFECT_POLICY,
     });
     expect(receipt.decision).toBe("DENY");
+    expect(receipt.action_binding.effect_class).toBe("EXECUTE");
     expect(receipt.reason_codes).toContain("WARDEN_ESCALATE_REQUIRES_REVIEW");
     expect("grant_binding" in receipt).toBe(false);
   });
@@ -129,9 +139,10 @@ describe("GCS-20260823-002 Runtime Warden receipt bridge", () => {
       request: req,
       decision,
       principal: principal(),
-      effectClass: "FINANCIAL",
+      effectPolicy: EFFECT_POLICY,
     });
     expect(receipt.decision).toBe("DENY");
+    expect(receipt.action_binding.effect_class).toBe("FINANCIAL");
     expect("grant_binding" in receipt).toBe(false);
     expect("authority_refs" in receipt).toBe(false);
   });
@@ -148,7 +159,7 @@ describe("GCS-20260823-002 Runtime Warden receipt bridge", () => {
         request: req,
         decision,
         principal: principal("DIGITALME:OTHER"),
-        effectClass: "WRITE",
+        effectPolicy: EFFECT_POLICY,
       }),
     ).toThrow(/does not match/);
   });
@@ -164,7 +175,7 @@ describe("GCS-20260823-002 Runtime Warden receipt bridge", () => {
       request: req,
       decision,
       principal: principal(),
-      effectClass: "WRITE",
+      effectPolicy: EFFECT_POLICY,
     });
 
     const changedReq = request({ representedPrincipalRef: "OTHER-COMPANY-001" });
@@ -177,9 +188,48 @@ describe("GCS-20260823-002 Runtime Warden receipt bridge", () => {
       request: changedReq,
       decision: changedDecision,
       principal: principal(),
-      effectClass: "WRITE",
+      effectPolicy: EFFECT_POLICY,
     });
     expect(changed.action_binding.request_digest).not.toBe(first.action_binding.request_digest);
+  });
+
+  it("rejects an unbound or tampered runtime effect policy", () => {
+    const req = request();
+    const decision = evaluateSyntheticWardenDecisionV1({
+      request: req,
+      policy: policy(req),
+      decidedAt: DECIDED_AT,
+    });
+    const tampered = {
+      ...EFFECT_POLICY,
+      capabilityEffectClasses: {
+        ...EFFECT_POLICY.capabilityEffectClasses,
+        "service_request.create": "READ" as const,
+      },
+    };
+    expect(() =>
+      buildRuntimeWardenDecisionReceipt({
+        request: req,
+        decision,
+        principal: principal(),
+        effectPolicy: tampered,
+      }),
+    ).toThrow(/digest mismatch/);
+
+    const unboundReq = request({ policyRefs: ["POLICY:ALPHA-SYNTHETIC-001"] });
+    const unboundDecision = evaluateSyntheticWardenDecisionV1({
+      request: unboundReq,
+      policy: policy(unboundReq, { requiredPolicyRefs: ["POLICY:ALPHA-SYNTHETIC-001"] }),
+      decidedAt: DECIDED_AT,
+    });
+    expect(() =>
+      buildRuntimeWardenDecisionReceipt({
+        request: unboundReq,
+        decision: unboundDecision,
+        principal: principal(),
+        effectPolicy: EFFECT_POLICY,
+      }),
+    ).toThrow(/not bound/);
   });
 
   it("rejects decision/request mismatches and missing effect binding for mutations", () => {
@@ -194,7 +244,7 @@ describe("GCS-20260823-002 Runtime Warden receipt bridge", () => {
         request: req,
         decision: { ...decision, requestRef: "OTHER" },
         principal: principal(),
-        effectClass: "WRITE",
+        effectPolicy: EFFECT_POLICY,
       }),
     ).toThrow(/reference mismatch/);
 
@@ -209,7 +259,7 @@ describe("GCS-20260823-002 Runtime Warden receipt bridge", () => {
         request: noEffect,
         decision: noEffectDecision,
         principal: principal(),
-        effectClass: "WRITE",
+        effectPolicy: EFFECT_POLICY,
       }),
     ).toThrow(/requestedEffect/);
   });
