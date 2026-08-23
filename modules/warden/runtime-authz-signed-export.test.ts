@@ -1,4 +1,5 @@
-import { generateKeyPairSync, verify } from "node:crypto";
+import { createHash, generateKeyPairSync, verify } from "node:crypto";
+import { mkdirSync, writeFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { WardenDecisionRequestV1 } from "./contracts.ts";
@@ -13,6 +14,19 @@ import { buildSignedRuntimeWardenDecisionReceipt } from "./runtime-authz-signed-
 const EFFECT_POLICY = buildRuntimeEffectPolicyV1({
   "runtime.page.create": "WRITE",
 });
+const PRINCIPAL_RECEIPT_ID = "DIGITALME-PRINCIPAL:097414e04f4e127bb1b5fa469b98ffe1";
+const RUNTIME_BODY = {
+  tenant_id: "BNR",
+  runtime_id: "RUNTIME-001",
+  page_title: "Hosted Producer Fixture",
+  owner_id: "owner",
+  programme_id: null,
+};
+const BODY_CANONICAL = JSON.stringify(
+  Object.fromEntries(Object.entries(RUNTIME_BODY).sort(([left], [right]) => left.localeCompare(right))),
+);
+const BODY_DIGEST = createHash("sha256").update(BODY_CANONICAL, "utf8").digest("hex");
+const MATERIAL_EFFECT = `RUNTIME-MATERIAL-EFFECT:v1:runtime.page.created:sha256:${BODY_DIGEST}`;
 
 function request(): WardenDecisionRequestV1 {
   return {
@@ -26,11 +40,11 @@ function request(): WardenDecisionRequestV1 {
     action: "runtime.page.create",
     capabilityRef: "runtime.page.create",
     targetRef: "RUNTIME-001",
-    requestedEffect: "RUNTIME-MATERIAL-EFFECT:v1:runtime.page.created:sha256:" + "a".repeat(64),
+    requestedEffect: MATERIAL_EFFECT,
     authorityRefs: ["AUTHORITY:LAB-OPERATOR-001"],
     policyRefs: ["POLICY:ALPHA-SYNTHETIC-001", EFFECT_POLICY.policyRef],
     representationSourceRefs: ["REGISTRY:REPRESENTATION-001"],
-    requestedAt: "2026-08-23T08:00:00.000Z",
+    requestedAt: "2026-08-23T10:00:00.000Z",
     correlationId: "CORR-SIGNED-001",
   };
 }
@@ -40,8 +54,8 @@ function policy(req: WardenDecisionRequestV1): SyntheticWardenDecisionPolicyV1 {
     policySnapshotRef: "WARDEN-POLICY-SNAPSHOT:SIGNED-001",
     wardenRef: "WARDEN-ALPHA-CONFORMANCE-001",
     lifecycle: "ACTIVE",
-    validFrom: "2026-08-23T07:55:00.000Z",
-    validUntil: "2026-08-23T08:10:00.000Z",
+    validFrom: "2026-08-23T09:55:00.000Z",
+    validUntil: "2026-08-23T10:14:00.000Z",
     actorRef: req.actorRef,
     representedPrincipalRef: req.representedPrincipalRef,
     actingCapacityRef: req.actingCapacityRef,
@@ -58,10 +72,11 @@ function policy(req: WardenDecisionRequestV1): SyntheticWardenDecisionPolicyV1 {
 describe("GCS-20260823-002 signed Warden Runtime receipt export", () => {
   it("signs the actual decision producer output and fails verification after tamper", () => {
     const req = request();
+    expect(BODY_DIGEST).toBe("181d11208c469c5d9d2788a023cceea7e38342fdbef73bb3e7d4fa3d0de2d787");
     const decision = evaluateSyntheticWardenDecisionV1({
       request: req,
       policy: policy(req),
-      decidedAt: "2026-08-23T08:00:30.000Z",
+      decidedAt: "2026-08-23T10:00:30.000Z",
     });
     expect(decision.decision).toBe("ALLOW");
 
@@ -71,7 +86,7 @@ describe("GCS-20260823-002 signed Warden Runtime receipt export", () => {
       decision,
       principal: {
         digitalMeId: req.actorRef,
-        authenticatedPrincipalReceiptId: "DIGITALME-PRINCIPAL:SIGNED-001",
+        authenticatedPrincipalReceiptId: PRINCIPAL_RECEIPT_ID,
       },
       effectPolicy: EFFECT_POLICY,
       signing: {
@@ -82,6 +97,8 @@ describe("GCS-20260823-002 signed Warden Runtime receipt export", () => {
 
     expect(receipt.producer_signature.alg).toBe("Ed25519");
     expect(receipt.producer_signature.key_id).toBe("warden-test-key");
+    expect(receipt.principal_binding.authenticated_principal_receipt_id).toBe(PRINCIPAL_RECEIPT_ID);
+    expect(receipt.action_binding.effect_binding).toBe(MATERIAL_EFFECT);
     expect(
       verify(
         null,
@@ -101,6 +118,32 @@ describe("GCS-20260823-002 signed Warden Runtime receipt export", () => {
         Buffer.from(receipt.producer_signature.signature, "base64url"),
       ),
     ).toBe(false);
+
+    const fixtureDir = process.env.RUNTIME_AUTHZ_FIXTURE_DIR;
+    if (fixtureDir) {
+      mkdirSync(fixtureDir, { recursive: true });
+      writeFileSync(`${fixtureDir}/warden-decision-receipt.json`, JSON.stringify(receipt, null, 2));
+      writeFileSync(
+        `${fixtureDir}/warden-public.pem`,
+        publicKey.export({ type: "spki", format: "pem" }).toString(),
+      );
+      writeFileSync(`${fixtureDir}/runtime-page-body.json`, JSON.stringify(RUNTIME_BODY, null, 2));
+      writeFileSync(
+        `${fixtureDir}/fixture-metadata.json`,
+        JSON.stringify(
+          {
+            producer: "Warden",
+            digitalme_id: req.actorRef,
+            principal_receipt_id: PRINCIPAL_RECEIPT_ID,
+            decision_receipt_id: receipt.decision_receipt_id,
+            material_effect: MATERIAL_EFFECT,
+            validation_now: "2026-08-23T10:05:00.000Z",
+          },
+          null,
+          2,
+        ),
+      );
+    }
   });
 
   it("fails closed when producer signing material is absent", () => {
@@ -108,7 +151,7 @@ describe("GCS-20260823-002 signed Warden Runtime receipt export", () => {
     const decision = evaluateSyntheticWardenDecisionV1({
       request: req,
       policy: policy(req),
-      decidedAt: "2026-08-23T08:00:30.000Z",
+      decidedAt: "2026-08-23T10:00:30.000Z",
     });
     expect(() =>
       buildSignedRuntimeWardenDecisionReceipt({
@@ -116,7 +159,7 @@ describe("GCS-20260823-002 signed Warden Runtime receipt export", () => {
         decision,
         principal: {
           digitalMeId: req.actorRef,
-          authenticatedPrincipalReceiptId: "DIGITALME-PRINCIPAL:SIGNED-001",
+          authenticatedPrincipalReceiptId: PRINCIPAL_RECEIPT_ID,
         },
         effectPolicy: EFFECT_POLICY,
         signing: { privateKeyPem: "", keyId: "" },
