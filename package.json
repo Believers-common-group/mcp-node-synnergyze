@@ -24,6 +24,7 @@
     "test:warden-river-mcp": "vitest run modules/warden/decision-service.test.ts modules/river/reservation-service.test.ts src/tools/registerRiverWardenConformanceReservation.test.ts src/tools/registerRiverWardenConformanceReservation.review.test.ts src/commands/start-server.river.test.ts",
     "test:warden-river-synnergyze-mcp": "vitest run modules/warden/decision-service.test.ts modules/river/reservation-service.test.ts modules/synnergyze/execution-gate.test.ts src/tools/registerWardenRiverSynnergyzeConformanceExecution.test.ts src/commands/start-server.synnergyze.test.ts",
     "test:warden-river-effect-mcp": "vitest run modules/synnergyze/effect-verification.test.ts modules/rc1-adapters.test.ts src/tools/registerWardenRiverEffectConformance.test.ts src/commands/start-server.effect.test.ts",
+    "test:reconciliation-conformance": "vitest run modules/warden/decision-service.test.ts modules/river/reservation-service.test.ts modules/synnergyze/execution-gate.test.ts modules/synnergyze/effect-verification.test.ts src/tools/registerWardenRiverEffectConformance.test.ts src/tools/registerWardenReconciliationConformance.test.ts src/commands/start-server.reconciliation.test.ts",
     "test:controlled-execution": "vitest run modules/synnergyze/execution-gate.test.ts",
     "test:effect-verification": "vitest run modules/synnergyze/effect-verification.test.ts",
     "test:objective": "vitest run modules/objective/inventory-transfer.test.ts",
