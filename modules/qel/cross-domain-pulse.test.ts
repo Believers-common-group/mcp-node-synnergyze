@@ -46,13 +46,17 @@ import {
   mapRecoveryValuePolicyToQelFrameV01,
 } from "./recovery-value-policy-fixture.ts";
 import {
-  bindAccreditationRootThroughFreshTrustStatusV01,
   makeSyntheticTrustStatusPublicationBundleV01,
   mapTrustStatusPublicationToQelFrameV01,
 } from "./trust-status-publication-fixture.ts";
+import {
+  bindAccreditationRootThroughAuthorizedStatusPublisherV01,
+  makeSyntheticTrustStatusPublisherAuthorityBundleV01,
+  mapTrustStatusPublisherAuthorityToQelFrameV01,
+} from "./trust-status-publisher-authority-fixture.ts";
 
 describe("QEL cross-domain Pod Pulse", () => {
-  it("reduces compute through fresh trust status, cryptographic root trust, calibration, evidence, value, and settlement with one grammar", () => {
+  it("reduces compute through authorized fresh trust status, cryptographic root trust, calibration, evidence, value, and settlement with one grammar", () => {
     const observedAt = "2026-08-23T08:30:00.000Z";
     const compute = mapAlphaComputeRunnerToQelFrameV01({
       registration: new SyntheticCpuComputeRunner().registration,
@@ -118,8 +122,11 @@ describe("QEL cross-domain Pod Pulse", () => {
       observedAt,
       correlationId: "QEL-CROSS-DOMAIN-TRUST-STATUS-001",
     });
+    const publisherBundle = makeSyntheticTrustStatusPublisherAuthorityBundleV01(
+      statusBundle.publication,
+    );
 
-    const currentRootTrust = bindAccreditationRootThroughFreshTrustStatusV01({
+    const currentRootTrust = bindAccreditationRootThroughAuthorizedStatusPublisherV01({
       rootAuthorities: rootBundle.rootAuthorities,
       accreditors: rootBundle.accreditors,
       rootDelegations: rootBundle.rootDelegations,
@@ -131,6 +138,7 @@ describe("QEL cross-domain Pod Pulse", () => {
       calibrationCertificates: trustBundle.calibrationCertificates,
       issuanceAttestations: authorityBundle.issuanceAttestations,
       ...statusBundle,
+      ...publisherBundle,
       observedAt,
     });
     expect(currentRootTrust.ok).toBe(true);
@@ -151,6 +159,20 @@ describe("QEL cross-domain Pod Pulse", () => {
     });
     expect(accreditedTrust.ok).toBe(true);
 
+    const publisherAuthority = mapTrustStatusPublisherAuthorityToQelFrameV01({
+      rootAuthorities: rootBundle.rootAuthorities,
+      accreditors: rootBundle.accreditors,
+      rootDelegations: rootBundle.rootDelegations,
+      signingKeys: rootBundle.signingKeys,
+      organisations: authorityBundle.organisations,
+      accreditationGrants: authorityBundle.accreditationGrants,
+      calibrators: authorityBundle.calibrators,
+      calibrationCertificates: trustBundle.calibrationCertificates,
+      ...statusBundle,
+      ...publisherBundle,
+      observedAt,
+      locationRef: recoverySnapshot.locationRef,
+    });
     const trustStatus = mapTrustStatusPublicationToQelFrameV01({
       rootAuthorities: rootBundle.rootAuthorities,
       accreditors: rootBundle.accreditors,
@@ -253,6 +275,7 @@ describe("QEL cross-domain Pod Pulse", () => {
         factory,
         passport,
         recovery,
+        publisherAuthority,
         trustStatus,
         accreditationRoot,
         calibrationAuthority,
@@ -269,6 +292,7 @@ describe("QEL cross-domain Pod Pulse", () => {
       factory.object.type,
       passport.object.type,
       recovery.object.type,
+      publisherAuthority.object.type,
       trustStatus.object.type,
       accreditationRoot.object.type,
       calibrationAuthority.object.type,
@@ -282,6 +306,7 @@ describe("QEL cross-domain Pod Pulse", () => {
       "PRODUCTION_LINE",
       "PRODUCT_PASSPORT",
       "RECOVERY_NODE",
+      "TRUST_STATUS_PUBLISHER_AUTHORITY",
       "TRUST_STATUS_PUBLICATION",
       "ACCREDITATION_ROOT_TRUST",
       "CALIBRATION_AUTHORITY_TRUST",
@@ -291,7 +316,7 @@ describe("QEL cross-domain Pod Pulse", () => {
       "RECOVERY_VALUE_QUOTE",
       "RECOVERY_SETTLEMENT",
     ]);
-    expect(pulse.now.objectCount).toBe(12);
+    expect(pulse.now.objectCount).toBe(13);
     expect(pulse.now.health).toBe("WATCH");
     expect(pulse.needs).toEqual(
       expect.arrayContaining([
@@ -300,6 +325,12 @@ describe("QEL cross-domain Pod Pulse", () => {
           type: "MATERIAL",
           priority: "HIGH",
           target: "restore_material_flow",
+        },
+        {
+          objectRef: `TRUST-STATUS-PUBLISHER:${statusBundle.publication.publicationRef}`,
+          type: "APPROVAL",
+          priority: "MODERATE",
+          target: "accept_signed_trust_status_publication",
         },
         {
           objectRef: statusBundle.publication.publicationRef,
@@ -328,6 +359,11 @@ describe("QEL cross-domain Pod Pulse", () => {
     });
     expect(
       pulse.moves.some(
+        (move) => move.objectRef === publisherAuthority.object.id && move.action === "ACCEPT_SIGNED_TRUST_STATUS",
+      ),
+    ).toBe(true);
+    expect(
+      pulse.moves.some(
         (move) => move.objectRef === trustStatus.object.id && move.action === "ACCEPT_CURRENT_TRUST_STATUS",
       ),
     ).toBe(true);
@@ -351,6 +387,6 @@ describe("QEL cross-domain Pod Pulse", () => {
       pulse.moves.some((move) => move.objectRef === settlement.object.id && move.action === "SUBMIT_SETTLEMENT"),
     ).toBe(true);
     expect(pulse.proof.verifiedOutcomes).toBe(0);
-    expect(pulse.proof.unresolvedOutcomes).toBe(12);
+    expect(pulse.proof.unresolvedOutcomes).toBe(13);
   });
 });
