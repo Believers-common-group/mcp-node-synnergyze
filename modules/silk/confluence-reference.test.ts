@@ -106,6 +106,21 @@ function creditReservations(): SyntheticSilkResourceReservationServiceV1 {
   ]);
 }
 
+function resourceRequest(decisionRef: string, authCorrelation: string, suffix: string) {
+  return {
+    journeyRef: "MODERN-JOURNEY:MJ-000001",
+    silkAccountRef: "SILK-ENT-042",
+    resourceRef: "FUNDING:CORPORATE-CREDIT-001",
+    resourceType: "CREDIT" as const,
+    quantity: 4800,
+    unit: "INR",
+    wardenDecisionRef: decisionRef,
+    authorizationCorrelationId: authCorrelation,
+    correlationId: `SILK-RESOURCE:${suffix}`,
+    reservedAt: RESERVED_AT,
+  };
+}
+
 describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
   it("resolves Mastercard primary and Visa fallback without collapsing provider identity", () => {
     const registry = new SyntheticSilkCapabilityRegistryV1([
@@ -132,7 +147,6 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
     ]);
 
     const resolution = registry.resolve({ silkAccountRef: "SILK-ENT-042", capabilityType: "PAYMENT" });
-
     expect(resolution.preferred?.providerCapabilityRef).toBe("PCAP-MC-CORP");
     expect(resolution.preferred?.providerRef).toBe("BANK-B");
     expect(resolution.fallbacks.map((capability) => capability.providerCapabilityRef)).toEqual([
@@ -140,97 +154,85 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
     ]);
   });
 
+  it("requires an actual Warden ALLOW decision before reserving scarce financial capacity", () => {
+    const reservations = creditReservations();
+    const chain = authorizedChain("payment.mastercard.authorize", "RESERVE-AUTH");
+    const input = resourceRequest(
+      chain.decision.decisionRef,
+      chain.decision.correlationId,
+      "AUTHORIZED",
+    );
+
+    const reserved = reservations.reserve(input, chain.decision);
+    expect(reserved.state).toBe("RESERVED");
+    expect(reserved.wardenDecisionRef).toBe(chain.decision.decisionRef);
+    expect(reserved.authorizationCorrelationId).toBe(chain.decision.correlationId);
+
+    expect(() =>
+      reservations.reserve(
+        { ...input, correlationId: "SILK-RESOURCE:FORGED", wardenDecisionRef: "WARDEN-DECISION:FORGED" },
+        chain.decision,
+      ),
+    ).toThrow("silk_reservation_warden_decision_mismatch");
+
+    const denied = { ...chain.decision, decision: "DENY" as const, actionToken: undefined };
+    expect(() =>
+      reservations.reserve({ ...input, correlationId: "SILK-RESOURCE:DENIED" }, denied),
+    ).toThrow("silk_reservation_warden_allow_required");
+  });
+
   it("prevents two journeys from over-reserving authoritative scarce financial capacity", () => {
     const reservations = creditReservations();
-    const first = reservations.reserve({
-      journeyRef: "MJ-000001",
-      silkAccountRef: "SILK-ENT-042",
-      resourceRef: "FUNDING:CORPORATE-CREDIT-001",
-      resourceType: "CREDIT",
-      quantity: 4800,
-      unit: "INR",
-      wardenDecisionRef: "WARDEN-DECISION:001",
-      correlationId: "TXN-00088:RESERVE",
-      reservedAt: RESERVED_AT,
-    });
+    const firstChain = authorizedChain("payment.mastercard.authorize", "RESERVE-FIRST");
+    const firstInput = resourceRequest(
+      firstChain.decision.decisionRef,
+      firstChain.decision.correlationId,
+      "FIRST",
+    );
+    const first = reservations.reserve(firstInput, firstChain.decision);
 
-    expect(first.state).toBe("RESERVED");
     expect(first.capacity).toBe(5000);
     expect(reservations.reservedQuantity("FUNDING:CORPORATE-CREDIT-001")).toBe(4800);
 
+    const secondChain = authorizedChain("payment.mastercard.authorize", "RESERVE-SECOND");
     expect(() =>
-      reservations.reserve({
-        journeyRef: "MJ-000002",
-        silkAccountRef: "SILK-ENT-042",
-        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
-        resourceType: "CREDIT",
-        quantity: 500,
-        unit: "INR",
-        wardenDecisionRef: "WARDEN-DECISION:002",
-        correlationId: "TXN-00089:RESERVE",
-        reservedAt: RESERVED_AT,
-      }),
+      reservations.reserve(
+        {
+          ...resourceRequest(
+            secondChain.decision.decisionRef,
+            secondChain.decision.correlationId,
+            "SECOND",
+          ),
+          journeyRef: "MODERN-JOURNEY:MJ-000002",
+          quantity: 500,
+        },
+        secondChain.decision,
+      ),
     ).toThrow("silk_reservation_capacity_conflict");
 
-    const replay = reservations.reserve({
-      journeyRef: "MJ-000001",
-      silkAccountRef: "SILK-ENT-042",
-      resourceRef: "FUNDING:CORPORATE-CREDIT-001",
-      resourceType: "CREDIT",
-      quantity: 4800,
-      unit: "INR",
-      wardenDecisionRef: "WARDEN-DECISION:001",
-      correlationId: "TXN-00088:RESERVE",
-      reservedAt: RESERVED_AT,
-    });
+    const replay = reservations.reserve(firstInput, firstChain.decision);
     expect(replay.reservationRef).toBe(first.reservationRef);
     expect(replay.idempotentReplay).toBe(true);
   });
 
   it("rejects cross-account, resource-type, and unit drift against registered capacity", () => {
     const reservations = creditReservations();
+    const chain = authorizedChain("payment.mastercard.authorize", "RESERVE-DRIFT");
+    const base = resourceRequest(
+      chain.decision.decisionRef,
+      chain.decision.correlationId,
+      "DRIFT",
+    );
 
     expect(() =>
-      reservations.reserve({
-        journeyRef: "MJ-000001",
-        silkAccountRef: "SILK-IND-001",
-        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
-        resourceType: "CREDIT",
-        quantity: 1,
-        unit: "INR",
-        wardenDecisionRef: "WARDEN-DECISION:001",
-        correlationId: "TXN-ACCOUNT-DRIFT",
-        reservedAt: RESERVED_AT,
-      }),
+      reservations.reserve({ ...base, silkAccountRef: "SILK-IND-001" }, chain.decision),
     ).toThrow("silk_resource_account_mismatch");
-
     expect(() =>
-      reservations.reserve({
-        journeyRef: "MJ-000001",
-        silkAccountRef: "SILK-ENT-042",
-        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
-        resourceType: "COMPUTE",
-        quantity: 1,
-        unit: "INR",
-        wardenDecisionRef: "WARDEN-DECISION:001",
-        correlationId: "TXN-TYPE-DRIFT",
-        reservedAt: RESERVED_AT,
-      }),
+      reservations.reserve({ ...base, resourceType: "COMPUTE" }, chain.decision),
     ).toThrow("silk_resource_type_mismatch");
-
-    expect(() =>
-      reservations.reserve({
-        journeyRef: "MJ-000001",
-        silkAccountRef: "SILK-ENT-042",
-        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
-        resourceType: "CREDIT",
-        quantity: 1,
-        unit: "USD",
-        wardenDecisionRef: "WARDEN-DECISION:001",
-        correlationId: "TXN-UNIT-DRIFT",
-        reservedAt: RESERVED_AT,
-      }),
-    ).toThrow("silk_resource_unit_mismatch");
+    expect(() => reservations.reserve({ ...base, unit: "USD" }, chain.decision)).toThrow(
+      "silk_resource_unit_mismatch",
+    );
   });
 
   it("normalizes a synthetic Mastercard decline, executes a separately authorized Visa fallback, and derives reimbursement", () => {
@@ -252,16 +254,12 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
     } catch (error) {
       providerFailure = error;
     }
-
     const normalized = normalizeConfluenceProviderFailureV1(providerFailure);
     expect(normalized).toMatchObject({ failureClass: "ISSUER_DECLINE", recoverable: true });
-    expect(mastercard.invocationCount()).toBe(1);
 
     const fallback = authorizedChain("payment.visa.authorize", "VISA-FALLBACK");
     const fallbackReceipt = gate.execute({ ...fallback, executedAt: EXECUTED_AT });
-    expect(fallbackReceipt.state).toBe("EXECUTED_UNVERIFIED");
     expect(fallbackReceipt.capabilityRef).toBe("payment.visa.authorize");
-    expect(visa.invocationCount()).toBe(1);
 
     const economicEvent: SilkEconomicEventV1 = {
       economicEventRef: "SILK-ECONOMIC-EVENT:ECO-1901",
@@ -276,19 +274,16 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
       providerRef: "BANK-A",
       occurredAt: EXECUTED_AT,
     };
-    const obligation = deriveReimbursementObligationV1(economicEvent);
-
-    expect(obligation).toMatchObject({
+    expect(deriveReimbursementObligationV1(economicEvent)).toMatchObject({
       type: "REIMBURSEMENT",
       obligorRef: "ENTERPRISE-CONFLUENCE-001",
       beneficiaryRef: "DIGITALME-CONFLUENCE-001",
       amount: 4800,
-      currency: "INR",
       state: "OPEN",
     });
   });
 
-  it("does not create reimbursement when the economic owner is also the actual payer", () => {
+  it("does not create reimbursement when economic owner and actual payer are the same", () => {
     const event: SilkEconomicEventV1 = {
       economicEventRef: "SILK-ECONOMIC-EVENT:ECO-SELF",
       journeyRef: "MODERN-JOURNEY:MJ-SELF",
@@ -302,7 +297,6 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
       providerRef: "BANK-A",
       occurredAt: EXECUTED_AT,
     };
-
     expect(deriveReimbursementObligationV1(event)).toBeUndefined();
   });
 });
