@@ -27,6 +27,12 @@ export interface ModernJourneyRuntimeSnapshotV1 {
   events: readonly ModernJourneyEventRecordV1[];
 }
 
+interface FallbackAuthorizationEventV1 {
+  decisionRef: string;
+  consentRef?: string;
+  authorizedAt: string;
+}
+
 function cloneTransaction(transaction: ModernJourneyTransactionV1): ModernJourneyTransactionV1 {
   return {
     ...transaction,
@@ -38,8 +44,14 @@ function cloneTransaction(transaction: ModernJourneyTransactionV1): ModernJourne
   };
 }
 
+function parseInstant(value: string, code: string): number {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) throw new Error(code);
+  return parsed;
+}
+
 function assertInstant(value: string, code: string): void {
-  if (!Number.isFinite(Date.parse(value))) throw new Error(code);
+  parseInstant(value, code);
 }
 
 export class SyntheticModernJourneyTransactionRuntimeV1 {
@@ -95,11 +107,17 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
       if (transaction.state !== "RECOVERY_REQUIRED") {
         throw new Error("modern_runtime_fallback_reservation_state_conflict");
       }
-      const fallbackDecisionRef = this.latestFallbackDecisionRef(transaction.transactionRef);
-      if (!fallbackDecisionRef) throw new Error("modern_runtime_fallback_authorization_required");
-      if (fallbackDecisionRef !== input.reservation.wardenDecisionRef) {
+      const fallbackAuthorization = this.latestFallbackAuthorization(transaction.transactionRef);
+      if (!fallbackAuthorization) throw new Error("modern_runtime_fallback_authorization_required");
+      if (fallbackAuthorization.decisionRef !== input.reservation.wardenDecisionRef) {
         throw new Error("modern_runtime_fallback_reservation_decision_mismatch");
       }
+      const reserved = parseInstant(input.reservation.reservedAt, "modern_runtime_invalid_fallback_reservation_time");
+      const authorized = parseInstant(
+        fallbackAuthorization.authorizedAt,
+        "modern_runtime_invalid_fallback_authorization_time",
+      );
+      if (reserved < authorized) throw new Error("modern_runtime_fallback_reservation_before_authorization");
     }
     this.eventLog.append({
       idempotencyKey: `${transaction.transactionRef}:${input.reservation.reservationRef}:RESERVED`,
@@ -207,6 +225,17 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
     if (input.decision.action !== input.capabilityRef) {
       throw new Error("modern_runtime_fallback_capability_mismatch");
     }
+    if (!input.decision.validUntil) throw new Error("modern_runtime_fallback_decision_validity_required");
+    const decided = parseInstant(input.decision.decidedAt, "modern_runtime_fallback_invalid_decision_time");
+    const validUntil = parseInstant(
+      input.decision.validUntil,
+      "modern_runtime_fallback_invalid_decision_validity",
+    );
+    const authorized = parseInstant(input.authorizedAt, "modern_runtime_fallback_invalid_authorization_time");
+    if (validUntil < decided) throw new Error("modern_runtime_fallback_invalid_decision_window");
+    if (authorized < decided) throw new Error("modern_runtime_fallback_authorized_before_decision");
+    if (authorized > validUntil) throw new Error("modern_runtime_fallback_decision_expired");
+
     if (input.personalFundingConsent) {
       if (input.personalFundingConsent.transactionRef !== transaction.transactionRef) {
         throw new Error("modern_runtime_fallback_consent_transaction_mismatch");
@@ -214,6 +243,25 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
       if (input.personalFundingConsent.wardenDecisionRef !== input.decision.decisionRef) {
         throw new Error("modern_runtime_fallback_consent_decision_mismatch");
       }
+      if (input.personalFundingConsent.digitalMeRef !== input.actorRef) {
+        throw new Error("modern_runtime_fallback_consent_principal_mismatch");
+      }
+      if (input.personalFundingConsent.economicOwnerRef !== transaction.economicOwnerRef) {
+        throw new Error("modern_runtime_fallback_consent_owner_mismatch");
+      }
+      if (
+        input.personalFundingConsent.amount !== transaction.amount ||
+        input.personalFundingConsent.currency !== transaction.currency
+      ) {
+        throw new Error("modern_runtime_fallback_consent_value_mismatch");
+      }
+      const granted = parseInstant(
+        input.personalFundingConsent.grantedAt,
+        "modern_runtime_fallback_invalid_consent_time",
+      );
+      if (granted < decided) throw new Error("modern_runtime_fallback_consent_before_decision");
+      if (granted > authorized) throw new Error("modern_runtime_fallback_consent_after_authorization");
+      if (granted > validUntil) throw new Error("modern_runtime_fallback_consent_after_expiry");
     }
     this.eventLog.append({
       idempotencyKey: `${transaction.transactionRef}:${input.decision.decisionRef}:FALLBACK_AUTHORIZED`,
@@ -227,6 +275,7 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
         providerRef: input.providerRef,
         capabilityRef: input.capabilityRef,
         consentRef: input.personalFundingConsent?.consentRef ?? null,
+        decisionValidUntil: input.decision.validUntil,
       },
     });
     return this.snapshot(transaction.transactionRef);
@@ -255,10 +304,22 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
       throw new Error("modern_runtime_resource_payer_mismatch");
     }
     if (transaction.state === "RECOVERY_REQUIRED") {
-      const fallbackDecisionRef = this.latestFallbackDecisionRef(transaction.transactionRef);
-      if (!fallbackDecisionRef) throw new Error("modern_runtime_fallback_authorization_required");
-      if (fallbackDecisionRef !== input.receipt.wardenDecisionRef) {
+      const fallbackAuthorization = this.latestFallbackAuthorization(transaction.transactionRef);
+      if (!fallbackAuthorization) throw new Error("modern_runtime_fallback_authorization_required");
+      if (fallbackAuthorization.decisionRef !== input.receipt.wardenDecisionRef) {
         throw new Error("modern_runtime_fallback_execution_decision_mismatch");
+      }
+      const executed = parseInstant(input.receipt.executedAt, "modern_runtime_invalid_fallback_execution_time");
+      const authorized = parseInstant(
+        fallbackAuthorization.authorizedAt,
+        "modern_runtime_invalid_fallback_authorization_time",
+      );
+      if (executed < authorized) throw new Error("modern_runtime_fallback_execution_before_authorization");
+      if (fallbackAuthorization.consentRef) {
+        if (!input.personalFundingConsent) throw new Error("modern_runtime_fallback_execution_consent_required");
+        if (input.personalFundingConsent.consentRef !== fallbackAuthorization.consentRef) {
+          throw new Error("modern_runtime_fallback_execution_consent_mismatch");
+        }
       }
     }
     const projectionBefore = this.snapshot(transaction.transactionRef).projection;
@@ -314,6 +375,8 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
         actualPayerRef: input.economicEvent.actualPayerRef,
         amount: input.economicEvent.amount,
         currency: input.economicEvent.currency,
+        instrumentRef: input.economicEvent.instrumentRef,
+        providerRef: input.economicEvent.providerRef,
       },
     });
     if (updated.reimbursementObligation) {
@@ -397,12 +460,18 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
     return transaction;
   }
 
-  private latestFallbackDecisionRef(transactionRef: string): string | undefined {
+  private latestFallbackAuthorization(transactionRef: string): FallbackAuthorizationEventV1 | undefined {
     const event = [...this.eventLog.stream(transactionRef)]
       .reverse()
       .find((candidate) => candidate.eventType === "FALLBACK_AUTHORIZED");
     const decisionRef = event?.payload.wardenDecisionRef;
-    return typeof decisionRef === "string" && decisionRef.trim() ? decisionRef : undefined;
+    if (typeof decisionRef !== "string" || !decisionRef.trim() || !event) return undefined;
+    const consentRef = event.payload.consentRef;
+    return {
+      decisionRef,
+      consentRef: typeof consentRef === "string" && consentRef.trim() ? consentRef : undefined,
+      authorizedAt: event.occurredAt,
+    };
   }
 
   private assertReservationLineage(
