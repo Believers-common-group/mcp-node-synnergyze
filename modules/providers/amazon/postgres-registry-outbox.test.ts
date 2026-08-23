@@ -1,10 +1,8 @@
 import { describe, expect, it } from "vitest";
 
 import type { AmazonOrderRegistryProjectionV1 } from "./governed-orders-runtime.ts";
-import {
-  PostgresAmazonRegistryProjectionWriterV1,
-  type AmazonPostgresQueryExecutorV1,
-} from "./postgres-registry-writer.ts";
+import { PostgresAmazonRegistryOutboxWriterV1 } from "./postgres-registry-outbox-writer.ts";
+import type { AmazonPostgresQueryExecutorV1 } from "./postgres-registry-writer.ts";
 
 class RecordingDb implements AmazonPostgresQueryExecutorV1 {
   readonly calls: Array<{ sql: string; params: readonly unknown[] }> = [];
@@ -41,7 +39,7 @@ const projection: AmazonOrderRegistryProjectionV1 = {
 describe("PROVIDER-AMAZON-REGISTRY-OUTBOX-001", () => {
   it("commits a pending CWR Registry outbox event in the same transaction as the projection", async () => {
     const db = new RecordingDb();
-    const writer = new PostgresAmazonRegistryProjectionWriterV1(db);
+    const writer = new PostgresAmazonRegistryOutboxWriterV1(db);
 
     const result = await writer.writeBatch([projection]);
     const outboxIndex = db.calls.findIndex((call) => call.sql.includes("uoe_master.registry_outbox"));
