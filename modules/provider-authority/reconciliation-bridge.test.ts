@@ -12,6 +12,8 @@ const providerException: ProviderExceptionV1 = {
   version: "WARDEN-PROVIDER-AUTHORITY-BRIDGE-001",
   exceptionRef: "PROVIDER-EXCEPTION:001",
   authorizationRef: "PROVIDER-AUTH:001",
+  actionRef: "ACTION:PROVIDER-001",
+  reservationRef: "RIVER-RESERVATION:PROVIDER-001",
   exceptionClass: "NETWORK_EXCEPTION",
   effectState: "UNKNOWN",
   retryability: "AFTER_RECONCILIATION",
@@ -125,7 +127,7 @@ describe("Provider authority reconciliation bridge R0.4-B", () => {
       retryability: "POLICY_DECISION_REQUIRED",
       severity: "E4",
       failureKind: "PARTIAL_EFFECT",
-      executionRef: "PROVIDER-EXECUTION:ORIGINAL-001",
+      executionReceiptRef: "SYNNERGYZE-EXECUTION-RECEIPT:ORIGINAL-001",
       message: "partial_effect_observed",
     };
 
