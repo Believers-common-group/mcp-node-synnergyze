@@ -29,7 +29,11 @@ function makePublisherInputs(observedAt = "2026-08-23T08:30:00.000Z") {
     issuanceAttestations: calibrationAuthority.issuanceAttestations,
   });
   const trustSources = {
-    ...rootTrust,
+    rootAuthorities: rootTrust.rootAuthorities,
+    accreditors: rootTrust.accreditors,
+    rootDelegations: rootTrust.rootDelegations,
+    rootSigningKeys: rootTrust.signingKeys,
+    signedArtifacts: rootTrust.signedArtifacts,
     organisations: calibrationAuthority.organisations,
     accreditationGrants: calibrationAuthority.accreditationGrants,
     calibrators: calibrationAuthority.calibrators,
@@ -37,7 +41,14 @@ function makePublisherInputs(observedAt = "2026-08-23T08:30:00.000Z") {
     issuanceAttestations: calibrationAuthority.issuanceAttestations,
   };
   const status = makeSyntheticTrustStatusPublicationBundleV01({
-    ...trustSources,
+    rootAuthorities: rootTrust.rootAuthorities,
+    accreditors: rootTrust.accreditors,
+    rootDelegations: rootTrust.rootDelegations,
+    signingKeys: rootTrust.signingKeys,
+    organisations: calibrationAuthority.organisations,
+    accreditationGrants: calibrationAuthority.accreditationGrants,
+    calibrators: calibrationAuthority.calibrators,
+    calibrationCertificates: deviceTrust.calibrationCertificates,
     observedAt,
     correlationId: "QEL-FIXTURE-013-STATUS-001",
   });
@@ -86,16 +97,19 @@ describe("QEL-FIXTURE-013 trust status publisher authority", () => {
     expect(frame.object.type).toBe("TRUST_STATUS_PUBLISHER_AUTHORITY");
   });
 
-  it("rejects a fresh River-bound publication when the publisher signature no longer binds the payload", () => {
+  it("rejects a fresh River-bound publication when the old publisher signature no longer binds its digest", () => {
     const input = makePublisherInputs();
-    const publication = {
-      ...input.status.publication,
-      correlationId: "QEL-FIXTURE-013-FORGED-001",
-    };
     const forgedStatus = makeSyntheticTrustStatusPublicationBundleV01({
-      ...input.trustSources,
+      rootAuthorities: input.trustSources.rootAuthorities,
+      accreditors: input.trustSources.accreditors,
+      rootDelegations: input.trustSources.rootDelegations,
+      signingKeys: input.trustSources.rootSigningKeys,
+      organisations: input.trustSources.organisations,
+      accreditationGrants: input.trustSources.accreditationGrants,
+      calibrators: input.trustSources.calibrators,
+      calibrationCertificates: input.trustSources.calibrationCertificates,
       observedAt: input.observedAt,
-      correlationId: publication.correlationId,
+      correlationId: "QEL-FIXTURE-013-FORGED-001",
     });
     const result = validateTrustStatusPublisherAuthorityV01({
       ...input.trustSources,
@@ -107,90 +121,75 @@ describe("QEL-FIXTURE-013 trust status publisher authority", () => {
 
     expect(result.ok).toBe(false);
     expect(result.issues).toEqual(
-      expect.arrayContaining(["signature_publication_mismatch", "signature_digest_mismatch"]),
+      expect.arrayContaining(["signature_digest_mismatch", "signature_invalid"]),
     );
   });
 
   it("fails when publisher subject-kind or source-authority scope is exceeded", () => {
     const input = makePublisherInputs();
     const grant = input.publisher.authorityGrants[0]!;
-    const subjectScoped = {
-      ...grant,
-      permittedSubjectKinds: grant.permittedSubjectKinds.slice(1),
-    };
     const subjectResult = validateTrustStatusPublisherAuthorityV01({
       ...input.trustSources,
       ...input.status,
       ...input.publisher,
-      authorityGrants: [subjectScoped],
+      authorityGrants: [{ ...grant, permittedSubjectKinds: grant.permittedSubjectKinds.slice(1) }],
       observedAt: input.observedAt,
     });
     expect(subjectResult.issues).toContain("publisher_subject_scope_exceeded");
 
-    const sourceScoped = {
-      ...grant,
-      permittedSourceAuthorityRefs: grant.permittedSourceAuthorityRefs.slice(1),
-    };
     const sourceResult = validateTrustStatusPublisherAuthorityV01({
       ...input.trustSources,
       ...input.status,
       ...input.publisher,
-      authorityGrants: [sourceScoped],
+      authorityGrants: [
+        { ...grant, permittedSourceAuthorityRefs: grant.permittedSourceAuthorityRefs.slice(1) },
+      ],
       observedAt: input.observedAt,
     });
     expect(sourceResult.issues).toContain("publisher_source_authority_scope_exceeded");
   });
 
-  it("blocks suspended publishers and revoked signing keys even when the old signature is mathematically valid", () => {
+  it("blocks suspended publishers and revoked publisher keys even when the old signature is mathematically valid", () => {
     const input = makePublisherInputs();
-    const suspendedPublisher = {
-      ...input.publisher.publishers[0]!,
-      state: "SUSPENDED" as const,
-    };
     const publisherResult = validateTrustStatusPublisherAuthorityV01({
       ...input.trustSources,
       ...input.status,
       ...input.publisher,
-      publishers: [suspendedPublisher],
+      publishers: [{ ...input.publisher.publishers[0]!, state: "SUSPENDED" as const }],
       observedAt: input.observedAt,
     });
     expect(publisherResult.issues).toContain("publisher_not_active");
 
-    const revokedKey = {
-      ...input.publisher.signingKeys[0]!,
-      state: "REVOKED" as const,
-    };
     const keyResult = validateTrustStatusPublisherAuthorityV01({
       ...input.trustSources,
       ...input.status,
       ...input.publisher,
-      signingKeys: [revokedKey],
+      publisherSigningKeys: [
+        { ...input.publisher.publisherSigningKeys[0]!, state: "REVOKED" as const },
+      ],
       observedAt: input.observedAt,
     });
     expect(keyResult.issues).toContain("publisher_signing_key_not_active");
   });
 
-  it("requires the publisher, grant, and key to remain current at observation time", () => {
-    const input = makePublisherInputs("2026-08-23T08:30:00.000Z");
+  it("requires publisher, grant, and publisher key to remain current at observation time", () => {
+    const input = makePublisherInputs();
     const observedAt = "2026-08-23T08:31:00.000Z";
-    const publisher = {
-      ...input.publisher.publishers[0]!,
-      validUntil: "2026-08-23T08:30:30.000Z",
-    };
-    const grant = {
-      ...input.publisher.authorityGrants[0]!,
-      validUntil: "2026-08-23T08:30:30.000Z",
-    };
-    const key = {
-      ...input.publisher.signingKeys[0]!,
-      validUntil: "2026-08-23T08:30:30.000Z",
-    };
     const result = validateTrustStatusPublisherAuthorityV01({
       ...input.trustSources,
       ...input.status,
-      publishers: [publisher],
-      authorityGrants: [grant],
-      signingKeys: [key],
+      publishers: [
+        { ...input.publisher.publishers[0]!, validUntil: "2026-08-23T08:30:30.000Z" },
+      ],
+      authorityGrants: [
+        { ...input.publisher.authorityGrants[0]!, validUntil: "2026-08-23T08:30:30.000Z" },
+      ],
+      publisherSigningKeys: [
+        {
+          ...input.publisher.publisherSigningKeys[0]!,
+          validUntil: "2026-08-23T08:30:30.000Z",
+        },
+      ],
       publicationSignature: input.publisher.publicationSignature,
       observedAt,
     });
@@ -206,15 +205,14 @@ describe("QEL-FIXTURE-013 trust status publisher authority", () => {
 
   it("enforces publication -> signature -> River chronology", () => {
     const input = makePublisherInputs();
-    const publicationSignature = {
-      ...input.publisher.publicationSignature,
-      signedAt: "2026-08-23T08:31:00.000Z",
-    };
     const result = validateTrustStatusPublisherAuthorityV01({
       ...input.trustSources,
       ...input.status,
       ...input.publisher,
-      publicationSignature,
+      publicationSignature: {
+        ...input.publisher.publicationSignature,
+        signedAt: "2026-08-23T08:31:00.000Z",
+      },
       observedAt: input.observedAt,
     });
 
@@ -249,7 +247,7 @@ describe("QEL-FIXTURE-013 trust status publisher authority", () => {
     });
 
     expect(result.ok).toBe(true);
-    expect(rotated.signingKeys[0]!.publicKeyPem).toContain("PUBLIC KEY");
+    expect(rotated.publisherSigningKeys[0]!.publicKeyPem).toContain("PUBLIC KEY");
     expect("privateKey" in rotated).toBe(false);
   });
 });
