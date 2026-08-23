@@ -19,6 +19,7 @@
     "test:program-bridge": "vitest run modules/synnergyze/program-bridge.test.ts",
     "test:warden-request": "vitest run modules/synnergyze/warden-request-bridge.test.ts",
     "test:warden-decision": "vitest run modules/warden/decision-service.test.ts",
+    "test:warden-mcp": "vitest run modules/warden/decision-service.test.ts src/tools/registerWardenConformanceDecision.test.ts src/commands/start-server.warden.test.ts",
     "test:river-reservation": "vitest run modules/river/reservation-service.test.ts",
     "test:controlled-execution": "vitest run modules/synnergyze/execution-gate.test.ts",
     "test:effect-verification": "vitest run modules/synnergyze/effect-verification.test.ts",

@@ -134,6 +134,10 @@ export function evaluateSyntheticWardenDecisionV1(
     return deny(request, policy, decidedAt, "invalid_time_context");
   }
 
+  if (decidedAtMs < requestedAtMs) {
+    return deny(request, policy, decidedAt, "decision_before_request");
+  }
+
   if (decidedAtMs < validFromMs || requestedAtMs < validFromMs) {
     return deny(request, policy, decidedAt, "authority_not_yet_valid");
   }
