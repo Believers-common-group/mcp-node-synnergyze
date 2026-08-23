@@ -9,6 +9,7 @@ import type {
 } from "./effect-verification.ts";
 import {
   matchesExpectedEffectV1,
+  validateExpectedEffectContractV1,
   type ExpectedEffectContractV1,
 } from "./effect-expectation.ts";
 
@@ -60,6 +61,7 @@ export interface ReconciliationDeterminationV1 {
 
 export type ReconciliationRejectCodeV1 =
   | "RECONCILIATION_EXPECTATION_NOT_BOUND"
+  | "RECONCILIATION_EXPECTATION_INTEGRITY_INVALID"
   | "RECONCILIATION_EXPECTATION_ACTION_MISMATCH"
   | "RECONCILIATION_EXPECTATION_RESERVATION_MISMATCH"
   | "RECONCILIATION_EXPECTATION_DECISION_MISMATCH"
@@ -69,14 +71,22 @@ export type ReconciliationRejectCodeV1 =
   | "RECONCILIATION_EXPECTATION_TARGET_MISMATCH"
   | "RECONCILIATION_EXPECTATION_CORRELATION_MISMATCH"
   | "RECONCILIATION_EXPECTATION_AFTER_EXECUTION"
-  | "RECONCILIATION_OBSERVATION_MISMATCH"
+  | "RECONCILIATION_VERIFICATION_RECEIPT_MISMATCH"
+  | "RECONCILIATION_VERIFICATION_OBSERVATION_MISMATCH"
   | "RECONCILIATION_EFFECT_LINEAGE_MISMATCH"
+  | "RECONCILIATION_EFFECT_OBSERVATION_MISMATCH"
   | "RECONCILIATION_SEAL_REQUIRED"
   | "RECONCILIATION_SEAL_LINEAGE_MISMATCH"
   | "RECONCILIATION_CAUSAL_TRACE_REQUIRED"
   | "RECONCILIATION_CAUSAL_TRACE_MISMATCH"
   | "RECONCILIATION_INVALID_TIME"
   | "RECONCILIATION_BEFORE_EXECUTION"
+  | "RECONCILIATION_OBSERVATION_BEFORE_EXECUTION"
+  | "RECONCILIATION_VERIFICATION_BEFORE_OBSERVATION"
+  | "RECONCILIATION_SEAL_BEFORE_VERIFICATION"
+  | "RECONCILIATION_BEFORE_OBSERVATION"
+  | "RECONCILIATION_BEFORE_VERIFICATION"
+  | "RECONCILIATION_BEFORE_SEAL"
   | "RECONCILIATION_CONFLICT";
 
 export type ReconciliationResultV1 =
@@ -105,11 +115,35 @@ function stableUnique(values: readonly string[]): string[] {
   return [...new Set(values.filter((value) => value.trim()))].sort();
 }
 
-function classificationForFailure(verification: Exclude<EffectVerificationResultV1, EffectVerificationSuccessV1>) {
+function observationLineageConflicts(
+  receipt: SynnergyzeExecutionReceiptV1,
+  observation: PostExecutionObservationV1 | undefined,
+): boolean {
+  if (!observation) return false;
+  return (
+    observation.executionReceiptRef !== receipt.receiptRef ||
+    observation.actionRef !== receipt.actionRef ||
+    observation.programRef !== receipt.programRef ||
+    observation.eventRef !== receipt.eventRef ||
+    observation.targetRef !== receipt.targetRef ||
+    observation.correlationId !== receipt.correlationId
+  );
+}
+
+function classificationForFailure(
+  verification: Exclude<EffectVerificationResultV1, EffectVerificationSuccessV1>,
+  observation: PostExecutionObservationV1 | undefined,
+  observationConflict: boolean,
+): ReconciliationClassificationV1 {
+  if (observationConflict) return "CONFLICTING_EFFECT";
+
   switch (verification.reasonCode) {
     case "MISSING_OBSERVED_STATE":
+      return "MISSING_EFFECT";
     case "MISSING_SOURCE_EVIDENCE":
-      return "MISSING_EFFECT" as const;
+      return observation?.observedStateRef?.trim()
+        ? "EVIDENCE_INSUFFICIENT"
+        : "MISSING_EFFECT";
     case "OBSERVATION_EXECUTION_MISMATCH":
     case "OBSERVATION_ACTION_MISMATCH":
     case "OBSERVATION_PROGRAM_MISMATCH":
@@ -117,9 +151,9 @@ function classificationForFailure(verification: Exclude<EffectVerificationResult
     case "OBSERVATION_TARGET_MISMATCH":
     case "OBSERVATION_CORRELATION_MISMATCH":
     case "VERIFICATION_IDEMPOTENCY_CONFLICT":
-      return "CONFLICTING_EFFECT" as const;
+      return "CONFLICTING_EFFECT";
     default:
-      return "EVIDENCE_INSUFFICIENT" as const;
+      return "EVIDENCE_INSUFFICIENT";
   }
 }
 
@@ -170,6 +204,14 @@ function cloneDetermination(value: ReconciliationDeterminationV1): Reconciliatio
   };
 }
 
+function expectedSealTraceDigest(
+  seal: EvidenceSealV1,
+  effectRef: string,
+  verificationRef: string,
+): string {
+  return ["RC1-TRACE-V1", seal.reservationRef, seal.sealRef, effectRef, verificationRef].join("|");
+}
+
 export class ReconciliationFabricV1 {
   private readonly byExecutionReceiptRef = new Map<string, StoredDeterminationV1>();
 
@@ -186,6 +228,9 @@ export class ReconciliationFabricV1 {
 
     if (expectation.state !== "BOUND_PRE_EXECUTION") {
       return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_EXPECTATION_NOT_BOUND" };
+    }
+    if (!validateExpectedEffectContractV1(expectation)) {
+      return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_EXPECTATION_INTEGRITY_INVALID" };
     }
     if (expectation.actionRef !== receipt.actionRef) {
       return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_EXPECTATION_ACTION_MISMATCH" };
@@ -215,7 +260,13 @@ export class ReconciliationFabricV1 {
     const compiled = parseInstant(expectation.compiledAt);
     const executed = parseInstant(receipt.executedAt);
     const reconciled = parseInstant(reconciledAt);
-    if (compiled === null || executed === null || reconciled === null) {
+    const observed = observation ? parseInstant(observation.observedAt) : null;
+    if (
+      compiled === null ||
+      executed === null ||
+      reconciled === null ||
+      (observation && observed === null)
+    ) {
       return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_INVALID_TIME" };
     }
     if (compiled > executed) {
@@ -224,24 +275,33 @@ export class ReconciliationFabricV1 {
     if (reconciled < executed) {
       return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_BEFORE_EXECUTION" };
     }
-
-    if (observation && (
-      observation.executionReceiptRef !== receipt.receiptRef ||
-      observation.actionRef !== receipt.actionRef ||
-      observation.programRef !== receipt.programRef ||
-      observation.eventRef !== receipt.eventRef ||
-      observation.targetRef !== receipt.targetRef ||
-      observation.correlationId !== receipt.correlationId
-    )) {
-      return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_OBSERVATION_MISMATCH" };
+    if (observed !== null && observed < executed) {
+      return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_OBSERVATION_BEFORE_EXECUTION" };
+    }
+    if (observed !== null && reconciled < observed) {
+      return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_BEFORE_OBSERVATION" };
     }
 
+    if (verification.executionReceiptRef !== receipt.receiptRef) {
+      return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_VERIFICATION_RECEIPT_MISMATCH" };
+    }
+    if (
+      verification.observationRef !== undefined &&
+      verification.observationRef !== observation?.observationRef
+    ) {
+      return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_VERIFICATION_OBSERVATION_MISMATCH" };
+    }
+
+    const observationConflict = observationLineageConflicts(receipt, observation);
     let classification: ReconciliationClassificationV1;
     const sourceEvidenceRefs: string[] = [];
     let effectRef: string | undefined;
     let sealRef: string | undefined;
 
     if (verification.state === "VERIFIED_EFFECT") {
+      if (observationConflict || !observation) {
+        return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_EFFECT_OBSERVATION_MISMATCH" };
+      }
       if (
         verification.effect.executionReceiptRef !== receipt.receiptRef ||
         verification.effect.reservationRef !== receipt.reservationRef ||
@@ -253,8 +313,44 @@ export class ReconciliationFabricV1 {
       ) {
         return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_EFFECT_LINEAGE_MISMATCH" };
       }
+      if (
+        verification.observationRef !== observation.observationRef ||
+        verification.effect.observedStateRef !== observation.observedStateRef
+      ) {
+        return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_EFFECT_OBSERVATION_MISMATCH" };
+      }
+
+      const verified = parseInstant(verification.effect.verifiedAt);
+      if (verified === null) {
+        return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_INVALID_TIME" };
+      }
+      if (observed === null || verified < observed) {
+        return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_VERIFICATION_BEFORE_OBSERVATION" };
+      }
+      if (reconciled < verified) {
+        return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_BEFORE_VERIFICATION" };
+      }
+
       if (!seal) return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_SEAL_REQUIRED" };
-      if (seal.reservationRef !== receipt.reservationRef || seal.correlationId !== receipt.correlationId) {
+      const sealed = parseInstant(seal.sealedAt);
+      if (sealed === null) {
+        return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_INVALID_TIME" };
+      }
+      if (sealed < verified) {
+        return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_SEAL_BEFORE_VERIFICATION" };
+      }
+      if (reconciled < sealed) {
+        return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_BEFORE_SEAL" };
+      }
+      if (
+        seal.reservationRef !== receipt.reservationRef ||
+        seal.correlationId !== receipt.correlationId ||
+        seal.traceDigest !== expectedSealTraceDigest(
+          seal,
+          verification.effect.effectRef,
+          verification.effect.verificationRef,
+        )
+      ) {
         return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_SEAL_LINEAGE_MISMATCH" };
       }
       if (!causalTrace) {
@@ -269,20 +365,22 @@ export class ReconciliationFabricV1 {
       ) {
         return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_CAUSAL_TRACE_MISMATCH" };
       }
+
       effectRef = verification.effect.effectRef;
       sealRef = seal.sealRef;
-      if (observation?.sourceEvidenceRef) sourceEvidenceRefs.push(observation.sourceEvidenceRef);
+      if (observation.sourceEvidenceRef) sourceEvidenceRefs.push(observation.sourceEvidenceRef);
       classification = matchesExpectedEffectV1(expectation, verification.effect.observedStateRef)
         ? "MATCH"
         : "UNEXPECTED_EFFECT";
     } else {
-      classification = classificationForFailure(verification);
+      classification = classificationForFailure(verification, observation, observationConflict);
       if (observation?.sourceEvidenceRef) sourceEvidenceRefs.push(observation.sourceEvidenceRef);
     }
 
     const state: ReconciliationStateV1 = classification === "MATCH" ? "RECONCILED" : "EXCEPTION";
     const semantic = {
       expectationRef: expectation.expectationRef,
+      expectationSourceDigest: expectation.sourceDigest,
       executionReceiptRef: receipt.receiptRef,
       observationRef: observation?.observationRef ?? null,
       verificationState: verification.state,
