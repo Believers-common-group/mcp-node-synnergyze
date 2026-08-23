@@ -5,6 +5,7 @@ import type {
   SyntheticCapabilityAdapterResultV1,
   SyntheticCapabilityAdapterV1,
 } from "../synnergyze/execution-gate.ts";
+import type { WardenDecisionV1 } from "../warden/contracts.ts";
 
 export type SilkAccountClassV1 =
   | "INDIVIDUAL_STUDENT"
@@ -57,6 +58,7 @@ export interface SilkResourceReservationRequestV1 {
   quantity: number;
   unit: string;
   wardenDecisionRef: string;
+  authorizationCorrelationId: string;
   correlationId: string;
   reservedAt: string;
 }
@@ -123,6 +125,7 @@ function reservationIdentity(input: SilkResourceReservationRequestV1, capacity: 
     unit: input.unit,
     capacity,
     wardenDecisionRef: input.wardenDecisionRef,
+    authorizationCorrelationId: input.authorizationCorrelationId,
     correlationId: input.correlationId,
     reservedAt: input.reservedAt,
   });
@@ -130,6 +133,36 @@ function reservationIdentity(input: SilkResourceReservationRequestV1, capacity: 
 
 function assertFinitePositive(value: number, code: string): void {
   if (!Number.isFinite(value) || value <= 0) throw new Error(code);
+}
+
+function parseInstant(value: string, code: string): number {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) throw new Error(code);
+  return parsed;
+}
+
+function assertReservationAuthority(
+  input: SilkResourceReservationRequestV1,
+  decision: WardenDecisionV1,
+): void {
+  if (decision.decision !== "ALLOW") throw new Error("silk_reservation_warden_allow_required");
+  if (decision.decisionRef !== input.wardenDecisionRef) {
+    throw new Error("silk_reservation_warden_decision_mismatch");
+  }
+  if (decision.correlationId !== input.authorizationCorrelationId) {
+    throw new Error("silk_reservation_warden_correlation_mismatch");
+  }
+  if (!decision.validUntil) throw new Error("silk_reservation_warden_validity_required");
+
+  const decided = parseInstant(decision.decidedAt, "silk_reservation_invalid_decision_time");
+  const validUntil = parseInstant(
+    decision.validUntil,
+    "silk_reservation_invalid_decision_validity",
+  );
+  const reserved = parseInstant(input.reservedAt, "silk_reservation_invalid_time");
+  if (validUntil < decided) throw new Error("silk_reservation_invalid_decision_validity_window");
+  if (reserved < decided) throw new Error("silk_reservation_before_decision");
+  if (reserved > validUntil) throw new Error("silk_reservation_warden_decision_expired");
 }
 
 export class SyntheticSilkCapabilityRegistryV1 {
@@ -193,11 +226,12 @@ export class SyntheticSilkResourceReservationServiceV1 {
     }
   }
 
-  reserve(input: SilkResourceReservationRequestV1): SilkResourceReservationV1 {
+  reserve(
+    input: SilkResourceReservationRequestV1,
+    decision: WardenDecisionV1,
+  ): SilkResourceReservationV1 {
     assertFinitePositive(input.quantity, "silk_reservation_quantity_positive_required");
-    if (!Number.isFinite(Date.parse(input.reservedAt))) {
-      throw new Error("silk_reservation_invalid_time");
-    }
+    assertReservationAuthority(input, decision);
 
     const authoritative = this.capacities.get(input.resourceRef);
     if (!authoritative) throw new Error("silk_resource_capacity_not_registered");
