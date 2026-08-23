@@ -34,6 +34,8 @@ export class AssetComputeFabric {
 
   async execute(input: AssetComputeExecutionInput): Promise<AssetComputeExecutionResult> {
     let state: ExecutionState = "REQUESTED";
+    let reservationCreated = false;
+    let settlementCompleted = false;
     const timestamp = input.now.toISOString();
 
     const move = (next: ExecutionState): void => {
@@ -55,145 +57,172 @@ export class AssetComputeFabric {
         payload,
       });
 
-    record("execution.requested", "SYNNERGYZE", {
-      principalId: input.principalId,
-      assetId: input.assetId,
-    });
+    try {
+      record("execution.requested", "SYNNERGYZE", {
+        principalId: input.principalId,
+        assetId: input.assetId,
+      });
 
-    move("PRINCIPAL_RESOLVED");
-    record("principal.resolved", "GENESIS", { ref: input.resolutionRefs.principal });
+      move("PRINCIPAL_RESOLVED");
+      record("principal.resolved", "GENESIS", { ref: input.resolutionRefs.principal });
 
-    move("ASSET_RESOLVED");
-    record("asset.resolved", "GENESIS", { ref: input.resolutionRefs.asset });
+      move("ASSET_RESOLVED");
+      record("asset.resolved", "GENESIS", { ref: input.resolutionRefs.asset });
 
-    move("ENTITLEMENT_RESOLVED");
-    record("entitlement.resolved", "GENESIS", { ref: input.resolutionRefs.entitlement });
+      move("ENTITLEMENT_RESOLVED");
+      record("entitlement.resolved", "GENESIS", { ref: input.resolutionRefs.entitlement });
 
-    move("ROUTE_QUOTED");
-    record("route.quoted", "SYNNERGYZE", {
-      ref: input.resolutionRefs.routeQuote,
-      selectedRoute: input.selectedRoute,
-    });
+      move("ROUTE_QUOTED");
+      record("route.quoted", "SYNNERGYZE", {
+        ref: input.resolutionRefs.routeQuote,
+        selectedRoute: input.selectedRoute,
+      });
 
-    move("WARDEN_PENDING");
-    validateWardenDecision(input.decision, input.now);
-    move("AUTHORIZED");
-    record("warden.allowed", "WARDEN", {
-      decisionId: input.decision.decisionId,
-      expiresAt: input.decision.expiresAt,
-    });
+      move("WARDEN_PENDING");
+      validateWardenDecision(input.decision, input.now);
+      move("AUTHORIZED");
+      record("warden.allowed", "WARDEN", {
+        decisionId: input.decision.decisionId,
+        expiresAt: input.decision.expiresAt,
+      });
 
-    const reservation = this.fundingLedger.reserve({
-      reservationId: input.reservationId,
-      executionId: input.executionId,
-      principalId: input.principalId,
-      amount: input.reserveAmount,
-      currency: input.currency,
-      sourcePriority: input.fundingPriority,
-    });
-    move("FUNDS_RESERVED");
-    record("funding.reserved", "SILK-ALPHA", {
-      reservationId: reservation.reservationId,
-      amountReserved: reservation.amountReserved,
-      sourceId: reservation.sourceId,
-    });
+      const reservation = this.fundingLedger.reserve({
+        reservationId: input.reservationId,
+        executionId: input.executionId,
+        principalId: input.principalId,
+        amount: input.reserveAmount,
+        currency: input.currency,
+        sourcePriority: input.fundingPriority,
+      });
+      reservationCreated = true;
+      move("FUNDS_RESERVED");
+      record("funding.reserved", "SILK-ALPHA", {
+        reservationId: reservation.reservationId,
+        amountReserved: reservation.amountReserved,
+        sourceId: reservation.sourceId,
+      });
 
-    const capability = issueExecutionCapability({
-      executionId: input.executionId,
-      principalId: input.principalId,
-      assetId: input.assetId,
-      operations: input.operations,
-      selectedRoute: input.selectedRoute,
-      requestedCostCeiling: input.requestedCostCeiling,
-      fundingReserved: reservation.amountReserved,
-      currency: input.currency,
-      decision: input.decision,
-      now: input.now,
-    });
-    move("CAPABILITY_ISSUED");
-    record("capability.issued", "WARDEN", {
-      capabilityId: capability.capabilityId,
-      maxCost: capability.maxCost,
-      selectedRoute: capability.selectedRoute,
-    });
+      const capability = issueExecutionCapability({
+        executionId: input.executionId,
+        principalId: input.principalId,
+        assetId: input.assetId,
+        operations: input.operations,
+        selectedRoute: input.selectedRoute,
+        requestedCostCeiling: input.requestedCostCeiling,
+        fundingReserved: reservation.amountReserved,
+        currency: input.currency,
+        decision: input.decision,
+        now: input.now,
+      });
+      move("CAPABILITY_ISSUED");
+      record("capability.issued", "WARDEN", {
+        capabilityId: capability.capabilityId,
+        maxCost: capability.maxCost,
+        selectedRoute: capability.selectedRoute,
+      });
 
-    move("DISPATCHED");
-    record("execution.dispatched", "SYNNERGYZE", {
-      selectedRoute: input.selectedRoute,
-    });
+      move("DISPATCHED");
+      record("execution.dispatched", "SYNNERGYZE", {
+        selectedRoute: input.selectedRoute,
+      });
 
-    move("RUNNING");
-    const providerResult = await this.provider.execute({
-      executionId: input.executionId,
-      capability,
-      inputRef: input.inputRef,
-    });
+      move("RUNNING");
+      const providerResult = await this.provider.execute({
+        executionId: input.executionId,
+        capability,
+        inputRef: input.inputRef,
+      });
 
-    move("METERING");
-    record("provider.completed", "PROVIDER", {
-      provider: providerResult.receipt.provider,
-      providerExecutionId: providerResult.receipt.providerExecutionId,
-      actualCost: providerResult.receipt.actualCost,
-      currency: providerResult.receipt.currency,
-    });
+      move("METERING");
+      record("provider.completed", "PROVIDER", {
+        provider: providerResult.receipt.provider,
+        providerExecutionId: providerResult.receipt.providerExecutionId,
+        actualCost: providerResult.receipt.actualCost,
+        currency: providerResult.receipt.currency,
+      });
 
-    move("OUTPUT_OBSERVED");
-    record("output.observed", "RIVER-ALPHA", {
-      outputRef: providerResult.observation.outputRef,
-    });
+      move("OUTPUT_OBSERVED");
+      record("output.observed", "RIVER-ALPHA", {
+        outputRef: providerResult.observation.outputRef,
+      });
 
-    const effect = await this.verifyEffect({
-      executionId: input.executionId,
-      outputRef: providerResult.observation.outputRef,
-      providerReceipt: providerResult.receipt,
-    });
-    if (!effect.verified || effect.outputRef !== providerResult.observation.outputRef) {
-      throw new Error("EFFECT_NOT_VERIFIED");
+      const effect = await this.verifyEffect({
+        executionId: input.executionId,
+        outputRef: providerResult.observation.outputRef,
+        providerReceipt: providerResult.receipt,
+      });
+      if (!effect.verified || effect.outputRef !== providerResult.observation.outputRef) {
+        throw new Error("EFFECT_NOT_VERIFIED");
+      }
+
+      move("EFFECT_VERIFIED");
+      record("effect.verified", "RIVER-ALPHA", {
+        effectReceiptId: effect.effectReceiptId,
+        outputRef: effect.outputRef,
+      });
+
+      const derivedAsset: DerivedAssetCandidate = {
+        assetId: `DERIVED:${input.executionId}`,
+        parentAssetId: input.assetId,
+        executionId: input.executionId,
+        outputRef: effect.outputRef,
+        effectReceiptId: effect.effectReceiptId,
+      };
+
+      move("ASSET_REGISTERED");
+      record("asset.candidate_created", "GENESIS-ALPHA-PROJECTION", {
+        assetId: derivedAsset.assetId,
+        parentAssetId: derivedAsset.parentAssetId,
+        effectReceiptId: derivedAsset.effectReceiptId,
+      });
+
+      const settlement = this.fundingLedger.settle(
+        input.reservationId,
+        providerResult.receipt.actualCost,
+      );
+      settlementCompleted = true;
+      move("SETTLED");
+      record("settlement.completed", "SILK-ALPHA", {
+        reservationId: settlement.reservationId,
+        amountSettled: settlement.amountSettled,
+        amountReleased: settlement.amountReleased,
+      });
+
+      move("CLOSED");
+      record("execution.closed", "SYNNERGYZE", { result: "SUCCESS" });
+
+      return {
+        executionId: input.executionId,
+        state: "CLOSED",
+        settlement,
+        derivedAsset,
+        capability,
+        providerReceipt: providerResult.receipt,
+        effectReceiptId: effect.effectReceiptId,
+      };
+    } catch (error) {
+      const errorCode = error instanceof Error ? error.message : "UNKNOWN_EXECUTION_ERROR";
+
+      if (reservationCreated && !settlementCompleted) {
+        const released = this.fundingLedger.release(input.reservationId);
+        record("funding.released", "SILK-ALPHA", {
+          reservationId: released.reservationId,
+          amountReleased: released.amountReserved,
+        });
+      }
+
+      if (state !== "SETTLED" && state !== "CLOSED") {
+        move("EXCEPTION");
+        record("execution.exception", "SYNNERGYZE", { errorCode });
+        move("RECONCILIATION");
+        record("reconciliation.completed", "SYNNERGYZE", {
+          reservationReleased: reservationCreated && !settlementCompleted,
+        });
+        move("CLOSED");
+        record("execution.closed", "SYNNERGYZE", { result: "FAILED", errorCode });
+      }
+
+      throw error;
     }
-
-    move("EFFECT_VERIFIED");
-    record("effect.verified", "RIVER-ALPHA", {
-      effectReceiptId: effect.effectReceiptId,
-      outputRef: effect.outputRef,
-    });
-
-    const derivedAsset: DerivedAssetCandidate = {
-      assetId: `DERIVED:${input.executionId}`,
-      parentAssetId: input.assetId,
-      executionId: input.executionId,
-      outputRef: effect.outputRef,
-      effectReceiptId: effect.effectReceiptId,
-    };
-
-    move("ASSET_REGISTERED");
-    record("asset.candidate_created", "GENESIS-ALPHA-PROJECTION", {
-      assetId: derivedAsset.assetId,
-      parentAssetId: derivedAsset.parentAssetId,
-      effectReceiptId: derivedAsset.effectReceiptId,
-    });
-
-    const settlement = this.fundingLedger.settle(
-      input.reservationId,
-      providerResult.receipt.actualCost,
-    );
-    move("SETTLED");
-    record("settlement.completed", "SILK-ALPHA", {
-      reservationId: settlement.reservationId,
-      amountSettled: settlement.amountSettled,
-      amountReleased: settlement.amountReleased,
-    });
-
-    move("CLOSED");
-    record("execution.closed", "SYNNERGYZE", { result: "SUCCESS" });
-
-    return {
-      executionId: input.executionId,
-      state: "CLOSED",
-      settlement,
-      derivedAsset,
-      capability,
-      providerReceipt: providerResult.receipt,
-      effectReceiptId: effect.effectReceiptId,
-    };
   }
 }
