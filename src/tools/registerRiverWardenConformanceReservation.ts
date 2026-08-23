@@ -25,6 +25,15 @@ function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+function canonicalRefs(values: readonly string[]): string[] {
+  return [...new Set(values)].sort();
+}
+
+function parseInstant(value: string): number | undefined {
+  const parsed = Date.parse(value);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
 function publicDecision(decision: WardenDecisionV1) {
   return {
     decisionRef: decision.decisionRef,
@@ -45,12 +54,74 @@ function requestFingerprint(request: WardenDecisionRequestV1): string {
   return digest(
     JSON.stringify({
       ...request,
-      authorityRefs: [...request.authorityRefs].sort(),
-      policyRefs: [...request.policyRefs].sort(),
-      representationSourceRefs: [...request.representationSourceRefs].sort(),
-      deviceSecuritySourceRefs: [...(request.deviceSecuritySourceRefs ?? [])].sort(),
+      authorityRefs: canonicalRefs(request.authorityRefs),
+      policyRefs: canonicalRefs(request.policyRefs),
+      representationSourceRefs: canonicalRefs(request.representationSourceRefs),
+      deviceSecuritySourceRefs: canonicalRefs(request.deviceSecuritySourceRefs ?? []),
     }),
   );
+}
+
+function assertReservationBoundary(request: WardenDecisionRequestV1, decidedAt: string): void {
+  if (request.action !== request.capabilityRef) {
+    throw new Error("warden_river_action_capability_mismatch");
+  }
+
+  if (canonicalRefs(request.representationSourceRefs).length === 0) {
+    throw new Error("warden_river_representation_source_required");
+  }
+
+  const hasDeviceSecurityContext =
+    request.deviceSecurityState !== undefined ||
+    request.deviceSecurityPolicyRef !== undefined ||
+    request.deviceSecuritySourceRefs !== undefined ||
+    request.deviceSecurityResolvedAt !== undefined ||
+    request.deviceSecurityValidUntil !== undefined;
+
+  if (!request.executionDeviceRef) {
+    if (hasDeviceSecurityContext) {
+      throw new Error("warden_river_device_security_context_mismatch");
+    }
+    return;
+  }
+
+  if (request.deviceSecurityState !== "ACTIVE") {
+    throw new Error("warden_river_device_security_active_required");
+  }
+
+  if (
+    canonicalRefs(request.deviceSecuritySourceRefs ?? []).length === 0 ||
+    !request.deviceSecurityResolvedAt
+  ) {
+    throw new Error("warden_river_device_security_evidence_required");
+  }
+
+  const requestedAtMs = parseInstant(request.requestedAt);
+  const decidedAtMs = parseInstant(decidedAt);
+  const resolvedAtMs = parseInstant(request.deviceSecurityResolvedAt);
+  const validUntilMs = request.deviceSecurityValidUntil
+    ? parseInstant(request.deviceSecurityValidUntil)
+    : undefined;
+
+  if (
+    requestedAtMs === undefined ||
+    decidedAtMs === undefined ||
+    resolvedAtMs === undefined ||
+    (request.deviceSecurityValidUntil && validUntilMs === undefined)
+  ) {
+    throw new Error("warden_river_device_security_time_invalid");
+  }
+
+  if (resolvedAtMs > requestedAtMs || resolvedAtMs > decidedAtMs) {
+    throw new Error("warden_river_device_security_from_future");
+  }
+
+  if (
+    validUntilMs !== undefined &&
+    (requestedAtMs > validUntilMs || decidedAtMs > validUntilMs)
+  ) {
+    throw new Error("warden_river_device_security_expired");
+  }
 }
 
 type BindingResponse = {
@@ -80,6 +151,8 @@ export class RiverWardenConformanceBindingServiceV1 {
       }
       return structuredClone(existing.response);
     }
+
+    assertReservationBoundary(request, decidedAndReservedAt);
 
     const decision = evaluateWardenConformanceDecision(parsed, decidedAndReservedAt);
     const safeDecision = publicDecision(decision);
