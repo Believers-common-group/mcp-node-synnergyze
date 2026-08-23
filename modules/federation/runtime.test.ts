@@ -8,7 +8,7 @@ const MISSION_REF = "MISSION-CREATOR-CROSSBORDER-001";
 const PRODUCT_REF = "PRODUCT-X-001";
 const CORRELATION_ID = "CORR-FED-LICENCE-001";
 
-function sourceRequest(): WardenDecisionRequestV1 {
+function sourceRequest(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisionRequestV1 {
   return {
     requestRef: "WARDEN-REQUEST:IN:LICENCE:001",
     actorRef: "DM-IN-CREATOR-001",
@@ -26,6 +26,7 @@ function sourceRequest(): WardenDecisionRequestV1 {
     representationSourceRefs: ["GENESIS:CREATOR-IP-RELATIONSHIP-001"],
     requestedAt: "2026-08-24T00:00:00.000Z",
     correlationId: CORRELATION_ID,
+    ...overrides,
   };
 }
 
@@ -49,7 +50,7 @@ function sourcePolicy(): SyntheticWardenDecisionPolicyV1 {
   };
 }
 
-function destinationRequest(): WardenDecisionRequestV1 {
+function destinationRequest(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisionRequestV1 {
   return {
     requestRef: "WARDEN-REQUEST:MY:LICENCE:001",
     actorRef: "ENT-MY-BUYER-001",
@@ -67,6 +68,7 @@ function destinationRequest(): WardenDecisionRequestV1 {
     representationSourceRefs: ["FEDERATION-OBJECT:IN-MY:LICENCE:001"],
     requestedAt: "2026-08-24T00:01:00.000Z",
     correlationId: CORRELATION_ID,
+    ...overrides,
   };
 }
 
@@ -92,6 +94,8 @@ function destinationPolicy(): SyntheticWardenDecisionPolicyV1 {
 
 function execute(
   overrides: {
+    sourceRequest?: Partial<WardenDecisionRequestV1>;
+    destinationRequest?: Partial<WardenDecisionRequestV1>;
     sourcePolicy?: Partial<SyntheticWardenDecisionPolicyV1>;
     destinationPolicy?: Partial<SyntheticWardenDecisionPolicyV1>;
   } = {},
@@ -101,12 +105,12 @@ function execute(
     federationObjectRef: "FEDERATION-OBJECT:IN-MY:LICENCE:001",
     productRef: PRODUCT_REF,
     source: {
-      request: sourceRequest(),
+      request: sourceRequest(overrides.sourceRequest),
       policy: { ...sourcePolicy(), ...overrides.sourcePolicy },
       decidedAt: "2026-08-24T00:00:30.000Z",
     },
     destination: {
-      request: destinationRequest(),
+      request: destinationRequest(overrides.destinationRequest),
       policy: { ...destinationPolicy(), ...overrides.destinationPolicy },
       decidedAt: "2026-08-24T00:01:30.000Z",
     },
@@ -175,6 +179,19 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-001 R1.0", () => {
     expect("destinationDecision" in result).toBe(false);
     expect("reservation" in result).toBe(false);
     expect("executionReceipt" in result).toBe(false);
+    expect("effectReceipt" in result).toBe(false);
+  });
+
+  it("blocks federation lineage before the destination Warden when the source licence targets a different product", () => {
+    const result = execute({ sourceRequest: { targetRef: "PRODUCT-Y-001" } });
+
+    expect(result.state).toBe("BLOCKED_LINEAGE");
+    if (result.state !== "BLOCKED_LINEAGE") throw new Error("expected_blocked_lineage");
+
+    expect(result.sourceDecision.decision).toBe("ALLOW");
+    expect(result.reasonCode).toBe("source_product_mismatch");
+    expect("destinationDecision" in result).toBe(false);
+    expect("reservation" in result).toBe(false);
     expect("effectReceipt" in result).toBe(false);
   });
 });
