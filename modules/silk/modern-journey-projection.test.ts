@@ -29,7 +29,7 @@ function buildClosedStream() {
 
   append(1, "TRANSACTION_OPENED", { amount: 4800, currency: "INR" });
   append(2, "RESOURCE_RESERVED", { resourceRef: "FUNDING:CORPORATE-CREDIT-001" });
-  append(3, "PROVIDER_EXECUTION_FAILED", { providerRef: "BANK-B" });
+  append(3, "PROVIDER_EXECUTION_FAILED", { providerRef: "BANK-B", recoverable: true });
   append(4, "RESOURCE_RELEASED", { resourceRef: "FUNDING:CORPORATE-CREDIT-001" });
   append(5, "FALLBACK_AUTHORIZED", { providerRef: "BANK-A", wardenDecisionRef: "WARDEN-DECISION:VISA" });
   append(6, "FALLBACK_RESOURCE_RESERVED", {
@@ -62,6 +62,30 @@ describe("MODERN-JOURNEY-PROJECTION-001", () => {
     });
     expect(projection.activeResourceRefs).toEqual([]);
     expect(projection.consumedResourceRefs).toEqual(["FUNDING:PERSONAL-VISA-FALLBACK-001"]);
+  });
+
+  it("projects an unrecoverable provider failure as BLOCKED", () => {
+    const log = new ModernJourneyEventLogV1();
+    log.append({
+      idempotencyKey: "OPEN-BLOCKED",
+      transactionRef: TRANSACTION_REF,
+      journeyRef: JOURNEY_REF,
+      actorRef: ACTOR_REF,
+      eventType: "TRANSACTION_OPENED",
+      occurredAt: "2026-08-24T00:00:01.000Z",
+      payload: {},
+    });
+    log.append({
+      idempotencyKey: "FAIL-BLOCKED",
+      transactionRef: TRANSACTION_REF,
+      journeyRef: JOURNEY_REF,
+      actorRef: ACTOR_REF,
+      eventType: "PROVIDER_EXECUTION_FAILED",
+      occurredAt: "2026-08-24T00:00:02.000Z",
+      payload: { providerRef: "BANK-B", recoverable: false },
+    });
+
+    expect(projectModernJourneyTransactionV1(log.stream(TRANSACTION_REF)).state).toBe("BLOCKED");
   });
 
   it("rejects recovery reservation or execution without an explicit fallback authorization event", () => {
@@ -138,7 +162,7 @@ describe("MODERN-JOURNEY-PROJECTION-001", () => {
       actorRef: ACTOR_REF,
       eventType: "PROVIDER_EXECUTION_FAILED",
       occurredAt: "2026-08-24T00:00:02.000Z",
-      payload: { providerRef: "BANK-B" },
+      payload: { providerRef: "BANK-B", recoverable: true },
     });
     log.append({
       idempotencyKey: "RELEASE",
