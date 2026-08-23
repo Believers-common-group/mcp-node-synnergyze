@@ -15,14 +15,17 @@ import {
   makeSyntheticRecoveryNodeSnapshotV01,
   mapSyntheticRecoveryNodeToQelFrameV01,
 } from "./recovery-node-fixture.ts";
+import { mapSyntheticRecoverySettlementToQelFrameV01 } from "./recovery-settlement-fixture.ts";
 import {
-  makeSyntheticRecoverySettlementSnapshotV01,
-  mapSyntheticRecoverySettlementToQelFrameV01,
-} from "./recovery-settlement-fixture.ts";
+  makeSettlementFromRecoveryValuePolicyV01,
+  makeSyntheticRecoveryValueAssessmentV01,
+  makeSyntheticRecoveryValuePriceBookV01,
+  mapRecoveryValuePolicyToQelFrameV01,
+} from "./recovery-value-policy-fixture.ts";
 
 describe("QEL cross-domain Pod Pulse", () => {
-  it("reduces compute, factory, passport, recovery-node, and settlement objects through one shared operating grammar", () => {
-    const observedAt = "2026-08-23T07:00:00.000Z";
+  it("reduces compute, factory, passport, recovery, value, and settlement objects through one shared operating grammar", () => {
+    const observedAt = "2026-08-23T07:30:00.000Z";
     const compute = mapAlphaComputeRunnerToQelFrameV01({
       registration: new SyntheticCpuComputeRunner().registration,
       observedAt,
@@ -50,22 +53,37 @@ describe("QEL cross-domain Pod Pulse", () => {
       assetRef: passportSnapshot.assetRef,
       passportCycleRef: passportSnapshot.cycleRef,
       custodyRef: "CUSTODY-CROSS-DOMAIN-001",
+      route: "REPAIR",
     });
     const recovery = mapSyntheticRecoveryNodeToQelFrameV01(recoverySnapshot);
+    const priceBook = makeSyntheticRecoveryValuePriceBookV01();
+    const assessment = makeSyntheticRecoveryValueAssessmentV01({
+      observedAt,
+      correlationId: "QEL-CROSS-DOMAIN-VALUE-001",
+      recoveryNodeRef: recoverySnapshot.nodeRef,
+      assetRef: passportSnapshot.assetRef,
+      passportCycleRef: passportSnapshot.cycleRef,
+    });
+    const valueQuote = mapRecoveryValuePolicyToQelFrameV01({
+      priceBook,
+      assessment,
+      recovery: recoverySnapshot,
+      passport: passportSnapshot,
+    });
+    const settlementDraft = makeSettlementFromRecoveryValuePolicyV01({
+      priceBook,
+      assessment,
+      recovery: recoverySnapshot,
+      passport: passportSnapshot,
+      settlementRef: "SILK-RECOVERY-SETTLEMENT-001",
+    });
     const settlement = mapSyntheticRecoverySettlementToQelFrameV01({
-      settlement: makeSyntheticRecoverySettlementSnapshotV01({
-        observedAt,
-        correlationId: "QEL-CROSS-DOMAIN-SETTLEMENT-001",
+      settlement: {
+        ...settlementDraft,
         state: "AUTHORIZED",
-        recoveryNodeRef: recoverySnapshot.nodeRef,
-        assetRef: passportSnapshot.assetRef,
-        passportCycleRef: passportSnapshot.cycleRef,
-        assessedValueMinor: 5000,
-        rewardAmountMinor: 1000,
-        assessmentRef: "ASSESSMENT-CROSS-DOMAIN-001",
         authorityState: "ALLOWED",
         authorityRef: "WARDEN-AUTH-CROSS-DOMAIN-001",
-      }),
+      },
       recovery: recoverySnapshot,
       passport: passportSnapshot,
     });
@@ -73,15 +91,16 @@ describe("QEL cross-domain Pod Pulse", () => {
     const pulse = buildQelPodPulseV01({
       podRef: "POD-QEL-CROSS-DOMAIN-001",
       observedAt,
-      frames: [compute, factory, passport, recovery, settlement],
+      frames: [compute, factory, passport, recovery, valueQuote, settlement],
     });
 
     expect(compute.object.type).toBe("COMPUTE_SERVICE");
     expect(factory.object.type).toBe("PRODUCTION_LINE");
     expect(passport.object.type).toBe("PRODUCT_PASSPORT");
     expect(recovery.object.type).toBe("RECOVERY_NODE");
+    expect(valueQuote.object.type).toBe("RECOVERY_VALUE_QUOTE");
     expect(settlement.object.type).toBe("RECOVERY_SETTLEMENT");
-    expect(pulse.now.objectCount).toBe(5);
+    expect(pulse.now.objectCount).toBe(6);
     expect(pulse.now.health).toBe("WATCH");
     expect(pulse.needs).toEqual([
       {
@@ -89,6 +108,12 @@ describe("QEL cross-domain Pod Pulse", () => {
         type: "MATERIAL",
         priority: "HIGH",
         target: "restore_material_flow",
+      },
+      {
+        objectRef: "RECOVERY-VALUE:GARMENT-98F1:CYCLE-01",
+        type: "APPROVAL",
+        priority: "HIGH",
+        target: "create_recovery_settlement_obligation",
       },
       {
         objectRef: "SILK-RECOVERY-SETTLEMENT-001",
@@ -124,10 +149,15 @@ describe("QEL cross-domain Pod Pulse", () => {
     ).toBe(true);
     expect(
       pulse.moves.some(
+        (move) => valueQuote.object.id === move.objectRef && move.action === "CREATE_SETTLEMENT_OBLIGATION",
+      ),
+    ).toBe(true);
+    expect(
+      pulse.moves.some(
         (move) => move.objectRef === settlement.object.id && move.action === "SUBMIT_SETTLEMENT",
       ),
     ).toBe(true);
     expect(pulse.proof.verifiedOutcomes).toBe(0);
-    expect(pulse.proof.unresolvedOutcomes).toBe(5);
+    expect(pulse.proof.unresolvedOutcomes).toBe(6);
   });
 });
