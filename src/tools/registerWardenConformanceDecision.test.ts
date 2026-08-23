@@ -13,6 +13,8 @@ import {
   registerWardenConformanceDecision,
 } from "./registerWardenConformanceDecision.ts";
 
+const FIXED_DECISION_TIME = "2026-08-23T00:00:30.000Z";
+
 function request(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisionRequestV1 {
   return {
     requestRef: "WARDEN-REQUEST:MCP-001",
@@ -38,7 +40,7 @@ function request(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisi
 async function connectedPair() {
   const server = new CustomMcpServer({ name: "warden-test", version: "0.6.0" });
   const client = new Client({ name: "warden-test-client", version: "0.6.0" });
-  registerWardenConformanceDecision(server);
+  registerWardenConformanceDecision(server, () => FIXED_DECISION_TIME);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
   return { client, server };
@@ -112,6 +114,7 @@ describe("WARDEN-MCP-CONFORMANCE-0.6", () => {
     try {
       const allowed = await callDecision(client, request());
       expect(allowed.decision).toBe("ALLOW");
+      expect(allowed.decidedAt).toBe(FIXED_DECISION_TIME);
       if (allowed.decision !== "ALLOW") throw new Error("expected_allow");
       expect(allowed.actionToken).toMatch(/^WARDEN-ACTION-TOKEN:/);
       expect(allowed.constraints).toEqual(["MCP_CONFORMANCE_ONLY", "NO_EXTERNAL_EFFECT"]);
@@ -176,8 +179,8 @@ describe("WARDEN-MCP-CONFORMANCE-0.6", () => {
 
   it("preserves deterministic decision identity for an explicitly fixed conformance time", () => {
     const input = { request: request() };
-    const first = evaluateWardenConformanceDecision(input, "2026-08-23T00:00:30.000Z");
-    const second = evaluateWardenConformanceDecision(input, "2026-08-23T00:00:30.000Z");
+    const first = evaluateWardenConformanceDecision(input, FIXED_DECISION_TIME);
+    const second = evaluateWardenConformanceDecision(input, FIXED_DECISION_TIME);
     expect(second).toEqual(first);
   });
 });
