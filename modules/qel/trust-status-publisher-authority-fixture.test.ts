@@ -120,9 +120,8 @@ describe("QEL-FIXTURE-013 trust status publisher authority", () => {
     });
 
     expect(result.ok).toBe(false);
-    expect(result.issues).toEqual(
-      expect.arrayContaining(["signature_digest_mismatch", "signature_invalid"]),
-    );
+    expect(result.issues).toContain("signature_digest_mismatch");
+    expect(result.signatureVerified).toBe(true);
   });
 
   it("fails when publisher subject-kind or source-authority scope is exceeded", () => {
