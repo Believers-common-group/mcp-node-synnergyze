@@ -1,6 +1,6 @@
 import type {
   BnrActivationInputsV1,
-  BnrReadinessStateV1,
+  BnrPartnerReadinessStateV1,
 } from "./contracts.ts";
 
 function blockersFor(input: BnrActivationInputsV1): string[] {
@@ -23,10 +23,12 @@ function blockersFor(input: BnrActivationInputsV1): string[] {
   return blockers;
 }
 
-export function resolveBnrReadinessV1(input: BnrActivationInputsV1): BnrReadinessStateV1 {
+export function resolveBnrReadinessV1(
+  input: BnrActivationInputsV1,
+): BnrPartnerReadinessStateV1 {
   const blockers = blockersFor(input);
 
-  let activationState: BnrReadinessStateV1["activationState"];
+  let activationState: BnrPartnerReadinessStateV1["activationState"];
   if (input.suspended) {
     activationState = "SUSPENDED";
   } else if (blockers.length > 0) {
