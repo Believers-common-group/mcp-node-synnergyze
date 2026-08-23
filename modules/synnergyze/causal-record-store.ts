@@ -246,6 +246,13 @@ export class InMemoryCausalRecordStoreV1 implements CausalRecordStoreV1 {
     if (!input.reasonCode.trim()) throw new Error("causal_store_supersession_reason_required");
     if (input.sourceEvidenceRefs.length === 0) throw new Error("causal_store_supersession_evidence_required");
 
+    const recordExists = input.recordKind === "EXCEPTION"
+      ? this.exceptions.has(input.recordRef)
+      : input.recordKind === "SCALAR_RECONCILIATION"
+        ? this.scalar.has(input.recordRef)
+        : this.composite.has(input.recordRef);
+    if (!recordExists) throw new Error("causal_store_superseded_record_missing");
+
     const identity = `${input.recordKind}:${input.recordRef}`;
     const supersessionRef = `CAUSAL-SUPERSESSION:${digest(JSON.stringify({
       recordKind: input.recordKind,
