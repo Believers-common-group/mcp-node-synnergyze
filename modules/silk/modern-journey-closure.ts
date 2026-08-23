@@ -6,7 +6,6 @@ import {
   validateModernJourneyEventRecordV1,
   type ModernJourneyEventRecordV1,
 } from "./modern-journey-event-log.ts";
-import { projectModernJourneyTransactionV1 } from "./modern-journey-projection.ts";
 import type { ModernJourneyConfluenceV1, ModernWorkReceiptV1 } from "./modern-journey-confluence.ts";
 import { validateModernWorkReceiptV1 } from "./modern-work-receipt.ts";
 
@@ -52,12 +51,50 @@ function workReceiptPayload(event: ModernJourneyEventRecordV1): ModernWorkReceip
   return receipt;
 }
 
+function assertClosureStream(events: readonly ModernJourneyEventRecordV1[]): void {
+  if (events.length !== 3) throw new Error("modern_journey_closure_three_events_required");
+  const [opened, effect, closed] = events;
+  if (!opened || opened.eventType !== "TRANSACTION_OPENED") {
+    throw new Error("modern_journey_closure_open_event_required");
+  }
+  if (!effect || effect.eventType !== "EFFECT_VERIFIED") {
+    throw new Error("modern_journey_closure_effect_event_required");
+  }
+  if (!closed || closed.eventType !== "TRANSACTION_CLOSED") {
+    throw new Error("modern_journey_closure_close_event_required");
+  }
+  for (let index = 0; index < events.length; index += 1) {
+    const event = events[index];
+    if (!event) throw new Error("modern_journey_closure_event_missing");
+    validateModernJourneyEventRecordV1(event);
+    if (event.sequence !== index + 1) throw new Error("modern_journey_closure_sequence_gap");
+    if (event.transactionRef !== opened.transactionRef) {
+      throw new Error("modern_journey_closure_transaction_lineage_mismatch");
+    }
+    if (event.journeyRef !== opened.journeyRef) {
+      throw new Error("modern_journey_closure_journey_lineage_mismatch");
+    }
+    if (event.correlationId !== opened.transactionRef) {
+      throw new Error("modern_journey_closure_correlation_mismatch");
+    }
+    if (index === 0) {
+      if (event.predecessorEventRef) {
+        throw new Error("modern_journey_closure_root_predecessor_forbidden");
+      }
+    } else if (event.predecessorEventRef !== events[index - 1]?.eventRef) {
+      throw new Error("modern_journey_closure_predecessor_mismatch");
+    }
+  }
+}
+
 export function buildModernJourneyClosureEventsV1(input: {
   confluence: ModernJourneyConfluenceV1;
   actorRef: string;
 }): readonly ModernJourneyEventRecordV1[] {
   const { confluence } = input;
-  if (confluence.state !== "CLOSED") throw new Error("modern_journey_closure_closed_confluence_required");
+  if (confluence.state !== "CLOSED") {
+    throw new Error("modern_journey_closure_closed_confluence_required");
+  }
   if (!confluence.finalEffectRef) throw new Error("modern_journey_closure_final_effect_required");
   if (!confluence.workReceipt) throw new Error("modern_journey_closure_work_receipt_required");
   if (!input.actorRef.trim()) throw new Error("modern_journey_closure_actor_ref_required");
@@ -119,22 +156,20 @@ export function buildModernJourneyClosureEventsV1(input: {
       workReceipt: confluence.workReceipt,
     },
   });
-  return log.stream(closureRef);
+  const events = log.stream(closureRef);
+  assertClosureStream(events);
+  return events;
 }
 
 export function rehydrateModernJourneyClosureV1(
   events: readonly ModernJourneyEventRecordV1[],
 ): ModernJourneyClosureV1 {
-  for (const event of events) validateModernJourneyEventRecordV1(event);
-  const projection = projectModernJourneyTransactionV1(events);
-  if (projection.state !== "CLOSED") throw new Error("modern_journey_closure_closed_stream_required");
+  assertClosureStream(events);
   const opened = events[0];
-  const closed = events.at(-1);
-  if (!opened || opened.eventType !== "TRANSACTION_OPENED") {
-    throw new Error("modern_journey_closure_open_event_required");
-  }
-  if (!closed || closed.eventType !== "TRANSACTION_CLOSED") {
-    throw new Error("modern_journey_closure_close_event_required");
+  const effectEvent = events[1];
+  const closed = events[2];
+  if (!opened || !effectEvent || !closed) {
+    throw new Error("modern_journey_closure_event_missing");
   }
   if (stringPayload(opened, "kind") !== "JOURNEY_CONFLUENCE_CLOSURE") {
     throw new Error("modern_journey_closure_kind_mismatch");
@@ -142,34 +177,53 @@ export function rehydrateModernJourneyClosureV1(
   if (stringPayload(closed, "kind") !== "JOURNEY_CONFLUENCE_CLOSURE") {
     throw new Error("modern_journey_closure_close_kind_mismatch");
   }
-  const effectEvent = events.find((event) => event.eventType === "EFFECT_VERIFIED");
-  if (!effectEvent) throw new Error("modern_journey_closure_effect_event_required");
   const finalEffectRef = requiredString(
     effectEvent,
     "effectRef",
     "modern_journey_closure_effect_ref_required",
   );
   const workReceipt = workReceiptPayload(closed);
-  if (requiredString(closed, "workReceiptRef", "modern_journey_closure_receipt_ref_required") !== workReceipt.receiptRef) {
+  if (
+    requiredString(closed, "workReceiptRef", "modern_journey_closure_receipt_ref_required") !==
+    workReceipt.receiptRef
+  ) {
     throw new Error("modern_journey_closure_receipt_ref_mismatch");
   }
-  if (workReceipt.journeyRef !== projection.journeyRef) {
+  if (workReceipt.journeyRef !== opened.journeyRef) {
     throw new Error("modern_journey_closure_receipt_journey_mismatch");
   }
   if (workReceipt.finalEffectRef !== finalEffectRef) {
     throw new Error("modern_journey_closure_receipt_effect_mismatch");
   }
-  if (workReceipt.finalEffectObservedStateRef !== stringPayload(effectEvent, "observedStateRef")) {
+  if (
+    workReceipt.finalEffectObservedStateRef !== stringPayload(effectEvent, "observedStateRef")
+  ) {
     throw new Error("modern_journey_closure_observed_state_mismatch");
   }
 
   return {
-    closureRef: projection.transactionRef,
-    journeyRef: projection.journeyRef,
-    objectiveRef: requiredString(opened, "objectiveRef", "modern_journey_closure_objective_ref_required"),
-    digitalMeRef: requiredString(opened, "digitalMeRef", "modern_journey_closure_digital_me_ref_required"),
-    silkAccountRef: requiredString(opened, "silkAccountRef", "modern_journey_closure_silk_account_ref_required"),
-    economicOwnerRef: requiredString(opened, "economicOwnerRef", "modern_journey_closure_owner_ref_required"),
+    closureRef: opened.transactionRef,
+    journeyRef: opened.journeyRef,
+    objectiveRef: requiredString(
+      opened,
+      "objectiveRef",
+      "modern_journey_closure_objective_ref_required",
+    ),
+    digitalMeRef: requiredString(
+      opened,
+      "digitalMeRef",
+      "modern_journey_closure_digital_me_ref_required",
+    ),
+    silkAccountRef: requiredString(
+      opened,
+      "silkAccountRef",
+      "modern_journey_closure_silk_account_ref_required",
+    ),
+    economicOwnerRef: requiredString(
+      opened,
+      "economicOwnerRef",
+      "modern_journey_closure_owner_ref_required",
+    ),
     finalEffectRef,
     workReceipt,
     events: events.map((event) => ({ ...event, payload: { ...event.payload } })),
@@ -192,7 +246,9 @@ export async function persistModernJourneyClosureV1(input: {
   try {
     for (const event of events) {
       const result = await input.store.put(event, input.recordedAt);
-      if (result.state === "CONFLICT") throw new Error("modern_journey_closure_persistence_conflict");
+      if (result.state === "CONFLICT") {
+        throw new Error("modern_journey_closure_persistence_conflict");
+      }
       if (!result.record || result.record.eventRef !== event.eventRef) {
         throw new Error("modern_journey_closure_persistence_receipt_mismatch");
       }
