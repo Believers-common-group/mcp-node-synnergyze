@@ -79,3 +79,26 @@ export interface CapabilityGrant {
   currency: string;
   expiresAt: string;
 }
+
+export type ExecutionState =
+  | "REQUESTED"
+  | "PRINCIPAL_RESOLVED"
+  | "ASSET_RESOLVED"
+  | "ENTITLEMENT_RESOLVED"
+  | "ROUTE_QUOTED"
+  | "WARDEN_PENDING"
+  | "AUTHORIZED"
+  | "FUNDS_RESERVED"
+  | "CAPABILITY_ISSUED"
+  | "DISPATCHED"
+  | "RUNNING"
+  | "METERING"
+  | "OUTPUT_OBSERVED"
+  | "EFFECT_VERIFIED"
+  | "ASSET_REGISTERED"
+  | "SETTLED"
+  | "EXCEPTION"
+  | "RECONCILIATION"
+  | "RECOVERY"
+  | "COMPENSATION"
+  | "CLOSED";
