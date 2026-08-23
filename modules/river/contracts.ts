@@ -10,6 +10,7 @@ export interface ActionEnvelopeV1 {
   action: string;
   capabilityRef: string;
   targetRef: string;
+  requestedEffect?: string;
   executionDeviceRef?: string;
   deviceSecurityPolicyRef?: string;
   deviceSecurityRequestDigest?: string;
