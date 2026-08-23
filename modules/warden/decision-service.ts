@@ -160,6 +160,14 @@ export function evaluateSyntheticWardenDecisionV1(
     return deny(request, policy, decidedAt, "required_policy_missing");
   }
 
+  if (
+    request.trustResolution?.result === "CONFLICTED" &&
+    request.trustResolution.material &&
+    request.trustResolution.irreversibleEffect
+  ) {
+    return escalate(request, policy, decidedAt, "material_trust_conflict");
+  }
+
   if (policy.manualReviewCapabilityRefs.includes(request.capabilityRef)) {
     return escalate(request, policy, decidedAt, "manual_review_required");
   }
