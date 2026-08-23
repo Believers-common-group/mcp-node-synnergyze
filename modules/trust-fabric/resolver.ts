@@ -22,6 +22,16 @@ export interface TrustResolutionRequestV1 {
 }
 
 export function resolveTrustV1(request: TrustResolutionRequestV1): WardenTrustResolutionV1 {
+  if (request.materialConflict) {
+    return {
+      resolutionRef: request.resolutionRef,
+      result: "CONFLICTED",
+      material: true,
+      irreversibleEffect: request.intendedEffect.irreversible,
+      reasonCodes: ["material_trust_conflict"],
+    };
+  }
+
   if (request.observedAssurance.compute < request.requiredAssurance.compute) {
     return {
       resolutionRef: request.resolutionRef,
