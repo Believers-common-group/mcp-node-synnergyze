@@ -45,6 +45,7 @@ export interface SilkCapabilityResolutionV1 {
 export interface SilkResourceCapacityV1 {
   resourceRef: string;
   silkAccountRef: string;
+  resourceOwnerRef: string;
   resourceType: SilkResourceTypeV1;
   capacity: number;
   unit: string;
@@ -65,6 +66,7 @@ export interface SilkResourceReservationRequestV1 {
 
 export interface SilkResourceReservationV1 extends SilkResourceReservationRequestV1 {
   reservationRef: string;
+  resourceOwnerRef: string;
   capacity: number;
   state: SilkReservationStateV1;
   idempotentReplay: boolean;
@@ -115,11 +117,16 @@ function cloneCapability(capability: SilkProviderCapabilityV1): SilkProviderCapa
   return { ...capability };
 }
 
-function reservationIdentity(input: SilkResourceReservationRequestV1, capacity: number): string {
+function reservationIdentity(
+  input: SilkResourceReservationRequestV1,
+  capacity: number,
+  resourceOwnerRef: string,
+): string {
   return JSON.stringify({
     journeyRef: input.journeyRef,
     silkAccountRef: input.silkAccountRef,
     resourceRef: input.resourceRef,
+    resourceOwnerRef,
     resourceType: input.resourceType,
     quantity: input.quantity,
     unit: input.unit,
@@ -221,6 +228,7 @@ export class SyntheticSilkResourceReservationServiceV1 {
       if (this.capacities.has(capacity.resourceRef)) {
         throw new Error("silk_duplicate_resource_capacity_ref");
       }
+      if (!capacity.resourceOwnerRef.trim()) throw new Error("silk_resource_owner_ref_required");
       assertFinitePositive(capacity.capacity, "silk_resource_capacity_positive_required");
       this.capacities.set(capacity.resourceRef, { ...capacity });
     }
@@ -244,7 +252,9 @@ export class SyntheticSilkResourceReservationServiceV1 {
     if (authoritative.unit !== input.unit) throw new Error("silk_resource_unit_mismatch");
     if (input.quantity > authoritative.capacity) throw new Error("silk_reservation_exceeds_capacity");
 
-    const fingerprint = digest(reservationIdentity(input, authoritative.capacity));
+    const fingerprint = digest(
+      reservationIdentity(input, authoritative.capacity, authoritative.resourceOwnerRef),
+    );
     const existing = this.byCorrelation.get(input.correlationId);
     if (existing) {
       if (existing.fingerprint !== fingerprint) {
@@ -262,6 +272,7 @@ export class SyntheticSilkResourceReservationServiceV1 {
     const reservation: SilkResourceReservationV1 = {
       ...input,
       reservationRef,
+      resourceOwnerRef: authoritative.resourceOwnerRef,
       capacity: authoritative.capacity,
       state: "RESERVED",
       idempotentReplay: false,
