@@ -149,4 +149,75 @@ describe("AssetComputeFabric", () => {
     expect(eventTypes).toContain("execution.exception");
     expect(eventTypes).not.toContain("asset.candidate_created");
   });
+
+  it("records effect rejection and does not create or settle an asset when output fails verification", async () => {
+    const fundingLedger = new InMemoryFundingLedger([source]);
+    const eventLog = new InMemoryEventLog();
+    const provider = new DeterministicProviderAdapter({
+      mode: "SUCCESS",
+      actualCost: 25,
+      outputRef: "artifact://alpha/rejected-001",
+    });
+
+    const fabric = new AssetComputeFabric({
+      fundingLedger,
+      eventLog,
+      provider,
+      verifyEffect: async ({ executionId, outputRef }) => ({
+        verified: false,
+        effectReceiptId: `EFF-REJECTED:${executionId}`,
+        outputRef,
+      }),
+    });
+
+    await expect(
+      fabric.execute({
+        executionId: "EXEC-FABRIC-EFFECT-FAIL-001",
+        principalId: "DM-ALPHA-001",
+        assetId: "AST-ALPHA-001",
+        inputRef: "asset://AST-ALPHA-001",
+        resolutionRefs: {
+          principal: "GENESIS:DM-ALPHA-001",
+          asset: "GENESIS:AST-ALPHA-001",
+          entitlement: "GENESIS:RIGHT-ALPHA-001",
+          routeQuote: "SYNNERGYZE:RQ-EFFECT-FAIL-001",
+        },
+        reservationId: "RES-FABRIC-EFFECT-FAIL-001",
+        reserveAmount: 40,
+        fundingPriority: ["ASSET_ALLOWANCE"],
+        selectedRoute: "SIMULATED-PROVIDER-001",
+        operations: ["EXECUTE", "DERIVE"],
+        currency: "INR",
+        requestedCostCeiling: 40,
+        now: new Date("2026-08-23T05:25:00.000Z"),
+        decision: {
+          decisionId: "WD-FABRIC-EFFECT-FAIL-001",
+          executionId: "EXEC-FABRIC-EFFECT-FAIL-001",
+          principalId: "DM-ALPHA-001",
+          outcome: "ALLOW",
+          maxCost: 40,
+          currency: "INR",
+          expiresAt: "2026-08-23T06:00:00.000Z",
+        },
+      }),
+    ).rejects.toThrowError("EFFECT_NOT_VERIFIED");
+
+    expect(fundingLedger.balance("FS-ASSET-ALLOWANCE")).toEqual({
+      available: 100,
+      reserved: 0,
+      settled: 0,
+      currency: "INR",
+    });
+
+    const eventTypes = eventLog
+      .eventsFor("EXEC-FABRIC-EFFECT-FAIL-001")
+      .map((event) => event.eventType);
+    expect(eventTypes).toContain("provider.completed");
+    expect(eventTypes).toContain("output.observed");
+    expect(eventTypes).toContain("effect.rejected");
+    expect(eventTypes).toContain("execution.exception");
+    expect(eventTypes).not.toContain("effect.verified");
+    expect(eventTypes).not.toContain("asset.candidate_created");
+    expect(eventTypes).not.toContain("settlement.completed");
+  });
 });
