@@ -186,9 +186,11 @@ describe("CAUSAL-RECORD-STORE-001", () => {
     })).rejects.toThrow("causal_store_composite_execution_mismatch");
   });
 
-  it("permits only one append-only successor for one record identity", async () => {
+  it("permits only one append-only successor for one persisted record identity", async () => {
     const store = new InMemoryCausalRecordStoreV1();
     const sourceException = exception();
+    await store.putException(sourceException, "2026-08-23T04:00:04.000Z");
+
     const first = await store.supersede({
       recordKind: "EXCEPTION",
       recordRef: sourceException.exceptionRef,
@@ -218,6 +220,18 @@ describe("CAUSAL-RECORD-STORE-001", () => {
       supersededAt: "2026-08-23T04:00:09.000Z",
     });
     expect(conflict).toEqual({ state: "CONFLICT" });
+  });
+
+  it("rejects supersession for a record that was never persisted", async () => {
+    const store = new InMemoryCausalRecordStoreV1();
+    await expect(store.supersede({
+      recordKind: "EXCEPTION",
+      recordRef: "EXCEPTION:MISSING",
+      supersededByRef: "EXCEPTION:CORRECTION:001",
+      reasonCode: "evidence_correction",
+      sourceEvidenceRefs: ["EVIDENCE:CORRECTION:001"],
+      supersededAt: "2026-08-23T04:00:07.000Z",
+    })).rejects.toThrow("causal_store_superseded_record_missing");
   });
 
   it("normalizes composite assessment identity independent of input ordering", () => {
