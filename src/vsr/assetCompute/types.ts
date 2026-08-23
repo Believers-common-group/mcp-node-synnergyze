@@ -141,3 +141,61 @@ export interface ProviderExecutionResult {
 export interface ProviderAdapter {
   execute(input: ProviderExecutionRequest): Promise<ProviderExecutionResult>;
 }
+
+export interface AssetComputeResolutionRefs {
+  principal: string;
+  asset: string;
+  entitlement: string;
+  routeQuote: string;
+}
+
+export interface EffectVerificationInput {
+  executionId: string;
+  outputRef: string;
+  providerReceipt: ProviderReceipt;
+}
+
+export interface EffectVerificationResult {
+  verified: boolean;
+  effectReceiptId: string;
+  outputRef: string;
+}
+
+export type EffectVerifier = (
+  input: EffectVerificationInput,
+) => Promise<EffectVerificationResult>;
+
+export interface AssetComputeExecutionInput {
+  executionId: string;
+  principalId: string;
+  assetId: string;
+  inputRef: string;
+  resolutionRefs: AssetComputeResolutionRefs;
+  reservationId: string;
+  reserveAmount: number;
+  fundingPriority: FundingKind[];
+  selectedRoute: string;
+  operations: readonly string[];
+  currency: string;
+  requestedCostCeiling: number;
+  now: Date;
+  decision: WardenDecision;
+}
+
+export interface DerivedAssetCandidate {
+  assetId: string;
+  parentAssetId: string;
+  executionId: string;
+  outputRef: string;
+  effectReceiptId: string;
+}
+
+export interface AssetComputeExecutionResult {
+  executionId: string;
+  state: "CLOSED";
+  settlement: FundingSettlement;
+  derivedAsset: DerivedAssetCandidate;
+  capability: CapabilityGrant;
+  providerReceipt: ProviderReceipt;
+  effectReceiptId: string;
+}
