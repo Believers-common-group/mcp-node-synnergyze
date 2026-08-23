@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
 
 import type { SilkResourceTypeV1 } from "./confluence-reference.ts";
-import type {
-  ModernJourneyConfluenceLegTypeV1,
-} from "./modern-journey-confluence.ts";
+import type { ModernJourneyConfluenceLegTypeV1 } from "./modern-journey-confluence.ts";
 import type { ModernJourneyPlanV1 } from "./modern-journey-controller.ts";
 
 export interface ModernObjectiveCapabilityRequirementV1 {
@@ -36,15 +34,6 @@ export interface ModernCompiledRoutePlanV1 {
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
-}
-
-function canonicalRequirements(
-  requirements: readonly ModernObjectiveCapabilityRequirementV1[],
-): readonly ModernObjectiveCapabilityRequirementV1[] {
-  return requirements.map((requirement) => ({
-    ...requirement,
-    dependsOn: [...requirement.dependsOn].sort(),
-  }));
 }
 
 function expectedResourceTypes(
@@ -130,6 +119,19 @@ function orderedRequirements(
   return ordered;
 }
 
+function canonicalRequirement(intent: ModernCompiledCapabilityIntentV1) {
+  return {
+    legType: intent.legType,
+    dependsOn: [...intent.dependsOn].sort(),
+    purpose: intent.purpose,
+    capabilityRef: intent.capabilityRef,
+    resourceType: intent.resourceType,
+    quantity: intent.quantity,
+    unit: intent.unit,
+    expectedEffect: intent.expectedEffect,
+  };
+}
+
 export function compileModernRoutePlanV1(input: {
   journeyRef: string;
   objectiveRef: string;
@@ -171,7 +173,7 @@ export function compileModernRoutePlanV1(input: {
       digitalMeRef: input.digitalMeRef,
       silkAccountRef: input.silkAccountRef,
       economicOwnerRef: input.economicOwnerRef,
-      requirements: canonicalRequirements(capabilityIntents).map(({ legRef: _legRef, wardenDecisionRequired: _warden, ...requirement }) => requirement),
+      requirements: capabilityIntents.map(canonicalRequirement),
     }),
   ).slice(0, 24);
 
