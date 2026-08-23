@@ -70,7 +70,9 @@ export type FederatedLicenceLineageReasonR1 =
   | "source_product_mismatch"
   | "source_mission_mismatch"
   | "destination_product_mismatch"
-  | "correlation_mismatch";
+  | "destination_mission_mismatch"
+  | "correlation_mismatch"
+  | "federation_object_mismatch";
 
 export interface FederatedLicenceBlockedLineageR1 {
   state: "BLOCKED_LINEAGE";
@@ -191,8 +193,14 @@ export function executeSyntheticFederatedLicenceR1(
   if (input.destination.request.targetRef !== input.productRef) {
     return blockedLineage(sourceDecision, "destination_product_mismatch");
   }
+  if (input.destination.request.programRef !== input.missionRef) {
+    return blockedLineage(sourceDecision, "destination_mission_mismatch");
+  }
   if (input.destination.request.correlationId !== input.source.request.correlationId) {
     return blockedLineage(sourceDecision, "correlation_mismatch");
+  }
+  if (!input.destination.request.representationSourceRefs.includes(input.federationObjectRef)) {
+    return blockedLineage(sourceDecision, "federation_object_mismatch");
   }
 
   const destinationDecision = evaluateSyntheticWardenDecisionV1(input.destination);
