@@ -4,7 +4,12 @@ import {
   verify as cryptoVerify,
 } from "node:crypto";
 
-import type { AccreditationRootSignatureResultV01 } from "./accreditation-root-signature-fixture.ts";
+import type {
+  AccreditationRootSignatureResultV01,
+  SignedTrustArtifactV01,
+  TrustSigningKeyRecordV01,
+} from "./accreditation-root-signature-fixture.ts";
+import type { CalibrationCertificateIssuanceAttestationV01 } from "./calibration-authority-fixture.ts";
 import { VSR_QEL_CORE_CONTRACT_VERSION, type QelOperationalFrameV01 } from "./operational-contracts.ts";
 import { buildQelPodPulseV01, type QelPodPulseV01 } from "./pulse.ts";
 import {
@@ -134,6 +139,25 @@ export interface TrustStatusPublisherAuthorityResultV01 {
   issues: readonly TrustStatusPublisherAuthorityIssueV01[];
 }
 
+type TrustStatusBaseInputV01 = Omit<
+  Parameters<typeof validateTrustStatusPublicationV01>[0],
+  "signingKeys"
+> & {
+  rootSigningKeys: readonly TrustSigningKeyRecordV01[];
+};
+
+export type TrustStatusPublisherValidationInputV01 = TrustStatusBaseInputV01 & {
+  publishers: readonly TrustStatusPublisherRecordV01[];
+  authorityGrants: readonly TrustStatusPublisherAuthorityGrantV01[];
+  publisherSigningKeys: readonly TrustStatusPublisherSigningKeyV01[];
+  publicationSignature: TrustStatusPublicationSignatureV01;
+};
+
+export type TrustStatusPublisherRootBindingInputV01 = TrustStatusPublisherValidationInputV01 & {
+  signedArtifacts: readonly SignedTrustArtifactV01[];
+  issuanceAttestations: readonly CalibrationCertificateIssuanceAttestationV01[];
+};
+
 function isIsoDate(value: string): boolean {
   return Boolean(value) && !Number.isNaN(Date.parse(value));
 }
@@ -153,14 +177,31 @@ function validBase64(value: string): boolean {
   return value.length > 0 && value.length % 4 === 0 && /^[A-Za-z0-9+/]+={0,2}$/.test(value);
 }
 
+function trustStatusInput(input: TrustStatusBaseInputV01): Parameters<typeof validateTrustStatusPublicationV01>[0] {
+  return {
+    rootAuthorities: input.rootAuthorities,
+    accreditors: input.accreditors,
+    rootDelegations: input.rootDelegations,
+    signingKeys: input.rootSigningKeys,
+    organisations: input.organisations,
+    accreditationGrants: input.accreditationGrants,
+    calibrators: input.calibrators,
+    calibrationCertificates: input.calibrationCertificates,
+    publication: input.publication,
+    riverReceipt: input.riverReceipt,
+    observedAt: input.observedAt,
+    predecessorPublication: input.predecessorPublication,
+  };
+}
+
 export function canonicalTrustStatusPublisherSignaturePayloadV01(input: {
   publication: TrustStatusPublicationV01;
   signature: Omit<TrustStatusPublicationSignatureV01, "signatureBase64">;
 }): string {
   return JSON.stringify({
     contractVersion: VSR_QEL_TRUST_STATUS_PUBLISHER_AUTHORITY_VERSION,
-    publicationRef: input.publication.publicationRef,
-    publicationDigest: digestTrustStatusPublicationV01(input.publication),
+    publicationRef: input.signature.publicationRef,
+    publicationDigest: input.signature.publicationDigest,
     publisherRef: input.signature.publisherRef,
     authorityGrantRef: input.signature.authorityGrantRef,
     keyRef: input.signature.keyRef,
@@ -169,18 +210,11 @@ export function canonicalTrustStatusPublisherSignaturePayloadV01(input: {
   });
 }
 
-type TrustStatusPublisherValidationInputV01 = Parameters<typeof validateTrustStatusPublicationV01>[0] & {
-  publishers: readonly TrustStatusPublisherRecordV01[];
-  authorityGrants: readonly TrustStatusPublisherAuthorityGrantV01[];
-  signingKeys: readonly TrustStatusPublisherSigningKeyV01[];
-  publicationSignature: TrustStatusPublicationSignatureV01;
-};
-
 export function validateTrustStatusPublisherAuthorityV01(
   input: TrustStatusPublisherValidationInputV01,
 ): TrustStatusPublisherAuthorityResultV01 {
   const issues: TrustStatusPublisherAuthorityIssueV01[] = [];
-  const trustStatus = validateTrustStatusPublicationV01(input);
+  const trustStatus = validateTrustStatusPublicationV01(trustStatusInput(input));
   const publicationDigest = digestTrustStatusPublicationV01(input.publication);
   if (!trustStatus.publicationValid) issues.push("trust_status_publication_invalid");
 
@@ -197,7 +231,11 @@ export function validateTrustStatusPublisherAuthorityV01(
     if (isIsoDate(input.publication.publishedAt) && signedAtMs < Date.parse(input.publication.publishedAt)) {
       issues.push("signature_before_publication");
     }
-    if (input.riverReceipt && isIsoDate(input.riverReceipt.recordedAt) && signedAtMs > Date.parse(input.riverReceipt.recordedAt)) {
+    if (
+      input.riverReceipt &&
+      isIsoDate(input.riverReceipt.recordedAt) &&
+      signedAtMs > Date.parse(input.riverReceipt.recordedAt)
+    ) {
       issues.push("signature_after_river_record");
     }
     if (isIsoDate(input.observedAt) && signedAtMs > Date.parse(input.observedAt)) {
@@ -221,7 +259,10 @@ export function validateTrustStatusPublisherAuthorityV01(
       if (!effectiveAt(publisher.validFrom, publisher.validUntil, signature.signedAt)) {
         issues.push("publisher_not_effective_at_signing");
       }
-      if (isIsoDate(input.observedAt) && !effectiveAt(publisher.validFrom, publisher.validUntil, input.observedAt)) {
+      if (
+        isIsoDate(input.observedAt) &&
+        !effectiveAt(publisher.validFrom, publisher.validUntil, input.observedAt)
+      ) {
         issues.push("publisher_not_current");
       }
     }
@@ -244,7 +285,10 @@ export function validateTrustStatusPublisherAuthorityV01(
       if (!effectiveAt(grant.validFrom, grant.validUntil, signature.signedAt)) {
         issues.push("publisher_authority_not_effective_at_signing");
       }
-      if (isIsoDate(input.observedAt) && !effectiveAt(grant.validFrom, grant.validUntil, input.observedAt)) {
+      if (
+        isIsoDate(input.observedAt) &&
+        !effectiveAt(grant.validFrom, grant.validUntil, input.observedAt)
+      ) {
         issues.push("publisher_authority_not_current");
       }
     }
@@ -252,16 +296,18 @@ export function validateTrustStatusPublisherAuthorityV01(
     if (!containsAll(grant.permittedSubjectKinds, usedKinds)) {
       issues.push("publisher_subject_scope_exceeded");
     }
-    const usedAuthorities = [...new Set(input.publication.entries.map((entry) => entry.sourceAuthorityRef))];
+    const usedAuthorities = [
+      ...new Set(input.publication.entries.map((entry) => entry.sourceAuthorityRef)),
+    ];
     if (!containsAll(grant.permittedSourceAuthorityRefs, usedAuthorities)) {
       issues.push("publisher_source_authority_scope_exceeded");
     }
   }
 
-  const signingKeys = input.signingKeys.filter((key) => key.keyRef === signature.keyRef);
-  if (signingKeys.length === 0) issues.push("publisher_signing_key_missing");
-  if (signingKeys.length > 1) issues.push("publisher_signing_key_duplicate");
-  const signingKey = signingKeys.length === 1 ? signingKeys[0] : undefined;
+  const keys = input.publisherSigningKeys.filter((key) => key.keyRef === signature.keyRef);
+  if (keys.length === 0) issues.push("publisher_signing_key_missing");
+  if (keys.length > 1) issues.push("publisher_signing_key_duplicate");
+  const signingKey = keys.length === 1 ? keys[0] : undefined;
   if (signingKey) {
     if (signingKey.publisherRef !== signature.publisherRef) {
       issues.push("publisher_signing_key_publisher_mismatch");
@@ -276,16 +322,19 @@ export function validateTrustStatusPublisherAuthorityV01(
       if (!effectiveAt(signingKey.validFrom, signingKey.validUntil, signature.signedAt)) {
         issues.push("publisher_signing_key_not_effective_at_signing");
       }
-      if (isIsoDate(input.observedAt) && !effectiveAt(signingKey.validFrom, signingKey.validUntil, input.observedAt)) {
+      if (
+        isIsoDate(input.observedAt) &&
+        !effectiveAt(signingKey.validFrom, signingKey.validUntil, input.observedAt)
+      ) {
         issues.push("publisher_signing_key_not_current");
       }
     }
     if (!signingKey.publicKeyPem.trim()) issues.push("publisher_signing_key_public_material_missing");
   }
 
-  if (signature.publisherRef !== publisher?.publisherRef) issues.push("signature_publisher_mismatch");
-  if (signature.authorityGrantRef !== grant?.grantRef) issues.push("signature_authority_grant_mismatch");
-  if (signature.keyRef !== signingKey?.keyRef) issues.push("signature_key_mismatch");
+  if (publisher && signature.publisherRef !== publisher.publisherRef) issues.push("signature_publisher_mismatch");
+  if (grant && signature.authorityGrantRef !== grant.grantRef) issues.push("signature_authority_grant_mismatch");
+  if (signingKey && signature.keyRef !== signingKey.keyRef) issues.push("signature_key_mismatch");
 
   let signatureVerified = false;
   if (!validBase64(signature.signatureBase64)) {
@@ -317,14 +366,18 @@ export function validateTrustStatusPublisherAuthorityV01(
     }
   }
 
-  const publisherAuthorizationIssues = issues.filter((issue) =>
-    issue.startsWith("publisher_") || issue.startsWith("signature_publisher") || issue.startsWith("signature_authority"),
+  const authorizationIssues = issues.filter(
+    (issue) =>
+      issue.startsWith("publisher_") ||
+      issue.startsWith("signature_publisher") ||
+      issue.startsWith("signature_authority") ||
+      issue.startsWith("signature_key"),
   );
 
   return {
     contractVersion: VSR_QEL_TRUST_STATUS_PUBLISHER_AUTHORITY_VERSION,
     ok: issues.length === 0 && signatureVerified,
-    publisherAuthorized: publisherAuthorizationIssues.length === 0,
+    publisherAuthorized: authorizationIssues.length === 0,
     signatureVerified,
     publicationDigest,
     publisherRef: publisher?.publisherRef,
@@ -335,8 +388,7 @@ export function validateTrustStatusPublisherAuthorityV01(
 }
 
 export function bindAccreditationRootThroughAuthorizedStatusPublisherV01(
-  input: Parameters<typeof bindAccreditationRootThroughFreshTrustStatusV01>[0] &
-    TrustStatusPublisherValidationInputV01,
+  input: TrustStatusPublisherRootBindingInputV01,
 ): {
   ok: boolean;
   publisherAuthority: TrustStatusPublisherAuthorityResultV01;
@@ -345,7 +397,22 @@ export function bindAccreditationRootThroughAuthorizedStatusPublisherV01(
 } {
   const publisherAuthority = validateTrustStatusPublisherAuthorityV01(input);
   if (!publisherAuthority.ok) return { ok: false, publisherAuthority };
-  const rooted = bindAccreditationRootThroughFreshTrustStatusV01(input);
+  const rooted = bindAccreditationRootThroughFreshTrustStatusV01({
+    rootAuthorities: input.rootAuthorities,
+    accreditors: input.accreditors,
+    rootDelegations: input.rootDelegations,
+    signingKeys: input.rootSigningKeys,
+    signedArtifacts: input.signedArtifacts,
+    organisations: input.organisations,
+    accreditationGrants: input.accreditationGrants,
+    calibrators: input.calibrators,
+    calibrationCertificates: input.calibrationCertificates,
+    issuanceAttestations: input.issuanceAttestations,
+    publication: input.publication,
+    riverReceipt: input.riverReceipt,
+    observedAt: input.observedAt,
+    predecessorPublication: input.predecessorPublication,
+  });
   return {
     ok: rooted.ok,
     publisherAuthority,
@@ -361,10 +428,11 @@ export function mapTrustStatusPublisherAuthorityToQelFrameV01(
   const evidenceRefs = [
     ...input.publishers.map((publisher) => publisher.registryRef),
     ...input.authorityGrants.flatMap((grant) => [grant.issuerRegistryRef, grant.authorityEvidenceRef]),
-    ...input.signingKeys.map((key) => key.keyRef),
+    ...input.publisherSigningKeys.map((key) => key.keyRef),
     input.publicationSignature.signatureRef,
     input.riverReceipt?.receiptRef,
   ].filter((value): value is string => Boolean(value));
+  const evidenceStatus = result.ok ? "FRESH" : evidenceRefs.length > 0 ? "CONFLICTING" : "MISSING";
 
   return {
     contractVersion: VSR_QEL_CORE_CONTRACT_VERSION,
@@ -415,7 +483,7 @@ export function mapTrustStatusPublisherAuthorityToQelFrameV01(
       },
     ],
     evidence: {
-      status: result.ok ? "FRESH" : evidenceRefs.length > 0 ? "CONFLICTING" : "MISSING",
+      status: evidenceStatus,
       confidence: evidenceRefs.length > 0 ? 1 : 0,
       freshness: {
         observedAt: input.observedAt,
@@ -423,7 +491,7 @@ export function mapTrustStatusPublisherAuthorityToQelFrameV01(
           isIsoDate(input.publication.publishedAt) && isIsoDate(input.observedAt)
             ? Math.max(0, Date.parse(input.observedAt) - Date.parse(input.publication.publishedAt))
             : 0,
-        status: result.ok ? "FRESH" : evidenceRefs.length > 0 ? "CONFLICTING" : "MISSING",
+        status: evidenceStatus,
         maximumValidAgeMs: input.publication.maximumStatusAgeMs,
       },
       sources: evidenceRefs.map((sourceRef) => ({
@@ -470,7 +538,7 @@ export function makeSyntheticTrustStatusPublisherAuthorityBundleV01(
 ): {
   publishers: readonly TrustStatusPublisherRecordV01[];
   authorityGrants: readonly TrustStatusPublisherAuthorityGrantV01[];
-  signingKeys: readonly TrustStatusPublisherSigningKeyV01[];
+  publisherSigningKeys: readonly TrustStatusPublisherSigningKeyV01[];
   publicationSignature: TrustStatusPublicationSignatureV01;
 } {
   const publisherRef = overrides.publisherRef ?? "TRUST-STATUS-PUBLISHER-SYNTHETIC-001";
@@ -478,7 +546,7 @@ export function makeSyntheticTrustStatusPublisherAuthorityBundleV01(
   const validFrom = "2026-01-01T00:00:00.000Z";
   const validUntil = "2027-01-01T00:00:00.000Z";
   const pair = generateKeyPairSync("ed25519");
-  const keyRef = `KEY:${publisherRef}:${cryptoKeySuffix(pair.publicKey.export({ type: "spki", format: "der" }))}`;
+  const keyRef = `KEY:${publisherRef}:${keySuffix(pair.publicKey.export({ type: "spki", format: "der" }))}`;
   const publisher: TrustStatusPublisherRecordV01 = {
     publisherRef,
     registryRef: `GENESIS:TRUST-STATUS-PUBLISHER:${publisherRef}`,
@@ -522,10 +590,7 @@ export function makeSyntheticTrustStatusPublisherAuthorityBundleV01(
     publicationDigest: digestTrustStatusPublicationV01(publication),
     synthetic: true,
   };
-  const payload = canonicalTrustStatusPublisherSignaturePayloadV01({
-    publication,
-    signature: unsigned,
-  });
+  const payload = canonicalTrustStatusPublisherSignaturePayloadV01({ publication, signature: unsigned });
   const publicationSignature: TrustStatusPublicationSignatureV01 = {
     ...unsigned,
     signatureBase64: cryptoSign(null, Buffer.from(payload, "utf8"), pair.privateKey).toString("base64"),
@@ -533,11 +598,11 @@ export function makeSyntheticTrustStatusPublisherAuthorityBundleV01(
   return {
     publishers: [publisher],
     authorityGrants: [authorityGrant],
-    signingKeys: [signingKey],
+    publisherSigningKeys: [signingKey],
     publicationSignature,
   };
 }
 
-function cryptoKeySuffix(publicKeyDer: Buffer): string {
+function keySuffix(publicKeyDer: Buffer): string {
   return publicKeyDer.subarray(0, 6).toString("hex").toUpperCase();
 }
