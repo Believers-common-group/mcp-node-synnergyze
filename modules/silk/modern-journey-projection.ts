@@ -16,6 +16,7 @@ export interface ModernJourneyTransactionProjectionV1 {
   failedProviderCount: number;
   currentProviderRef?: string;
   activeResourceRefs: readonly string[];
+  consumedResourceRefs: readonly string[];
   economicEventRecorded: boolean;
   obligationCount: number;
   effectVerified: boolean;
@@ -60,6 +61,7 @@ export function projectModernJourneyTransactionV1(
   let failedProviderCount = 0;
   let currentProviderRef: string | undefined;
   const activeResources = new Set<string>();
+  const consumedResources = new Set<string>();
   let economicEventRecorded = false;
   let obligationCount = 0;
   let effectVerified = false;
@@ -73,6 +75,9 @@ export function projectModernJourneyTransactionV1(
         if (state === "CLOSED") throw new Error("modern_projection_event_after_close");
         const resourceRef = stringPayload(event, "resourceRef");
         if (!resourceRef) throw new Error("modern_projection_resource_ref_required");
+        if (activeResources.has(resourceRef) || consumedResources.has(resourceRef)) {
+          throw new Error("modern_projection_resource_duplicate_reservation");
+        }
         activeResources.add(resourceRef);
         break;
       }
@@ -110,6 +115,18 @@ export function projectModernJourneyTransactionV1(
         state = "EXECUTED_UNVERIFIED";
         break;
       }
+      case "RESOURCE_CONSUMED": {
+        if (state !== "EXECUTED_UNVERIFIED") {
+          throw new Error("modern_projection_consumption_state_conflict");
+        }
+        const resourceRef = stringPayload(event, "resourceRef");
+        if (!resourceRef || !activeResources.has(resourceRef)) {
+          throw new Error("modern_projection_consumption_resource_mismatch");
+        }
+        activeResources.delete(resourceRef);
+        consumedResources.add(resourceRef);
+        break;
+      }
       case "ECONOMIC_EVENT_RECORDED":
         if (state !== "EXECUTED_UNVERIFIED") {
           throw new Error("modern_projection_economic_event_state_conflict");
@@ -133,6 +150,9 @@ export function projectModernJourneyTransactionV1(
         if (state !== "EFFECT_VERIFIED" || !effectVerified) {
           throw new Error("modern_projection_close_requires_verified_effect");
         }
+        if (activeResources.size > 0) {
+          throw new Error("modern_projection_close_with_active_resource");
+        }
         state = "CLOSED";
         break;
     }
@@ -149,6 +169,7 @@ export function projectModernJourneyTransactionV1(
     failedProviderCount,
     currentProviderRef,
     activeResourceRefs: [...activeResources].sort(),
+    consumedResourceRefs: [...consumedResources].sort(),
     economicEventRecorded,
     obligationCount,
     effectVerified,
