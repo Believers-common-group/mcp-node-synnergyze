@@ -1,11 +1,31 @@
 import { createHash } from "node:crypto";
 
+import {
+  buildAuthorizedActionEnvelopeV1,
+  SyntheticRiverReservationServiceV1,
+} from "../river/reservation-service.ts";
+import type { SynnergyzeExecutionReceiptV1 } from "../synnergyze/contracts.ts";
+import {
+  ControlledExecutionGateV1,
+  type SyntheticCapabilityAdapterV1,
+} from "../synnergyze/execution-gate.ts";
 import type {
+  WardenDecisionRequestV1,
+  WardenDecisionV1,
+  WardenExecutionCheckpointV1,
+} from "../warden/contracts.ts";
+import {
+  evaluateSyntheticWardenDecisionV1,
+  type SyntheticWardenDecisionPolicyV1,
+} from "../warden/decision-service.ts";
+import type {
+  ActorCapabilityProfileV1,
   CandidateCompositionV1,
   CapabilityDemandV1,
   CapabilityV1,
   ObjectiveWorkRefV1,
   WorkflowInstanceV1,
+  WorkAssignmentV1,
   WorkUnitV1,
 } from "./contracts.ts";
 
@@ -20,6 +40,31 @@ interface GarmentStepDefinitionV1 {
   outputState: string;
   riskClass: WorkUnitV1["riskClass"];
   firstPassQuality?: number;
+}
+
+export interface CountedSyntheticCapabilityAdapterV1 extends SyntheticCapabilityAdapterV1 {
+  invocationCount(): number;
+}
+
+export interface AssignedWorkExecutionInputV1 {
+  workUnit: WorkUnitV1;
+  composition: CandidateCompositionV1;
+  actorProfiles: readonly ActorCapabilityProfileV1[];
+  request: WardenDecisionRequestV1;
+  policy: SyntheticWardenDecisionPolicyV1;
+  adapter: CountedSyntheticCapabilityAdapterV1;
+  decidedAt: string;
+  reservedAt: string;
+  checkedAt: string;
+  executedAt: string;
+}
+
+export interface AssignedWorkExecutionProofV1 {
+  assignment: WorkAssignmentV1;
+  decision: Extract<WardenDecisionV1, { decision: "ALLOW" }>;
+  checkpoint: WardenExecutionCheckpointV1;
+  execution: SynnergyzeExecutionReceiptV1;
+  adapterInvocationCount: number;
 }
 
 const GARMENT_STEPS: readonly GarmentStepDefinitionV1[] = [
@@ -148,6 +193,60 @@ function assertInstant(value: string, errorCode: string): void {
 function includesAll(actual: readonly string[], required: readonly string[]): boolean {
   const values = new Set(actual);
   return required.every((value) => values.has(value));
+}
+
+function assertAssignedWorkInput(input: AssignedWorkExecutionInputV1): void {
+  const { workUnit, composition, actorProfiles, request, adapter } = input;
+  if (composition.workUnitRef !== workUnit.workUnitRef) {
+    throw new Error("work_capability_composition_work_unit_mismatch");
+  }
+  if (!composition.eligible) throw new Error("work_capability_composition_ineligible");
+  if (!includesAll(composition.capabilityRefs, workUnit.requiredCapabilityRefs)) {
+    throw new Error("work_capability_composition_capability_gap");
+  }
+  if (adapter.capabilityRef !== request.capabilityRef) {
+    throw new Error("work_capability_adapter_capability_mismatch");
+  }
+
+  const actorRefs = new Set(composition.actorRefs);
+  if (actorRefs.size === 0 || actorRefs.size !== composition.actorRefs.length) {
+    throw new Error("work_capability_composition_actor_identity_invalid");
+  }
+  const profiles = new Map(actorProfiles.map((profile) => [profile.actorRef, profile]));
+  for (const actorRef of composition.actorRefs) {
+    const profile = profiles.get(actorRef);
+    if (!profile) throw new Error(`work_capability_actor_profile_missing:${actorRef}`);
+    if (!profile.available) throw new Error(`work_capability_actor_unavailable:${actorRef}`);
+  }
+
+  if (!composition.actorRefs.includes(request.actorRef)) {
+    throw new Error("work_capability_request_actor_not_in_composition");
+  }
+  if (request.actingCapacityRef !== composition.compositionRef) {
+    throw new Error("work_capability_request_composition_mismatch");
+  }
+  if (request.programRef !== workUnit.workflowRef) {
+    throw new Error("work_capability_request_workflow_mismatch");
+  }
+  if (request.eventRef !== workUnit.workUnitRef) {
+    throw new Error("work_capability_request_work_unit_mismatch");
+  }
+  if (request.action !== workUnit.action) throw new Error("work_capability_request_action_mismatch");
+  if (!workUnit.requiredCapabilityRefs.includes(request.capabilityRef)) {
+    throw new Error("work_capability_request_capability_mismatch");
+  }
+  if (request.targetRef !== workUnit.targetRef) {
+    throw new Error("work_capability_request_target_mismatch");
+  }
+  if (request.requestedEffect !== workUnit.requiredOutputStateRef) {
+    throw new Error("work_capability_request_effect_mismatch");
+  }
+  if (request.correlationId !== workUnit.correlationId) {
+    throw new Error("work_capability_request_correlation_mismatch");
+  }
+  if (!request.representationSourceRefs.includes(`COMPOSITE-CAPABILITY:${composition.compositionRef}`)) {
+    throw new Error("work_capability_request_composition_binding_required");
+  }
 }
 
 export function compileSyntheticGarmentWorkflowV1(
@@ -281,4 +380,77 @@ export function selectCandidateCompositionV1(
         capabilityRefs: [...selected.capabilityRefs],
       }
     : undefined;
+}
+
+export function executeAssignedWorkUnitV1(
+  input: AssignedWorkExecutionInputV1,
+): AssignedWorkExecutionProofV1 {
+  assertAssignedWorkInput(input);
+
+  const decision = evaluateSyntheticWardenDecisionV1({
+    request: input.request,
+    policy: input.policy,
+    decidedAt: input.decidedAt,
+  });
+  if (decision.decision !== "ALLOW") {
+    throw new Error(`work_capability_warden_${decision.decision.toLowerCase()}`);
+  }
+
+  const action = buildAuthorizedActionEnvelopeV1(input.request, decision);
+  const river = new SyntheticRiverReservationServiceV1();
+  const reservation = river.reserve({
+    request: input.request,
+    decision,
+    action,
+    reservedAt: input.reservedAt,
+  });
+
+  const checkpoint: WardenExecutionCheckpointV1 = {
+    checkpointRef: `WARDEN-EXEC-CHECK:${digest(
+      `${decision.decisionRef}|${reservation.reservationRef}|${input.checkedAt}`,
+    ).slice(0, 24)}`,
+    decisionRef: decision.decisionRef,
+    wardenRef: decision.wardenRef,
+    correlationId: decision.correlationId,
+    state: "VALID",
+    checkedAt: input.checkedAt,
+    reasonCodes: ["decision_active_for_work_execution"],
+  };
+
+  const assignmentMaterial = JSON.stringify({
+    workUnitRef: input.workUnit.workUnitRef,
+    compositionRef: input.composition.compositionRef,
+    actorRefs: [...input.composition.actorRefs],
+    decisionRef: decision.decisionRef,
+    reservationRef: reservation.reservationRef,
+  });
+  const assignment: WorkAssignmentV1 = {
+    assignmentRef: `WORK-ASSIGNMENT:${digest(assignmentMaterial).slice(0, 24)}`,
+    workUnitRef: input.workUnit.workUnitRef,
+    compositionRef: input.composition.compositionRef,
+    actorRefs: [...input.composition.actorRefs],
+    selectedAt: input.checkedAt,
+    selectionReasonCodes: [
+      "CAPABILITY_COVERED",
+      "WARDEN_ALLOWED",
+      "COMPOSITION_AVAILABLE",
+    ],
+  };
+
+  const gate = new ControlledExecutionGateV1([input.adapter]);
+  const execution = gate.execute({
+    action,
+    reservation,
+    decision,
+    checkpoint,
+    executedAt: input.executedAt,
+  });
+
+  return {
+    assignment,
+    decision,
+    checkpoint,
+    execution,
+    adapterInvocationCount: input.adapter.invocationCount(),
+  };
 }
