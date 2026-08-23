@@ -19,11 +19,62 @@ interface AssetComputeFabricDependencies {
   verifyEffect: EffectVerifier;
 }
 
+interface CompletedExecution {
+  fingerprint: string;
+  result: AssetComputeExecutionResult;
+}
+
+function executionFingerprint(input: AssetComputeExecutionInput): string {
+  return JSON.stringify({
+    executionId: input.executionId,
+    principalId: input.principalId,
+    assetId: input.assetId,
+    inputRef: input.inputRef,
+    resolutionRefs: {
+      principal: input.resolutionRefs.principal,
+      asset: input.resolutionRefs.asset,
+      entitlement: input.resolutionRefs.entitlement,
+      routeQuote: input.resolutionRefs.routeQuote,
+    },
+    reservationId: input.reservationId,
+    reserveAmount: input.reserveAmount,
+    fundingPriority: [...input.fundingPriority],
+    selectedRoute: input.selectedRoute,
+    operations: [...input.operations],
+    currency: input.currency,
+    requestedCostCeiling: input.requestedCostCeiling,
+    now: input.now.toISOString(),
+    decision: {
+      decisionId: input.decision.decisionId,
+      executionId: input.decision.executionId,
+      principalId: input.decision.principalId,
+      outcome: input.decision.outcome,
+      maxCost: input.decision.maxCost,
+      currency: input.decision.currency,
+      expiresAt: input.decision.expiresAt,
+    },
+  });
+}
+
+function cloneResult(result: AssetComputeExecutionResult): AssetComputeExecutionResult {
+  return {
+    ...result,
+    settlement: { ...result.settlement },
+    derivedAsset: { ...result.derivedAsset },
+    capability: {
+      ...result.capability,
+      operations: [...result.capability.operations],
+    },
+    providerReceipt: { ...result.providerReceipt },
+  };
+}
+
 export class AssetComputeFabric {
   private readonly fundingLedger: InMemoryFundingLedger;
   private readonly eventLog: InMemoryEventLog;
   private readonly provider: ProviderAdapter;
   private readonly verifyEffect: EffectVerifier;
+  private readonly completed = new Map<string, CompletedExecution>();
 
   constructor(dependencies: AssetComputeFabricDependencies) {
     this.fundingLedger = dependencies.fundingLedger;
@@ -33,6 +84,15 @@ export class AssetComputeFabric {
   }
 
   async execute(input: AssetComputeExecutionInput): Promise<AssetComputeExecutionResult> {
+    const fingerprint = executionFingerprint(input);
+    const completed = this.completed.get(input.executionId);
+    if (completed) {
+      if (completed.fingerprint !== fingerprint) {
+        throw new Error("EXECUTION_IDEMPOTENCY_CONFLICT");
+      }
+      return cloneResult(completed.result);
+    }
+
     let state: ExecutionState = "REQUESTED";
     let reservationCreated = false;
     let settlementCompleted = false;
@@ -197,7 +257,7 @@ export class AssetComputeFabric {
       move("CLOSED");
       record("execution.closed", "SYNNERGYZE", { result: "SUCCESS" });
 
-      return {
+      const result: AssetComputeExecutionResult = {
         executionId: input.executionId,
         state: "CLOSED",
         settlement,
@@ -206,6 +266,11 @@ export class AssetComputeFabric {
         providerReceipt: providerResult.receipt,
         effectReceiptId: effect.effectReceiptId,
       };
+      this.completed.set(input.executionId, {
+        fingerprint,
+        result: cloneResult(result),
+      });
+      return result;
     } catch (error) {
       const errorCode = error instanceof Error ? error.message : "UNKNOWN_EXECUTION_ERROR";
 
