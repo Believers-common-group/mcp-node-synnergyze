@@ -41,12 +41,7 @@ const requestSchema = z
   })
   .strict();
 
-const toolInputSchema = z
-  .object({
-    request: requestSchema,
-    decidedAt: z.string().min(1),
-  })
-  .strict();
+const toolInputSchema = z.object({ request: requestSchema }).strict();
 
 export type WardenConformanceDecisionToolInput = z.infer<typeof toolInputSchema>;
 
@@ -72,12 +67,62 @@ export const WARDEN_CONFORMANCE_POLICY: SyntheticWardenDecisionPolicyV1 = {
   constraints: ["MCP_CONFORMANCE_ONLY", "NO_EXTERNAL_EFFECT"],
 };
 
-export function evaluateWardenConformanceDecision(input: unknown) {
+const requestInputJsonSchema = {
+  type: "object",
+  additionalProperties: false,
+  required: [
+    "requestRef",
+    "actorRef",
+    "representedPrincipalRef",
+    "actingCapacityRef",
+    "contextRef",
+    "programRef",
+    "eventRef",
+    "action",
+    "capabilityRef",
+    "targetRef",
+    "authorityRefs",
+    "policyRefs",
+    "representationSourceRefs",
+    "requestedAt",
+    "correlationId",
+  ],
+  properties: {
+    requestRef: { type: "string", minLength: 1 },
+    actorRef: { type: "string", minLength: 1 },
+    representedPrincipalRef: { type: "string", minLength: 1 },
+    actingCapacityRef: { type: "string", minLength: 1 },
+    contextRef: { type: "string", minLength: 1 },
+    programRef: { type: "string", minLength: 1 },
+    eventRef: { type: "string", minLength: 1 },
+    action: { type: "string", minLength: 1 },
+    capabilityRef: { type: "string", minLength: 1 },
+    targetRef: { type: "string", minLength: 1 },
+    requestedEffect: { type: "string", minLength: 1 },
+    executionDeviceRef: { type: "string", minLength: 1 },
+    deviceSecurityState: { const: "ACTIVE" },
+    deviceSecurityPolicyRef: { type: "string", minLength: 1 },
+    deviceSecuritySourceRefs: { type: "array", items: { type: "string", minLength: 1 } },
+    deviceSecurityResolvedAt: { type: "string", minLength: 1 },
+    deviceSecurityValidUntil: { type: "string", minLength: 1 },
+    authorityRefs: { type: "array", items: { type: "string", minLength: 1 } },
+    policyRefs: { type: "array", items: { type: "string", minLength: 1 } },
+    representationSourceRefs: { type: "array", items: { type: "string", minLength: 1 } },
+    evidenceReadinessRef: { type: "string", minLength: 1 },
+    requestedAt: { type: "string", minLength: 1 },
+    correlationId: { type: "string", minLength: 1 },
+  },
+};
+
+export function evaluateWardenConformanceDecision(
+  input: unknown,
+  decidedAt = new Date().toISOString(),
+) {
   const parsed = toolInputSchema.parse(input);
   return evaluateSyntheticWardenDecisionV1({
     request: parsed.request as WardenDecisionRequestV1,
     policy: WARDEN_CONFORMANCE_POLICY,
-    decidedAt: parsed.decidedAt,
+    decidedAt,
   });
 }
 
@@ -89,10 +134,9 @@ export function registerWardenConformanceDecision(server: CustomMcpServer): void
     inputSchema: {
       type: "object",
       additionalProperties: false,
-      required: ["request", "decidedAt"],
+      required: ["request"],
       properties: {
-        request: { type: "object" },
-        decidedAt: { type: "string", minLength: 1 },
+        request: requestInputJsonSchema,
       },
     },
     cb: async (args) => JSON.stringify(evaluateWardenConformanceDecision(args)),
