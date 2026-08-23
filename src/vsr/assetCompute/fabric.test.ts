@@ -3,6 +3,7 @@ import { InMemoryEventLog } from "./eventLog.ts";
 import { AssetComputeFabric } from "./fabric.ts";
 import { InMemoryFundingLedger } from "./fundingLedger.ts";
 import { DeterministicProviderAdapter } from "./providerAdapter.ts";
+import type { AssetComputeExecutionInput, ProviderAdapter } from "./types.ts";
 
 const source = {
   sourceId: "FS-ASSET-ALLOWANCE",
@@ -219,5 +220,143 @@ describe("AssetComputeFabric", () => {
     expect(eventTypes).not.toContain("effect.verified");
     expect(eventTypes).not.toContain("asset.candidate_created");
     expect(eventTypes).not.toContain("settlement.completed");
+  });
+
+  it("returns the completed result on exact replay without re-running provider or settlement", async () => {
+    const fundingLedger = new InMemoryFundingLedger([source]);
+    const eventLog = new InMemoryEventLog();
+    const baseProvider = new DeterministicProviderAdapter({
+      mode: "SUCCESS",
+      actualCost: 32,
+      outputRef: "artifact://alpha/replay-001",
+    });
+    let providerCalls = 0;
+    const provider: ProviderAdapter = {
+      execute: async (request) => {
+        providerCalls += 1;
+        return baseProvider.execute(request);
+      },
+    };
+    const fabric = new AssetComputeFabric({
+      fundingLedger,
+      eventLog,
+      provider,
+      verifyEffect: async ({ executionId, outputRef }) => ({
+        verified: true,
+        effectReceiptId: `EFF:${executionId}`,
+        outputRef,
+      }),
+    });
+    const input: AssetComputeExecutionInput = {
+      executionId: "EXEC-FABRIC-REPLAY-001",
+      principalId: "DM-ALPHA-001",
+      assetId: "AST-ALPHA-001",
+      inputRef: "asset://AST-ALPHA-001",
+      resolutionRefs: {
+        principal: "GENESIS:DM-ALPHA-001",
+        asset: "GENESIS:AST-ALPHA-001",
+        entitlement: "GENESIS:RIGHT-ALPHA-001",
+        routeQuote: "SYNNERGYZE:RQ-REPLAY-001",
+      },
+      reservationId: "RES-FABRIC-REPLAY-001",
+      reserveAmount: 50,
+      fundingPriority: ["ASSET_ALLOWANCE"],
+      selectedRoute: "SIMULATED-PROVIDER-001",
+      operations: ["EXECUTE", "DERIVE"],
+      currency: "INR",
+      requestedCostCeiling: 50,
+      now: new Date("2026-08-23T05:30:00.000Z"),
+      decision: {
+        decisionId: "WD-FABRIC-REPLAY-001",
+        executionId: "EXEC-FABRIC-REPLAY-001",
+        principalId: "DM-ALPHA-001",
+        outcome: "ALLOW",
+        maxCost: 50,
+        currency: "INR",
+        expiresAt: "2026-08-23T06:00:00.000Z",
+      },
+    };
+
+    const first = await fabric.execute(input);
+    const eventCount = eventLog.eventsFor(input.executionId).length;
+    const second = await fabric.execute(input);
+
+    expect(second).toEqual(first);
+    expect(providerCalls).toBe(1);
+    expect(eventLog.eventsFor(input.executionId)).toHaveLength(eventCount);
+    expect(fundingLedger.balance("FS-ASSET-ALLOWANCE")).toEqual({
+      available: 68,
+      reserved: 0,
+      settled: 32,
+      currency: "INR",
+    });
+  });
+
+  it("fails closed on conflicting reuse of a completed execution id", async () => {
+    const fundingLedger = new InMemoryFundingLedger([source]);
+    const eventLog = new InMemoryEventLog();
+    const baseProvider = new DeterministicProviderAdapter({
+      mode: "SUCCESS",
+      actualCost: 20,
+      outputRef: "artifact://alpha/conflict-001",
+    });
+    let providerCalls = 0;
+    const provider: ProviderAdapter = {
+      execute: async (request) => {
+        providerCalls += 1;
+        return baseProvider.execute(request);
+      },
+    };
+    const fabric = new AssetComputeFabric({
+      fundingLedger,
+      eventLog,
+      provider,
+      verifyEffect: async ({ executionId, outputRef }) => ({
+        verified: true,
+        effectReceiptId: `EFF:${executionId}`,
+        outputRef,
+      }),
+    });
+    const input: AssetComputeExecutionInput = {
+      executionId: "EXEC-FABRIC-CONFLICT-001",
+      principalId: "DM-ALPHA-001",
+      assetId: "AST-ALPHA-001",
+      inputRef: "asset://AST-ALPHA-001",
+      resolutionRefs: {
+        principal: "GENESIS:DM-ALPHA-001",
+        asset: "GENESIS:AST-ALPHA-001",
+        entitlement: "GENESIS:RIGHT-ALPHA-001",
+        routeQuote: "SYNNERGYZE:RQ-CONFLICT-001",
+      },
+      reservationId: "RES-FABRIC-CONFLICT-001",
+      reserveAmount: 40,
+      fundingPriority: ["ASSET_ALLOWANCE"],
+      selectedRoute: "SIMULATED-PROVIDER-001",
+      operations: ["EXECUTE", "DERIVE"],
+      currency: "INR",
+      requestedCostCeiling: 40,
+      now: new Date("2026-08-23T05:35:00.000Z"),
+      decision: {
+        decisionId: "WD-FABRIC-CONFLICT-001",
+        executionId: "EXEC-FABRIC-CONFLICT-001",
+        principalId: "DM-ALPHA-001",
+        outcome: "ALLOW",
+        maxCost: 40,
+        currency: "INR",
+        expiresAt: "2026-08-23T06:00:00.000Z",
+      },
+    };
+
+    await fabric.execute(input);
+
+    await expect(
+      fabric.execute({
+        ...input,
+        assetId: "AST-DIFFERENT-001",
+        inputRef: "asset://AST-DIFFERENT-001",
+      }),
+    ).rejects.toThrowError("EXECUTION_IDEMPOTENCY_CONFLICT");
+
+    expect(providerCalls).toBe(1);
   });
 });
