@@ -4,9 +4,9 @@ import type { SilkResourceReservationV1 } from "./confluence-reference.ts";
 import {
   DurableModernJourneyTransactionRuntimeV1,
   type ModernJourneyDurableEventStoreV1,
+  type ModernJourneyDurableWriteResultV1,
 } from "./durable-modern-journey-runtime.ts";
 import type { ModernJourneyEventRecordV1 } from "./modern-journey-event-log.ts";
-import type { ModernJourneyEventStoreWriteResultV1 } from "./postgres-modern-journey-event-store.ts";
 
 const TRANSACTION_REF = "TXN-DURABLE-001";
 const JOURNEY_REF = "MODERN-JOURNEY:MJ-DURABLE-001";
@@ -21,7 +21,7 @@ class MemoryEventStore implements ModernJourneyDurableEventStoreV1 {
   async put(
     record: ModernJourneyEventRecordV1,
     _recordedAt: string,
-  ): Promise<ModernJourneyEventStoreWriteResultV1> {
+  ): Promise<ModernJourneyDurableWriteResultV1> {
     if (record.sequence === this.conflictSequence) return { state: "CONFLICT" };
     const stream = this.byTransaction.get(record.transactionRef) ?? [];
     const existing = stream.find(
