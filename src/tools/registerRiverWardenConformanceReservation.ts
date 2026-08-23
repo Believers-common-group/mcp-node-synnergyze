@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 
 import type { CustomMcpServer } from "../CustomMcpServer.ts";
 import { isToolAllowed, type ToolFilter } from "../toolFilters.ts";
+import type { ActionEnvelopeV1, EvidenceReservationV1 } from "../../modules/river/contracts.ts";
 import type { WardenDecisionRequestV1, WardenDecisionV1 } from "../../modules/warden/contracts.ts";
 import {
   buildAuthorizedActionEnvelopeV1,
@@ -124,22 +125,31 @@ function assertReservationBoundary(request: WardenDecisionRequestV1, decidedAt: 
   }
 }
 
-type BindingResponse = {
+export type RiverWardenConformanceBindingResponseV1 = {
   decision: ReturnType<typeof publicDecision>;
   actionRef: string | null;
-  reservation: ReturnType<SyntheticRiverReservationServiceV1["reserve"]> | null;
+  reservation: EvidenceReservationV1 | null;
+};
+
+export type RiverWardenConformanceInternalV1 = {
+  requestFingerprint: string;
+  request: WardenDecisionRequestV1;
+  decision: WardenDecisionV1;
+  action: ActionEnvelopeV1 | null;
+  reservation: EvidenceReservationV1 | null;
+  response: RiverWardenConformanceBindingResponseV1;
 };
 
 type StoredBindingResponse = {
   fingerprint: string;
-  response: BindingResponse;
+  internal: RiverWardenConformanceInternalV1;
 };
 
 export class RiverWardenConformanceBindingServiceV1 {
   private readonly river = new SyntheticRiverReservationServiceV1();
   private readonly byRequestRef = new Map<string, StoredBindingResponse>();
 
-  execute(input: unknown, decidedAndReservedAt: string): BindingResponse {
+  executeInternal(input: unknown, decidedAndReservedAt: string): RiverWardenConformanceInternalV1 {
     const parsed = parseWardenConformanceDecisionInput(input);
     const request = parsed.request as WardenDecisionRequestV1;
     const fingerprint = requestFingerprint(request);
@@ -149,41 +159,49 @@ export class RiverWardenConformanceBindingServiceV1 {
       if (existing.fingerprint !== fingerprint) {
         throw new Error("warden_river_request_replay_conflict");
       }
-      return structuredClone(existing.response);
+      return structuredClone(existing.internal);
     }
 
     assertReservationBoundary(request, decidedAndReservedAt);
 
     const decision = evaluateWardenConformanceDecision(parsed, decidedAndReservedAt);
     const safeDecision = publicDecision(decision);
-    let response: BindingResponse;
+    let action: ActionEnvelopeV1 | null = null;
+    let reservation: EvidenceReservationV1 | null = null;
 
-    if (decision.decision !== "ALLOW") {
-      response = {
-        decision: safeDecision,
-        actionRef: null,
-        reservation: null,
-      };
-    } else {
-      const action = buildAuthorizedActionEnvelopeV1(request, decision);
-      const reservation = this.river.reserve({
+    if (decision.decision === "ALLOW") {
+      action = buildAuthorizedActionEnvelopeV1(request, decision);
+      reservation = this.river.reserve({
         request,
         decision,
         action,
         reservedAt: decidedAndReservedAt,
       });
-      response = {
-        decision: safeDecision,
-        actionRef: action.actionRef,
-        reservation,
-      };
     }
+
+    const response: RiverWardenConformanceBindingResponseV1 = {
+      decision: safeDecision,
+      actionRef: action?.actionRef ?? null,
+      reservation,
+    };
+    const internal: RiverWardenConformanceInternalV1 = {
+      requestFingerprint: fingerprint,
+      request,
+      decision,
+      action,
+      reservation,
+      response,
+    };
 
     this.byRequestRef.set(request.requestRef, {
       fingerprint,
-      response: structuredClone(response),
+      internal: structuredClone(internal),
     });
-    return structuredClone(response);
+    return structuredClone(internal);
+  }
+
+  execute(input: unknown, decidedAndReservedAt: string): RiverWardenConformanceBindingResponseV1 {
+    return structuredClone(this.executeInternal(input, decidedAndReservedAt).response);
   }
 }
 
