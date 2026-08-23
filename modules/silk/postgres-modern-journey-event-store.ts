@@ -29,6 +29,7 @@ function parseJson<T>(value: T | string): T {
 function cloneRecord(record: ModernJourneyEventRecordV1): ModernJourneyEventRecordV1 {
   return {
     ...record,
+    predecessorEventRef: record.predecessorEventRef,
     payload: JSON.parse(JSON.stringify(record.payload)) as Record<string, unknown>,
     idempotentReplay: record.idempotentReplay,
   };
