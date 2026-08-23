@@ -15,6 +15,7 @@ export interface ModernJourneyTransactionProjectionV1 {
   lastEventRef: string;
   failedProviderCount: number;
   currentProviderRef?: string;
+  fallbackAuthorized: boolean;
   activeResourceRefs: readonly string[];
   consumedResourceRefs: readonly string[];
   economicEventRecorded: boolean;
@@ -60,6 +61,7 @@ export function projectModernJourneyTransactionV1(
   let state: ModernJourneyProjectionStateV1 = "OPEN";
   let failedProviderCount = 0;
   let currentProviderRef: string | undefined;
+  let fallbackAuthorized = false;
   const activeResources = new Set<string>();
   const consumedResources = new Set<string>();
   let economicEventRecorded = false;
@@ -70,9 +72,20 @@ export function projectModernJourneyTransactionV1(
     switch (event.eventType) {
       case "TRANSACTION_OPENED":
         throw new Error("modern_projection_duplicate_open");
-      case "RESOURCE_RESERVED":
+      case "RESOURCE_RESERVED": {
+        if (state !== "OPEN") throw new Error("modern_projection_primary_reservation_state_conflict");
+        const resourceRef = stringPayload(event, "resourceRef");
+        if (!resourceRef) throw new Error("modern_projection_resource_ref_required");
+        if (activeResources.has(resourceRef) || consumedResources.has(resourceRef)) {
+          throw new Error("modern_projection_resource_duplicate_reservation");
+        }
+        activeResources.add(resourceRef);
+        break;
+      }
       case "FALLBACK_RESOURCE_RESERVED": {
-        if (state === "CLOSED") throw new Error("modern_projection_event_after_close");
+        if (state !== "RECOVERY_REQUIRED" || !fallbackAuthorized) {
+          throw new Error("modern_projection_fallback_reservation_requires_authorization");
+        }
         const resourceRef = stringPayload(event, "resourceRef");
         if (!resourceRef) throw new Error("modern_projection_resource_ref_required");
         if (activeResources.has(resourceRef) || consumedResources.has(resourceRef)) {
@@ -87,6 +100,7 @@ export function projectModernJourneyTransactionV1(
         }
         failedProviderCount += 1;
         currentProviderRef = undefined;
+        fallbackAuthorized = false;
         state = "RECOVERY_REQUIRED";
         break;
       case "RESOURCE_RELEASED": {
@@ -104,10 +118,14 @@ export function projectModernJourneyTransactionV1(
         if (state !== "RECOVERY_REQUIRED") {
           throw new Error("modern_projection_fallback_authority_state_conflict");
         }
+        fallbackAuthorized = true;
         break;
       case "PROVIDER_EXECUTED_UNVERIFIED": {
         if (state !== "OPEN" && state !== "RECOVERY_REQUIRED") {
           throw new Error("modern_projection_execution_state_conflict");
+        }
+        if (state === "RECOVERY_REQUIRED" && !fallbackAuthorized) {
+          throw new Error("modern_projection_recovery_execution_requires_authorization");
         }
         const providerRef = stringPayload(event, "providerRef");
         if (!providerRef) throw new Error("modern_projection_provider_ref_required");
@@ -168,6 +186,7 @@ export function projectModernJourneyTransactionV1(
     lastEventRef: latest.eventRef,
     failedProviderCount,
     currentProviderRef,
+    fallbackAuthorized,
     activeResourceRefs: [...activeResources].sort(),
     consumedResourceRefs: [...consumedResources].sort(),
     economicEventRecorded,
