@@ -408,8 +408,8 @@ export function makeRecoveryValueAssessmentFromConditionV01(input: {
   }
 
   return makeSyntheticRecoveryValueAssessmentV01({
-    valuationRef: `RECOVERY-VALUE:${input.passport.assetRef}:${input.passport.cycleRef}`,
-    registryRef: `GENESIS:RECOVERY-VALUE:${input.passport.assetRef}:${input.passport.cycleRef}`,
+    valuationRef: `RECOVERY-VALUE:${input.passport.cycleRef}`,
+    registryRef: `GENESIS:RECOVERY-VALUE:${input.passport.cycleRef}`,
     observedAt: input.observation.observedAt,
     correlationId: input.observation.correlationId,
     recoveryNodeRef: input.recovery.nodeRef,
