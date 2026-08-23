@@ -6,6 +6,7 @@ import { executeSyntheticFederatedLicenceR1 } from "./runtime.ts";
 
 const MISSION_REF = "MISSION-CREATOR-CROSSBORDER-001";
 const PRODUCT_REF = "PRODUCT-X-001";
+const FEDERATION_OBJECT_REF = "FEDERATION-OBJECT:IN-MY:LICENCE:001";
 const CORRELATION_ID = "CORR-FED-LICENCE-001";
 
 function sourceRequest(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisionRequestV1 {
@@ -64,7 +65,7 @@ function destinationRequest(overrides: Partial<WardenDecisionRequestV1> = {}): W
     targetRef: PRODUCT_REF,
     authorityRefs: ["AUTHORITY:MY-LICENCE-RECOGNITION-001"],
     policyRefs: ["POLICY:IN-MY-CREATOR-FEDERATION-001"],
-    representationSourceRefs: ["FEDERATION-OBJECT:IN-MY:LICENCE:001"],
+    representationSourceRefs: [FEDERATION_OBJECT_REF],
     requestedAt: "2026-08-24T00:01:00.000Z",
     correlationId: CORRELATION_ID,
     ...overrides,
@@ -98,7 +99,7 @@ function execute(input: {
 }) {
   return executeSyntheticFederatedLicenceR1({
     missionRef: MISSION_REF,
-    federationObjectRef: "FEDERATION-OBJECT:IN-MY:LICENCE:001",
+    federationObjectRef: FEDERATION_OBJECT_REF,
     productRef: PRODUCT_REF,
     source: {
       request: sourceRequest(input.sourceRequest),
@@ -117,7 +118,7 @@ function execute(input: {
 }
 
 describe("VSR federated licence lineage", () => {
-  it("rejects mission, destination-product and correlation drift before destination authority is evaluated", () => {
+  it("rejects mission, product, correlation and federation-envelope drift before destination authority is evaluated", () => {
     const cases = [
       {
         result: execute({
@@ -127,12 +128,22 @@ describe("VSR federated licence lineage", () => {
         reasonCode: "source_mission_mismatch",
       },
       {
+        result: execute({ destinationRequest: { programRef: "MISSION-OTHER-001" } }),
+        reasonCode: "destination_mission_mismatch",
+      },
+      {
         result: execute({ destinationRequest: { targetRef: "PRODUCT-Y-001" } }),
         reasonCode: "destination_product_mismatch",
       },
       {
         result: execute({ destinationRequest: { correlationId: "CORR-OTHER-001" } }),
         reasonCode: "correlation_mismatch",
+      },
+      {
+        result: execute({
+          destinationRequest: { representationSourceRefs: ["FEDERATION-OBJECT:OTHER"] },
+        }),
+        reasonCode: "federation_object_mismatch",
       },
     ] as const;
 
