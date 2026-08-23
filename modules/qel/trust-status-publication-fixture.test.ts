@@ -163,7 +163,7 @@ describe("QEL-FIXTURE-012 trust status publication", () => {
   });
 
   it("requires an exact predecessor ref, sequence, and digest for later publications", () => {
-    const { observedAt, sources, status } = makeTrustInputs();
+    const { sources, status } = makeTrustInputs();
     const nextObservedAt = "2026-08-23T08:31:00.000Z";
     const next = makeSyntheticTrustStatusPublicationBundleV01({
       ...sources,
@@ -204,7 +204,7 @@ describe("QEL-FIXTURE-012 trust status publication", () => {
       observedAt,
     });
 
-    expect(frame.native.rawValue).toMatchObject({ statusPublicationGrantsAuthority: false });
+    expect(frame.native?.rawValue).toMatchObject({ statusPublicationGrantsAuthority: false });
     expect(
       frame.moves.find((move) => move.action === "ACCEPT_CURRENT_TRUST_STATUS")?.authority,
     ).toBe("APPROVAL_REQUIRED");
