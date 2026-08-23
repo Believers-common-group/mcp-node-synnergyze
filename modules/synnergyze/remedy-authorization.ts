@@ -17,6 +17,7 @@ export interface RemedyAuthorizationGrantV1 {
   originalWardenDecisionRef: string;
   remedyWardenDecisionRef: string;
   remedyWardenRequestRef: string;
+  remedyWardenRef: string;
   capabilityRef: string;
   targetRef: string;
   actionTokenDigest: string;
@@ -177,6 +178,7 @@ export function authorizeReconciliationRemedyV1(input: {
     originalWardenDecisionRef: determination.originalWardenDecisionRef,
     remedyWardenDecisionRef: decision.decisionRef,
     remedyWardenRequestRef: request.requestRef,
+    remedyWardenRef: decision.wardenRef,
     parentCorrelationId: determination.correlationId,
     remedyCorrelationId: request.correlationId,
     capabilityRef: proposal.capabilityRef,
@@ -199,6 +201,7 @@ export function authorizeReconciliationRemedyV1(input: {
       originalWardenDecisionRef: determination.originalWardenDecisionRef,
       remedyWardenDecisionRef: decision.decisionRef,
       remedyWardenRequestRef: request.requestRef,
+      remedyWardenRef: decision.wardenRef,
       capabilityRef: proposal.capabilityRef,
       targetRef: determination.targetRef,
       actionTokenDigest,
