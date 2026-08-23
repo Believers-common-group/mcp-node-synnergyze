@@ -68,7 +68,7 @@ export const WARDEN_CONFORMANCE_POLICY: SyntheticWardenDecisionPolicyV1 = {
   constraints: ["MCP_CONFORMANCE_ONLY", "NO_EXTERNAL_EFFECT"],
 };
 
-const requestInputJsonSchema = {
+export const wardenConformanceRequestJsonSchema = {
   type: "object",
   additionalProperties: false,
   required: [
@@ -140,7 +140,7 @@ export function registerWardenConformanceDecision(
       additionalProperties: false,
       required: ["request"],
       properties: {
-        request: requestInputJsonSchema,
+        request: wardenConformanceRequestJsonSchema,
       },
     },
     cb: async (args) => JSON.stringify(evaluateWardenConformanceDecision(args, clock())),
