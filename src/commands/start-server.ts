@@ -14,6 +14,7 @@ import {
 import { maybeRegisterWardenConformanceDecision } from "../tools/registerWardenConformanceDecision.ts";
 import { maybeRegisterRiverWardenConformanceReservation } from "../tools/registerRiverWardenConformanceReservation.ts";
 import { maybeRegisterWardenRiverSynnergyzeConformanceExecution } from "../tools/registerWardenRiverSynnergyzeConformanceExecution.ts";
+import { maybeRegisterWardenRiverEffectConformance } from "../tools/registerWardenRiverEffectConformance.ts";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type {
   ProcessCallbackArguments,
@@ -91,6 +92,7 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
   maybeRegisterWardenConformanceDecision(server, toolFilter);
   maybeRegisterRiverWardenConformanceReservation(server, toolFilter);
   maybeRegisterWardenRiverSynnergyzeConformanceExecution(server, toolFilter);
+  maybeRegisterWardenRiverEffectConformance(server, toolFilter);
 
   const regionHotFixMiddlewares: RequestMiddleware[] = [];
   let processCallbackArguments: ProcessCallbackArguments;
