@@ -51,6 +51,80 @@ function workReceiptPayload(event: ModernJourneyEventRecordV1): ModernWorkReceip
   return receipt;
 }
 
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).sort(([left], [right]) =>
+      left.localeCompare(right),
+    );
+    return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function assertReceiptMatchesConfluence(confluence: ModernJourneyConfluenceV1): void {
+  const receipt = confluence.workReceipt;
+  if (!receipt) throw new Error("modern_journey_closure_work_receipt_required");
+  const requiredLegTypes = [...confluence.requiredLegTypes].sort();
+  if (canonicalJson([...receipt.requiredLegTypes].sort()) !== canonicalJson(requiredLegTypes)) {
+    throw new Error("modern_journey_closure_receipt_required_legs_mismatch");
+  }
+
+  const legRefs = [...confluence.legs.map((leg) => leg.legRef)].sort();
+  if (canonicalJson([...receipt.legRefs].sort()) !== canonicalJson(legRefs)) {
+    throw new Error("modern_journey_closure_receipt_legs_mismatch");
+  }
+
+  const providerRefs = [...new Set(confluence.legs.flatMap((leg) => [...leg.providerRefs]))].sort();
+  if (canonicalJson([...receipt.providerRefs].sort()) !== canonicalJson(providerRefs)) {
+    throw new Error("modern_journey_closure_receipt_providers_mismatch");
+  }
+
+  const failureCount = confluence.legs.reduce((total, leg) => total + leg.failureCount, 0);
+  if (receipt.failureCount !== failureCount) {
+    throw new Error("modern_journey_closure_receipt_failure_count_mismatch");
+  }
+
+  const outstandingObligationCount = confluence.legs.reduce(
+    (total, leg) => total + leg.outstandingObligationCount,
+    0,
+  );
+  if (receipt.outstandingObligationCount !== outstandingObligationCount) {
+    throw new Error("modern_journey_closure_receipt_obligation_count_mismatch");
+  }
+
+  const monetaryTotals = new Map<string, number>();
+  for (const leg of confluence.legs) {
+    if (leg.monetaryValue === undefined) {
+      if (leg.currency !== undefined) throw new Error("modern_journey_closure_currency_without_value");
+      continue;
+    }
+    if (!leg.currency?.trim()) throw new Error("modern_journey_closure_currency_required");
+    monetaryTotals.set(leg.currency, (monetaryTotals.get(leg.currency) ?? 0) + leg.monetaryValue);
+  }
+  const expectedMonetaryTotals = [...monetaryTotals.entries()]
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(([currency, amount]) => ({ currency, amount }));
+  const actualMonetaryTotals = [...receipt.monetaryTotals]
+    .map((value) => ({ ...value }))
+    .sort((left, right) => left.currency.localeCompare(right.currency));
+  if (canonicalJson(actualMonetaryTotals) !== canonicalJson(expectedMonetaryTotals)) {
+    throw new Error("modern_journey_closure_receipt_monetary_totals_mismatch");
+  }
+
+  const expectedNativeConsumptions = confluence.legs
+    .map((leg) => leg.nativeConsumption)
+    .filter((value): value is NonNullable<typeof value> => Boolean(value))
+    .map((value) => ({ ...value }))
+    .sort((left, right) => left.legRef.localeCompare(right.legRef));
+  const actualNativeConsumptions = [...receipt.nativeConsumptions]
+    .map((value) => ({ ...value }))
+    .sort((left, right) => left.legRef.localeCompare(right.legRef));
+  if (canonicalJson(actualNativeConsumptions) !== canonicalJson(expectedNativeConsumptions)) {
+    throw new Error("modern_journey_closure_receipt_native_consumptions_mismatch");
+  }
+}
+
 function assertClosureStream(events: readonly ModernJourneyEventRecordV1[]): void {
   if (events.length !== 3) throw new Error("modern_journey_closure_three_events_required");
   const [opened, effect, closed] = events;
@@ -102,15 +176,24 @@ export function buildModernJourneyClosureEventsV1(input: {
   if (confluence.workReceipt.journeyRef !== confluence.journeyRef) {
     throw new Error("modern_journey_closure_receipt_journey_mismatch");
   }
+  if (confluence.workReceipt.objectiveRef !== confluence.objectiveRef) {
+    throw new Error("modern_journey_closure_receipt_objective_mismatch");
+  }
+  if (confluence.workReceipt.digitalMeRef !== confluence.digitalMeRef) {
+    throw new Error("modern_journey_closure_receipt_digital_me_mismatch");
+  }
+  if (confluence.workReceipt.silkAccountRef !== confluence.silkAccountRef) {
+    throw new Error("modern_journey_closure_receipt_silk_account_mismatch");
+  }
+  if (confluence.workReceipt.economicOwnerRef !== confluence.economicOwnerRef) {
+    throw new Error("modern_journey_closure_receipt_owner_mismatch");
+  }
   if (confluence.workReceipt.finalEffectRef !== confluence.finalEffectRef) {
     throw new Error("modern_journey_closure_receipt_effect_mismatch");
   }
-  const legRefs = [...confluence.legs.map((leg) => leg.legRef)].sort();
-  const receiptLegRefs = [...confluence.workReceipt.legRefs].sort();
-  if (JSON.stringify(legRefs) !== JSON.stringify(receiptLegRefs)) {
-    throw new Error("modern_journey_closure_receipt_legs_mismatch");
-  }
+  assertReceiptMatchesConfluence(confluence);
 
+  const legRefs = [...confluence.legs.map((leg) => leg.legRef)].sort();
   const closureRef = modernJourneyClosureRefV1(confluence.journeyRef);
   const occurredAt = confluence.workReceipt.completedAt;
   const log = new ModernJourneyEventLogV1();
