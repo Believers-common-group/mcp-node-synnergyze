@@ -49,6 +49,7 @@ interface GarmentStepDefinitionV1 {
 
 export interface CountedSyntheticCapabilityAdapterV1 extends SyntheticCapabilityAdapterV1 {
   invocationCount(): number;
+  fingerprintMaterial(): unknown;
 }
 
 export interface AssignedWorkExecutionInputV1 {
@@ -70,6 +71,17 @@ export interface AssignedWorkExecutionProofV1 {
   checkpoint: WardenExecutionCheckpointV1;
   execution: SynnergyzeExecutionReceiptV1;
   adapterInvocationCount: number;
+}
+
+interface WorkExecutionServicesV1 {
+  river: SyntheticRiverReservationServiceV1;
+  gate: ControlledExecutionGateV1;
+  adapter: CountedSyntheticCapabilityAdapterV1;
+}
+
+interface StoredWorkExecutionV1 {
+  fingerprint: string;
+  services: WorkExecutionServicesV1;
 }
 
 const GARMENT_STEPS: readonly GarmentStepDefinitionV1[] = [
@@ -200,6 +212,10 @@ function includesAll(actual: readonly string[], required: readonly string[]): bo
   return required.every((value) => values.has(value));
 }
 
+function stableUnique(values: readonly string[]): readonly string[] {
+  return [...new Set(values)].sort();
+}
+
 function assertAssignedWorkInput(input: AssignedWorkExecutionInputV1): void {
   const { workUnit, composition, actorProfiles, request, adapter } = input;
   if (composition.workUnitRef !== workUnit.workUnitRef) {
@@ -256,6 +272,154 @@ function assertAssignedWorkInput(input: AssignedWorkExecutionInputV1): void {
   ) {
     throw new Error("work_capability_request_composition_binding_required");
   }
+}
+
+function canonicalActorProfiles(
+  actorProfiles: readonly ActorCapabilityProfileV1[],
+): readonly ActorCapabilityProfileV1[] {
+  return [...actorProfiles]
+    .sort((left, right) => left.actorRef.localeCompare(right.actorRef))
+    .map((profile) => ({
+      ...profile,
+      capabilityRefs: stableUnique(profile.capabilityRefs),
+      evidenceRefs: stableUnique(profile.evidenceRefs),
+      context: Object.fromEntries(Object.entries(profile.context).sort(([a], [b]) => a.localeCompare(b))),
+    }));
+}
+
+function workExecutionIdentity(input: AssignedWorkExecutionInputV1): string {
+  return `${input.workUnit.workUnitRef}|${input.composition.compositionRef}`;
+}
+
+function workExecutionFingerprint(input: AssignedWorkExecutionInputV1): string {
+  return digest(
+    JSON.stringify({
+      workUnit: {
+        ...input.workUnit,
+        requiredCapabilityRefs: stableUnique(input.workUnit.requiredCapabilityRefs),
+        requiredEvidenceRefs: stableUnique(input.workUnit.requiredEvidenceRefs),
+      },
+      composition: {
+        ...input.composition,
+        actorRefs: stableUnique(input.composition.actorRefs),
+        capabilityRefs: stableUnique(input.composition.capabilityRefs),
+      },
+      actorProfiles: canonicalActorProfiles(input.actorProfiles),
+      request: {
+        ...input.request,
+        authorityRefs: stableUnique(input.request.authorityRefs),
+        policyRefs: stableUnique(input.request.policyRefs),
+        representationSourceRefs: stableUnique(input.request.representationSourceRefs),
+        deviceSecuritySourceRefs: stableUnique(input.request.deviceSecuritySourceRefs ?? []),
+      },
+      policy: {
+        ...input.policy,
+        requiredAuthorityRefs: stableUnique(input.policy.requiredAuthorityRefs),
+        requiredPolicyRefs: stableUnique(input.policy.requiredPolicyRefs),
+        allowedCapabilityRefs: stableUnique(input.policy.allowedCapabilityRefs),
+        manualReviewCapabilityRefs: stableUnique(input.policy.manualReviewCapabilityRefs),
+        constraints: stableUnique(input.policy.constraints),
+      },
+      decidedAt: input.decidedAt,
+      reservedAt: input.reservedAt,
+      checkedAt: input.checkedAt,
+      executedAt: input.executedAt,
+      adapter: {
+        adapterRef: input.adapter.adapterRef,
+        capabilityRef: input.adapter.capabilityRef,
+        material: input.adapter.fingerprintMaterial(),
+      },
+    }),
+  );
+}
+
+function newWorkExecutionServices(
+  adapter: CountedSyntheticCapabilityAdapterV1,
+): WorkExecutionServicesV1 {
+  return {
+    river: new SyntheticRiverReservationServiceV1(),
+    gate: new ControlledExecutionGateV1([adapter]),
+    adapter,
+  };
+}
+
+function executeAssignedWorkUnitWithServicesV1(
+  input: AssignedWorkExecutionInputV1,
+  services: WorkExecutionServicesV1,
+): AssignedWorkExecutionProofV1 {
+  assertAssignedWorkInput(input);
+
+  if (
+    services.adapter.adapterRef !== input.adapter.adapterRef ||
+    services.adapter.capabilityRef !== input.adapter.capabilityRef
+  ) {
+    throw new Error("work_capability_runtime_adapter_mismatch");
+  }
+
+  const decision = evaluateSyntheticWardenDecisionV1({
+    request: input.request,
+    policy: input.policy,
+    decidedAt: input.decidedAt,
+  });
+  if (decision.decision !== "ALLOW") {
+    throw new Error(`work_capability_warden_${decision.decision.toLowerCase()}`);
+  }
+
+  const action = buildAuthorizedActionEnvelopeV1(input.request, decision);
+  const reservation = services.river.reserve({
+    request: input.request,
+    decision,
+    action,
+    reservedAt: input.reservedAt,
+  });
+
+  const checkpoint: WardenExecutionCheckpointV1 = {
+    checkpointRef: `WARDEN-EXEC-CHECK:${digest(
+      `${decision.decisionRef}|${reservation.reservationRef}|${input.checkedAt}`,
+    ).slice(0, 24)}`,
+    decisionRef: decision.decisionRef,
+    wardenRef: decision.wardenRef,
+    correlationId: decision.correlationId,
+    state: "VALID",
+    checkedAt: input.checkedAt,
+    reasonCodes: ["decision_active_for_work_execution"],
+  };
+
+  const assignmentMaterial = JSON.stringify({
+    workUnitRef: input.workUnit.workUnitRef,
+    compositionRef: input.composition.compositionRef,
+    actorRefs: [...input.composition.actorRefs],
+    decisionRef: decision.decisionRef,
+    reservationRef: reservation.reservationRef,
+  });
+  const assignment: WorkAssignmentV1 = {
+    assignmentRef: `WORK-ASSIGNMENT:${digest(assignmentMaterial).slice(0, 24)}`,
+    workUnitRef: input.workUnit.workUnitRef,
+    compositionRef: input.composition.compositionRef,
+    actorRefs: [...input.composition.actorRefs],
+    selectedAt: input.checkedAt,
+    selectionReasonCodes: [
+      "CAPABILITY_COVERED",
+      "WARDEN_ALLOWED",
+      "COMPOSITION_AVAILABLE",
+    ],
+  };
+
+  const execution = services.gate.execute({
+    action,
+    reservation,
+    decision,
+    checkpoint,
+    executedAt: input.executedAt,
+  });
+
+  return {
+    assignment,
+    decision,
+    checkpoint,
+    execution,
+    adapterInvocationCount: services.adapter.invocationCount(),
+  };
 }
 
 export function compileSyntheticGarmentWorkflowV1(
@@ -394,74 +558,38 @@ export function selectCandidateCompositionV1(
 export function executeAssignedWorkUnitV1(
   input: AssignedWorkExecutionInputV1,
 ): AssignedWorkExecutionProofV1 {
-  assertAssignedWorkInput(input);
+  return executeAssignedWorkUnitWithServicesV1(input, newWorkExecutionServices(input.adapter));
+}
 
-  const decision = evaluateSyntheticWardenDecisionV1({
-    request: input.request,
-    policy: input.policy,
-    decidedAt: input.decidedAt,
-  });
-  if (decision.decision !== "ALLOW") {
-    throw new Error(`work_capability_warden_${decision.decision.toLowerCase()}`);
+export class WorkCapabilityRuntimeV1 {
+  private readonly byWorkComposition = new Map<string, StoredWorkExecutionV1>();
+
+  run(input: AssignedWorkExecutionInputV1): AssignedWorkExecutionProofV1 {
+    assertAssignedWorkInput(input);
+    const identity = workExecutionIdentity(input);
+    const fingerprint = workExecutionFingerprint(input);
+    const existing = this.byWorkComposition.get(identity);
+
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) {
+        throw new Error("work_capability_idempotency_conflict");
+      }
+      return executeAssignedWorkUnitWithServicesV1(input, existing.services);
+    }
+
+    const services = newWorkExecutionServices(input.adapter);
+    const result = executeAssignedWorkUnitWithServicesV1(input, services);
+    this.byWorkComposition.set(identity, { fingerprint, services });
+    return result;
   }
 
-  const action = buildAuthorizedActionEnvelopeV1(input.request, decision);
-  const river = new SyntheticRiverReservationServiceV1();
-  const reservation = river.reserve({
-    request: input.request,
-    decision,
-    action,
-    reservedAt: input.reservedAt,
-  });
+  executionCount(): number {
+    return this.byWorkComposition.size;
+  }
+}
 
-  const checkpoint: WardenExecutionCheckpointV1 = {
-    checkpointRef: `WARDEN-EXEC-CHECK:${digest(
-      `${decision.decisionRef}|${reservation.reservationRef}|${input.checkedAt}`,
-    ).slice(0, 24)}`,
-    decisionRef: decision.decisionRef,
-    wardenRef: decision.wardenRef,
-    correlationId: decision.correlationId,
-    state: "VALID",
-    checkedAt: input.checkedAt,
-    reasonCodes: ["decision_active_for_work_execution"],
-  };
-
-  const assignmentMaterial = JSON.stringify({
-    workUnitRef: input.workUnit.workUnitRef,
-    compositionRef: input.composition.compositionRef,
-    actorRefs: [...input.composition.actorRefs],
-    decisionRef: decision.decisionRef,
-    reservationRef: reservation.reservationRef,
-  });
-  const assignment: WorkAssignmentV1 = {
-    assignmentRef: `WORK-ASSIGNMENT:${digest(assignmentMaterial).slice(0, 24)}`,
-    workUnitRef: input.workUnit.workUnitRef,
-    compositionRef: input.composition.compositionRef,
-    actorRefs: [...input.composition.actorRefs],
-    selectedAt: input.checkedAt,
-    selectionReasonCodes: [
-      "CAPABILITY_COVERED",
-      "WARDEN_ALLOWED",
-      "COMPOSITION_AVAILABLE",
-    ],
-  };
-
-  const gate = new ControlledExecutionGateV1([input.adapter]);
-  const execution = gate.execute({
-    action,
-    reservation,
-    decision,
-    checkpoint,
-    executedAt: input.executedAt,
-  });
-
-  return {
-    assignment,
-    decision,
-    checkpoint,
-    execution,
-    adapterInvocationCount: input.adapter.invocationCount(),
-  };
+export function createWorkCapabilityRuntimeV1(): WorkCapabilityRuntimeV1 {
+  return new WorkCapabilityRuntimeV1();
 }
 
 export function projectCapabilityEvidenceV1(input: {
