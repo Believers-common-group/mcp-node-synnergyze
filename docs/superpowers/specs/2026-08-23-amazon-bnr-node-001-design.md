@@ -1,6 +1,6 @@
 # Amazon BNR-001 Design
 
-Status: approved architecture specification
+Status: design approved in chat; written specification pending final review
 Date: 2026-08-23
 Target branch: `agent/amazon-orders-e2e-r01`
 Related draft PR: #73
@@ -16,35 +16,44 @@ Promote the existing governed Amazon provider integration into the first named B
 The system MUST distinguish:
 
 - node identity;
-- partner lifecycle;
+- partner relationship lifecycle;
 - service/capability binding;
 - external authority evidence;
 - technical readiness;
 - evidence readiness;
 - operational activation.
 
-A named node may exist before it is active.
+A named node may exist before it is operationally active.
 
 `BNR-001 = Amazon` MAY exist in `PROPOSED_PARTNER` state.
 
-`BNR-001 = ACTIVE` MUST NOT be asserted unless the required Amazon-side contractual/technical authority and network-side Warden/River/Registry evidence gates are satisfied.
+`BNR-001 activationState = ACTIVE` MUST NOT be asserted unless the required Amazon-side contractual/technical authority and network-side Warden/River/Registry evidence gates are satisfied.
 
-## 3. Partner lifecycle
+## 3. Partner relationship lifecycle
 
-Add an explicit lifecycle for external BNR partners:
+Partner relationship maturity and operational activation are separate state machines.
+
+External BNR partner relationship lifecycle:
 
 1. `PROPOSED_PARTNER`
 2. `ENGAGEMENT`
 3. `CONTRACTED`
 4. `AUTHORITY_EVIDENCED`
 5. `TECHNICALLY_READY`
-6. `ACTIVE`
-7. `SUSPENDED`
-8. `RETIRED`
+6. `RETIRED`
 
-Transitions are monotonic except that `ACTIVE` may move to `SUSPENDED`, and suspended nodes may return to `ACTIVE` only after re-evaluation.
+Partner lifecycle transitions are monotonic. `RETIRED` is terminal for that relationship version; a renewed relationship requires a new versioned relationship record rather than mutating retired history.
 
-No API credential, office meeting, cloud account, provider account, commercial conversation, physical proximity, source-code integration, or passing CI job may independently advance a node to `ACTIVE`.
+Operational activation state is independently resolved as:
+
+- `INACTIVE`
+- `ELIGIBLE`
+- `ACTIVE`
+- `SUSPENDED`
+
+An `ACTIVE` node may move to `SUSPENDED`; return from `SUSPENDED` to `ACTIVE` requires full readiness re-evaluation plus valid activation evidence.
+
+No API credential, office meeting, cloud account, provider account, commercial conversation, physical proximity, source-code integration, or passing CI job may independently advance either partner lifecycle or activation state beyond what its evidence supports.
 
 ## 4. BNR-001 manifest
 
@@ -66,7 +75,7 @@ Required manifest fields:
 - `activationEvidenceRefs[]`
 - `activationState`
 
-Initial lifecycle: `PROPOSED_PARTNER`.
+Initial partner lifecycle: `PROPOSED_PARTNER`.
 Initial activation state: `INACTIVE`.
 
 ## 5. Service boundaries
@@ -130,7 +139,7 @@ A BNR node readiness result MUST expose:
 - `blockers[]`
 - `readinessCheckedAt`
 
-Recommended values:
+Values:
 
 - runtime: `BLOCKED | READY`
 - authority: `EXTERNAL_UNRESOLVED | EXTERNAL_EVIDENCED`
@@ -138,15 +147,15 @@ Recommended values:
 - commercial: `UNRESOLVED | EVIDENCED`
 - activation: `INACTIVE | ELIGIBLE | ACTIVE | SUSPENDED`
 
-`ELIGIBLE` means all technical and authority prerequisites are satisfied but activation has not yet been explicitly completed.
+`ELIGIBLE` means all technical, evidence, commercial and authority prerequisites are satisfied but explicit activation evidence has not yet completed activation.
 
 ## 9. Activation predicate
 
 `ACTIVE` is derived, never manually asserted.
 
-Minimum predicate:
+Minimum eligibility predicate:
 
-`partnerLifecycle == AUTHORITY_EVIDENCED or TECHNICALLY_READY or ACTIVE`
+`partnerLifecycle == TECHNICALLY_READY`
 AND `runtimeReadiness == READY`
 AND `authorityState == EXTERNAL_EVIDENCED`
 AND `evidenceState == READY`
@@ -154,10 +163,13 @@ AND `commercialState == EVIDENCED`
 AND required service bindings are resolved
 AND required Warden policy is active
 AND River publication/seal path is operational
-AND Registry canonical state is durable
-AND explicit activation evidence exists.
+AND Registry canonical state is durable.
 
-Passing synthetic tests does not satisfy the external-evidence terms.
+If the eligibility predicate is true and explicit activation evidence is absent, `activationState = ELIGIBLE`.
+
+If the eligibility predicate is true and explicit valid activation evidence exists, `activationState = ACTIVE`.
+
+Passing synthetic tests does not satisfy external authority, commercial, River or activation evidence terms.
 
 ## 10. Authority and credential rules
 
@@ -225,8 +237,9 @@ Required test families:
 - missing commercial evidence blocks activation.
 - missing external authority blocks activation.
 - missing River readiness blocks activation.
-- all required evidence may produce `ELIGIBLE` but not `ACTIVE` without explicit activation evidence.
+- all required readiness evidence produces `ELIGIBLE` but not `ACTIVE` without explicit activation evidence.
 - explicit valid activation evidence produces `ACTIVE`.
+- `SUSPENDED -> ACTIVE` requires readiness re-evaluation and valid activation evidence.
 - service authority does not bleed across Amazon service bindings.
 - Amazon Orders R0.1 remains read-only and non-final economically.
 - VSR and Empire resolve from the same Registry revision.
