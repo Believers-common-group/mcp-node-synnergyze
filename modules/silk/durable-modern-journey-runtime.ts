@@ -1,17 +1,32 @@
-import type { ModernJourneyEventRecordV1 } from "./modern-journey-event-log.ts";
+import {
+  validateModernJourneyEventRecordV1,
+  type ModernJourneyEventRecordV1,
+} from "./modern-journey-event-log.ts";
 import { rebuildModernJourneyRuntimeSnapshotV1 } from "./modern-journey-rehydration.ts";
 import {
   SyntheticModernJourneyTransactionRuntimeV1,
   type ModernJourneyRuntimeSnapshotV1,
 } from "./modern-journey-runtime.ts";
-import type { ModernJourneyEventStoreWriteResultV1 } from "./postgres-modern-journey-event-store.ts";
+
+export type ModernJourneyDurableWriteStateV1 = "STORED" | "IDEMPOTENT_REPLAY" | "CONFLICT";
+
+export interface ModernJourneyDurableWriteResultV1 {
+  state: ModernJourneyDurableWriteStateV1;
+  record?: ModernJourneyEventRecordV1;
+}
 
 export interface ModernJourneyDurableEventStoreV1 {
   put(
     record: ModernJourneyEventRecordV1,
     recordedAt: string,
-  ): Promise<ModernJourneyEventStoreWriteResultV1>;
+  ): Promise<ModernJourneyDurableWriteResultV1>;
   load(transactionRef: string): Promise<readonly ModernJourneyEventRecordV1[]>;
+}
+
+function assertRecordedAt(recordedAt: string): void {
+  if (!Number.isFinite(Date.parse(recordedAt))) {
+    throw new Error("modern_durable_runtime_invalid_recorded_at");
+  }
 }
 
 export class DurableModernJourneyTransactionRuntimeV1 {
@@ -25,6 +40,7 @@ export class DurableModernJourneyTransactionRuntimeV1 {
     input: Parameters<SyntheticModernJourneyTransactionRuntimeV1["open"]>[0],
     recordedAt: string,
   ): Promise<ModernJourneyRuntimeSnapshotV1> {
+    assertRecordedAt(recordedAt);
     if (this.runtimes.has(input.transactionRef)) throw new Error("modern_durable_runtime_transaction_exists");
     const runtime = new SyntheticModernJourneyTransactionRuntimeV1();
     this.runtimes.set(input.transactionRef, runtime);
@@ -82,6 +98,7 @@ export class DurableModernJourneyTransactionRuntimeV1 {
   async reconstruct(transactionRef: string): Promise<ModernJourneyRuntimeSnapshotV1> {
     const events = await this.store.load(transactionRef);
     if (events.length === 0) throw new Error("modern_durable_runtime_persisted_stream_not_found");
+    for (const event of events) validateModernJourneyEventRecordV1(event);
     return rebuildModernJourneyRuntimeSnapshotV1(events);
   }
 
@@ -94,6 +111,7 @@ export class DurableModernJourneyTransactionRuntimeV1 {
     recordedAt: string,
     operation: (runtime: SyntheticModernJourneyTransactionRuntimeV1) => ModernJourneyRuntimeSnapshotV1,
   ): Promise<ModernJourneyRuntimeSnapshotV1> {
+    assertRecordedAt(recordedAt);
     this.assertUsable(transactionRef);
     const snapshot = operation(this.requireRuntime(transactionRef));
     return this.persistSnapshot(snapshot, recordedAt);
@@ -110,6 +128,7 @@ export class DurableModernJourneyTransactionRuntimeV1 {
     try {
       let expectedSequence = alreadyPersisted + 1;
       for (const event of newEvents) {
+        validateModernJourneyEventRecordV1(event);
         if (event.sequence !== expectedSequence) {
           throw new Error("modern_durable_runtime_persistence_sequence_gap");
         }
@@ -120,6 +139,7 @@ export class DurableModernJourneyTransactionRuntimeV1 {
         if (!result.record || result.record.eventRef !== event.eventRef) {
           throw new Error("modern_durable_runtime_persistence_receipt_mismatch");
         }
+        validateModernJourneyEventRecordV1(result.record);
         this.persistedSequence.set(transactionRef, event.sequence);
         expectedSequence += 1;
       }
