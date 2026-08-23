@@ -41,6 +41,13 @@ export interface SilkCapabilityResolutionV1 {
   fallbacks: readonly SilkProviderCapabilityV1[];
 }
 
+export interface SilkResourceCapacityV1 {
+  resourceRef: string;
+  resourceType: SilkResourceTypeV1;
+  capacity: number;
+  unit: string;
+}
+
 export interface SilkResourceReservationRequestV1 {
   journeyRef: string;
   silkAccountRef: string;
@@ -48,7 +55,6 @@ export interface SilkResourceReservationRequestV1 {
   resourceType: SilkResourceTypeV1;
   quantity: number;
   unit: string;
-  capacity: number;
   wardenDecisionRef: string;
   correlationId: string;
   reservedAt: string;
@@ -56,6 +62,7 @@ export interface SilkResourceReservationRequestV1 {
 
 export interface SilkResourceReservationV1 extends SilkResourceReservationRequestV1 {
   reservationRef: string;
+  capacity: number;
   state: SilkReservationStateV1;
   idempotentReplay: boolean;
 }
@@ -105,7 +112,7 @@ function cloneCapability(capability: SilkProviderCapabilityV1): SilkProviderCapa
   return { ...capability };
 }
 
-function reservationIdentity(input: SilkResourceReservationRequestV1): string {
+function reservationIdentity(input: SilkResourceReservationRequestV1, capacity: number): string {
   return JSON.stringify({
     journeyRef: input.journeyRef,
     silkAccountRef: input.silkAccountRef,
@@ -113,7 +120,7 @@ function reservationIdentity(input: SilkResourceReservationRequestV1): string {
     resourceType: input.resourceType,
     quantity: input.quantity,
     unit: input.unit,
-    capacity: input.capacity,
+    capacity,
     wardenDecisionRef: input.wardenDecisionRef,
     correlationId: input.correlationId,
     reservedAt: input.reservedAt,
@@ -171,18 +178,35 @@ export class SyntheticSilkCapabilityRegistryV1 {
 }
 
 export class SyntheticSilkResourceReservationServiceV1 {
+  private readonly capacities = new Map<string, SilkResourceCapacityV1>();
   private readonly byCorrelation = new Map<string, StoredReservationV1>();
   private readonly committedByResource = new Map<string, number>();
 
+  constructor(capacities: readonly SilkResourceCapacityV1[]) {
+    for (const capacity of capacities) {
+      if (this.capacities.has(capacity.resourceRef)) {
+        throw new Error("silk_duplicate_resource_capacity_ref");
+      }
+      assertFinitePositive(capacity.capacity, "silk_resource_capacity_positive_required");
+      this.capacities.set(capacity.resourceRef, { ...capacity });
+    }
+  }
+
   reserve(input: SilkResourceReservationRequestV1): SilkResourceReservationV1 {
     assertFinitePositive(input.quantity, "silk_reservation_quantity_positive_required");
-    assertFinitePositive(input.capacity, "silk_reservation_capacity_positive_required");
-    if (input.quantity > input.capacity) throw new Error("silk_reservation_exceeds_capacity");
     if (!Number.isFinite(Date.parse(input.reservedAt))) {
       throw new Error("silk_reservation_invalid_time");
     }
 
-    const fingerprint = digest(reservationIdentity(input));
+    const authoritative = this.capacities.get(input.resourceRef);
+    if (!authoritative) throw new Error("silk_resource_capacity_not_registered");
+    if (authoritative.resourceType !== input.resourceType) {
+      throw new Error("silk_resource_type_mismatch");
+    }
+    if (authoritative.unit !== input.unit) throw new Error("silk_resource_unit_mismatch");
+    if (input.quantity > authoritative.capacity) throw new Error("silk_reservation_exceeds_capacity");
+
+    const fingerprint = digest(reservationIdentity(input, authoritative.capacity));
     const existing = this.byCorrelation.get(input.correlationId);
     if (existing) {
       if (existing.fingerprint !== fingerprint) {
@@ -192,7 +216,7 @@ export class SyntheticSilkResourceReservationServiceV1 {
     }
 
     const committed = this.committedByResource.get(input.resourceRef) ?? 0;
-    if (committed + input.quantity > input.capacity) {
+    if (committed + input.quantity > authoritative.capacity) {
       throw new Error("silk_reservation_capacity_conflict");
     }
 
@@ -200,6 +224,7 @@ export class SyntheticSilkResourceReservationServiceV1 {
     const reservation: SilkResourceReservationV1 = {
       ...input,
       reservationRef,
+      capacity: authoritative.capacity,
       state: "RESERVED",
       idempotentReplay: false,
     };
