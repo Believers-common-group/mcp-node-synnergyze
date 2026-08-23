@@ -90,19 +90,24 @@ function destinationPolicy(): SyntheticWardenDecisionPolicyV1 {
   };
 }
 
-function execute(destinationPolicyOverride: Partial<SyntheticWardenDecisionPolicyV1> = {}) {
+function execute(
+  overrides: {
+    sourcePolicy?: Partial<SyntheticWardenDecisionPolicyV1>;
+    destinationPolicy?: Partial<SyntheticWardenDecisionPolicyV1>;
+  } = {},
+) {
   return executeSyntheticFederatedLicenceR1({
     missionRef: MISSION_REF,
     federationObjectRef: "FEDERATION-OBJECT:IN-MY:LICENCE:001",
     productRef: PRODUCT_REF,
     source: {
       request: sourceRequest(),
-      policy: sourcePolicy(),
+      policy: { ...sourcePolicy(), ...overrides.sourcePolicy },
       decidedAt: "2026-08-24T00:00:30.000Z",
     },
     destination: {
       request: destinationRequest(),
-      policy: { ...destinationPolicy(), ...destinationPolicyOverride },
+      policy: { ...destinationPolicy(), ...overrides.destinationPolicy },
       decidedAt: "2026-08-24T00:01:30.000Z",
     },
     executedAt: "2026-08-24T00:02:00.000Z",
@@ -130,7 +135,7 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-001 R1.0", () => {
   });
 
   it("returns a blocked destination result and creates no local effect when the Malaysian Warden denies", () => {
-    const result = execute({ lifecycle: "REVOKED" });
+    const result = execute({ destinationPolicy: { lifecycle: "REVOKED" } });
 
     expect(result.state).toBe("BLOCKED_DESTINATION");
     if (result.state !== "BLOCKED_DESTINATION") throw new Error("expected_blocked_destination");
@@ -157,5 +162,19 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-001 R1.0", () => {
     expect(result.effectReceipt.executionReceiptRef).toBe(result.executionReceipt.receiptRef);
     expect(result.effectReceipt.reservationRef).toBe(result.reservation.reservationRef);
     expect(result.effectReceipt.wardenDecisionRef).toBe(result.destinationDecision.decisionRef);
+  });
+
+  it("returns a blocked source result before destination execution when the Indian Warden denies licensing authority", () => {
+    const result = execute({ sourcePolicy: { lifecycle: "REVOKED" } });
+
+    expect(result.state).toBe("BLOCKED_SOURCE");
+    if (result.state !== "BLOCKED_SOURCE") throw new Error("expected_blocked_source");
+
+    expect(result.sourceDecision.decision).toBe("DENY");
+    expect(result.sourceDecision.reasonCodes).toEqual(["authority_revoked"]);
+    expect("destinationDecision" in result).toBe(false);
+    expect("reservation" in result).toBe(false);
+    expect("executionReceipt" in result).toBe(false);
+    expect("effectReceipt" in result).toBe(false);
   });
 });
