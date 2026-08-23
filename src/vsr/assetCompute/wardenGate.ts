@@ -25,6 +25,18 @@ export function issueExecutionCapability(input: IssueExecutionCapabilityInput): 
     throw new Error("WARDEN_DECISION_SCOPE_MISMATCH");
   }
 
+  if (input.decision.assetId !== input.assetId) {
+    throw new Error("WARDEN_DECISION_ASSET_MISMATCH");
+  }
+
+  if (input.operations.some((operation) => !input.decision.operations.includes(operation))) {
+    throw new Error("WARDEN_DECISION_OPERATION_MISMATCH");
+  }
+
+  if (input.decision.selectedRoute !== input.selectedRoute) {
+    throw new Error("WARDEN_DECISION_ROUTE_MISMATCH");
+  }
+
   if (input.decision.currency !== input.currency) {
     throw new Error("WARDEN_DECISION_CURRENCY_MISMATCH");
   }
@@ -43,7 +55,7 @@ export function issueExecutionCapability(input: IssueExecutionCapabilityInput): 
     executionId: input.executionId,
     principalId: input.principalId,
     assetId: input.assetId,
-    operations: input.operations,
+    operations: [...input.operations],
     selectedRoute: input.selectedRoute,
     maxCost: input.requestedCostCeiling,
     currency: input.currency,
