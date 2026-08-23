@@ -63,3 +63,53 @@ export interface AuthorizedProviderExecutionV1 {
   authorizedAt: string;
   sourceDigest: string;
 }
+
+export type ProviderEffectStateV1 = "NONE" | "PARTIAL" | "COMPLETED" | "FAILED" | "UNKNOWN";
+
+export type ProviderRetryabilityV1 =
+  | "NEVER"
+  | "SAFE"
+  | "AFTER_RECONCILIATION"
+  | "POLICY_DECISION_REQUIRED";
+
+export type ProviderExceptionClassV1 =
+  | "IDENTITY_EXCEPTION"
+  | "CREDENTIAL_EXCEPTION"
+  | "PROVIDER_AUTH_EXCEPTION"
+  | "NETWORK_EXCEPTION"
+  | "EXECUTION_EXCEPTION"
+  | "PARTIAL_EFFECT_EXCEPTION"
+  | "COMPENSATION_EXCEPTION";
+
+export type ProviderExceptionSeverityV1 = "E1" | "E2" | "E3" | "E4" | "E5";
+
+export type ProviderFailureKindV1 =
+  | "HTTP_TIMEOUT_AFTER_SEND"
+  | "CREDENTIAL_TRANSIENT"
+  | "PROVIDER_AUTH_DENIED"
+  | "AGENT_IDENTITY_CONTEXT_MISMATCH"
+  | "PARTIAL_EFFECT"
+  | "COMPENSATION_FAILURE";
+
+export interface ProviderExceptionV1 {
+  version: ProviderAuthorityBridgeVersionV1;
+  exceptionRef: string;
+  authorizationRef: string;
+  exceptionClass: ProviderExceptionClassV1;
+  effectState: ProviderEffectStateV1;
+  retryability: ProviderRetryabilityV1;
+  severity: ProviderExceptionSeverityV1;
+  failureKind: ProviderFailureKindV1;
+  message: string;
+}
+
+export type ProviderAttemptResultV1<T> =
+  | { state: "SUCCEEDED"; authorizationRef: string; value: T }
+  | { state: "EXCEPTION"; authorizationRef: string; exception: ProviderExceptionV1 };
+
+export type ProviderRecoveryActionV1 =
+  | "RETRY"
+  | "RECONCILE_FIRST"
+  | "ABORT"
+  | "CONTAIN"
+  | "POLICY_DECISION_REQUIRED";
