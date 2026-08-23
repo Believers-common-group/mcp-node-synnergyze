@@ -175,12 +175,6 @@ function parseInstant(value: string, code: string): number {
   return parsed;
 }
 
-function sourceEvidenceRefs(value: unknown): readonly string[] {
-  if (!value || typeof value !== "object") return [];
-  const refs = (value as { sourceEvidenceRefs?: readonly string[] }).sourceEvidenceRefs;
-  return refs ? stableUnique(refs.filter((ref) => Boolean(ref?.trim()))) : [];
-}
-
 function scalarSource(record: ReconciliationDeterminationV1): CausalSourceV1 {
   return {
     sourceRef: record.reconciliationRef,
