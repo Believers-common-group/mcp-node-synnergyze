@@ -1,5 +1,8 @@
 import type { PostgresQueryExecutorV1 } from "../synnergyze/postgres-remedy-journal.ts";
-import type { ModernJourneyEventRecordV1 } from "./modern-journey-event-log.ts";
+import {
+  validateModernJourneyEventRecordV1,
+  type ModernJourneyEventRecordV1,
+} from "./modern-journey-event-log.ts";
 
 export type ModernJourneyEventStoreWriteStateV1 = "STORED" | "IDEMPOTENT_REPLAY" | "CONFLICT";
 
@@ -35,29 +38,7 @@ function cloneRecord(record: ModernJourneyEventRecordV1): ModernJourneyEventReco
 }
 
 function assertPersistable(record: ModernJourneyEventRecordV1): void {
-  if (!record.eventRef.trim()) throw new Error("modern_event_store_event_ref_required");
-  if (!record.transactionRef.trim()) throw new Error("modern_event_store_transaction_ref_required");
-  if (!record.journeyRef.trim()) throw new Error("modern_event_store_journey_ref_required");
-  if (!record.actorRef.trim()) throw new Error("modern_event_store_actor_ref_required");
-  if (!record.idempotencyKey.trim()) throw new Error("modern_event_store_idempotency_key_required");
-  if (record.correlationId !== record.transactionRef) {
-    throw new Error("modern_event_store_correlation_mismatch");
-  }
-  if (!Number.isInteger(record.sequence) || record.sequence <= 0) {
-    throw new Error("modern_event_store_invalid_sequence");
-  }
-  if (record.sequence === 1 && record.predecessorEventRef) {
-    throw new Error("modern_event_store_root_predecessor_forbidden");
-  }
-  if (record.sequence > 1 && !record.predecessorEventRef) {
-    throw new Error("modern_event_store_predecessor_required");
-  }
-  if (!record.payloadDigest.startsWith("sha256:")) {
-    throw new Error("modern_event_store_payload_digest_required");
-  }
-  if (!Number.isFinite(Date.parse(record.occurredAt))) {
-    throw new Error("modern_event_store_invalid_time");
-  }
+  validateModernJourneyEventRecordV1(record);
 }
 
 function sameInstant(left: string, right: string): boolean {
@@ -68,6 +49,11 @@ function sameInstant(left: string, right: string): boolean {
 
 function sameIdentity(row: EventRowV1, record: ModernJourneyEventRecordV1): boolean {
   const persisted = parseJson(row.event_json);
+  try {
+    validateModernJourneyEventRecordV1(persisted);
+  } catch {
+    return false;
+  }
   return (
     row.event_ref === record.eventRef &&
     row.transaction_ref === record.transactionRef &&
