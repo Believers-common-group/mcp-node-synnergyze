@@ -165,22 +165,32 @@ type FetchLikeV1 = (
   init?: RequestInit,
 ) => Promise<Response>;
 
-interface AmazonProviderErrorMetadataV1 {
+type AmazonRuntimeErrorKindV1 = "INPUT" | "PROVIDER" | "RESPONSE";
+
+interface AmazonRuntimeErrorMetadataV1 {
   statusCode?: number;
   providerRequestRef?: string;
   responseDigest?: string;
   endpoint?: string;
 }
 
-class AmazonProviderErrorV1 extends Error {
-  readonly metadata: AmazonProviderErrorMetadataV1;
+class AmazonRuntimeErrorV1 extends Error {
+  readonly kind: AmazonRuntimeErrorKindV1;
+  readonly metadata: AmazonRuntimeErrorMetadataV1;
 
-  constructor(message: string, metadata: AmazonProviderErrorMetadataV1 = {}) {
+  constructor(
+    kind: AmazonRuntimeErrorKindV1,
+    message: string,
+    metadata: AmazonRuntimeErrorMetadataV1 = {},
+  ) {
     super(message);
-    this.name = "AmazonProviderErrorV1";
+    this.name = "AmazonRuntimeErrorV1";
+    this.kind = kind;
     this.metadata = metadata;
   }
 }
+
+const RESTRICTED_INCLUDED_DATA = new Set(["BUYER", "RECIPIENT", "TAX", "PAYMENT"]);
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -223,13 +233,31 @@ function validateQuery(query: AmazonOrdersSearchQueryV1): void {
   const created = Boolean(query.createdAfter);
   const updated = Boolean(query.lastUpdatedAfter);
   if (created === updated) {
-    throw new Error("amazon_orders_exactly_one_time_anchor_required");
+    throw new AmazonRuntimeErrorV1(
+      "INPUT",
+      "amazon_orders_exactly_one_time_anchor_required",
+    );
   }
   if (created && (query.lastUpdatedBefore || query.lastUpdatedAfter)) {
-    throw new Error("amazon_orders_created_updated_filter_conflict");
+    throw new AmazonRuntimeErrorV1(
+      "INPUT",
+      "amazon_orders_created_updated_filter_conflict",
+    );
   }
   if (updated && (query.createdAfter || query.createdBefore)) {
-    throw new Error("amazon_orders_updated_created_filter_conflict");
+    throw new AmazonRuntimeErrorV1(
+      "INPUT",
+      "amazon_orders_updated_created_filter_conflict",
+    );
+  }
+  if (
+    query.includedData?.some((value) => RESTRICTED_INCLUDED_DATA.has(value.toUpperCase()))
+  ) {
+    throw new AmazonRuntimeErrorV1(
+      "INPUT",
+      "amazon_orders_restricted_data_requires_separate_capability",
+      { endpoint: "AMAZON:PRE_PROVIDER_VALIDATION" },
+    );
   }
   if (
     query.maxResultsPerPage !== undefined &&
@@ -237,7 +265,7 @@ function validateQuery(query: AmazonOrdersSearchQueryV1): void {
       query.maxResultsPerPage < 1 ||
       query.maxResultsPerPage > 100)
   ) {
-    throw new Error("amazon_orders_invalid_page_size");
+    throw new AmazonRuntimeErrorV1("INPUT", "amazon_orders_invalid_page_size");
   }
 }
 
@@ -342,7 +370,7 @@ class AmazonSpApiOrdersClientV1 {
     });
     const raw = await responseText(response);
     if (!response.ok) {
-      throw new AmazonProviderErrorV1("amazon_lwa_token_request_failed", {
+      throw new AmazonRuntimeErrorV1("PROVIDER", "amazon_lwa_token_request_failed", {
         statusCode: response.status,
         providerRequestRef: providerRequestRef(response, "LWA:NO-REQUEST-ID"),
         responseDigest: sha256(raw),
@@ -354,7 +382,7 @@ class AmazonSpApiOrdersClientV1 {
     try {
       payload = JSON.parse(raw);
     } catch {
-      throw new AmazonProviderErrorV1("amazon_lwa_token_response_invalid", {
+      throw new AmazonRuntimeErrorV1("RESPONSE", "amazon_lwa_token_response_invalid", {
         statusCode: response.status,
         providerRequestRef: providerRequestRef(response, "LWA:NO-REQUEST-ID"),
         responseDigest: sha256(raw),
@@ -366,7 +394,7 @@ class AmazonSpApiOrdersClientV1 {
         ? (payload as { access_token?: unknown }).access_token
         : undefined;
     if (typeof token !== "string" || !token) {
-      throw new AmazonProviderErrorV1("amazon_lwa_access_token_missing", {
+      throw new AmazonRuntimeErrorV1("RESPONSE", "amazon_lwa_access_token_missing", {
         statusCode: response.status,
         providerRequestRef: providerRequestRef(response, "LWA:NO-REQUEST-ID"),
         responseDigest: sha256(raw),
@@ -415,7 +443,7 @@ class AmazonSpApiOrdersClientV1 {
         },
       });
     } catch {
-      throw new AmazonProviderErrorV1("amazon_spapi_network_error", {
+      throw new AmazonRuntimeErrorV1("PROVIDER", "amazon_spapi_network_error", {
         providerRequestRef: "AMAZON:NO-RESPONSE",
         endpoint: url.toString(),
       });
@@ -423,9 +451,12 @@ class AmazonSpApiOrdersClientV1 {
 
     const raw = await responseText(response);
     const responseDigest = sha256(raw);
-    const requestRef = providerRequestRef(response, `AMAZON-REQUEST:${digest(url.toString()).slice(0, 24)}`);
+    const requestRef = providerRequestRef(
+      response,
+      `AMAZON-REQUEST:${digest(url.toString()).slice(0, 24)}`,
+    );
     if (!response.ok) {
-      throw new AmazonProviderErrorV1("amazon_spapi_search_orders_failed", {
+      throw new AmazonRuntimeErrorV1("PROVIDER", "amazon_spapi_search_orders_failed", {
         statusCode: response.status,
         providerRequestRef: requestRef,
         responseDigest,
@@ -437,7 +468,7 @@ class AmazonSpApiOrdersClientV1 {
     try {
       payload = JSON.parse(raw) as AmazonSearchOrdersResponseV1;
     } catch {
-      throw new AmazonProviderErrorV1("amazon_spapi_search_orders_invalid_json", {
+      throw new AmazonRuntimeErrorV1("RESPONSE", "amazon_spapi_search_orders_invalid_json", {
         statusCode: response.status,
         providerRequestRef: requestRef,
         responseDigest,
@@ -445,7 +476,7 @@ class AmazonSpApiOrdersClientV1 {
       });
     }
     if (!payload || !Array.isArray(payload.orders)) {
-      throw new AmazonProviderErrorV1("amazon_spapi_search_orders_shape_invalid", {
+      throw new AmazonRuntimeErrorV1("RESPONSE", "amazon_spapi_search_orders_shape_invalid", {
         statusCode: response.status,
         providerRequestRef: requestRef,
         responseDigest,
@@ -483,7 +514,11 @@ function normalizeOrders(input: {
   const projections: AmazonOrderRegistryProjectionV1[] = [];
   for (const order of input.orders) {
     if (typeof order.orderId !== "string" || !order.orderId) {
-      throw new Error("amazon_order_id_required");
+      throw new AmazonRuntimeErrorV1("RESPONSE", "amazon_order_id_required", {
+        providerRequestRef: input.receipt.providerRequestRef,
+        responseDigest: input.receipt.responseDigest,
+        endpoint: input.receipt.endpoint,
+      });
     }
     const proceeds = money(order);
     projections.push({
@@ -568,7 +603,7 @@ export class InMemoryAmazonRegistryProjectionWriterV1
 }
 
 function exceptionProviderReceipt(
-  error: AmazonProviderErrorV1,
+  error: AmazonRuntimeErrorV1,
   observedAt: string,
 ): AmazonProviderReceiptV1 {
   return {
@@ -606,10 +641,9 @@ export class AmazonOrdersGovernedRuntimeV1 {
     observedAt: string;
   }): Promise<AmazonOrdersSyncResultV1> {
     assertGovernedExecution(input);
-    parseInstant(input.observedAt, "amazon_invalid_observation_time");
-    if (parseInstant(input.observedAt, "amazon_invalid_observation_time") < parseInstant(input.executedAt, "amazon_invalid_execution_time")) {
-      throw new Error("amazon_observation_before_execution");
-    }
+    const observed = parseInstant(input.observedAt, "amazon_invalid_observation_time");
+    const executed = parseInstant(input.executedAt, "amazon_invalid_execution_time");
+    if (observed < executed) throw new Error("amazon_observation_before_execution");
 
     try {
       const provider = await this.client.searchOrders({
@@ -659,11 +693,11 @@ export class AmazonOrdersGovernedRuntimeV1 {
         realWorldWriteEffectOccurred: false,
       };
     } catch (error) {
-      const providerError =
-        error instanceof AmazonProviderErrorV1
+      const runtimeError =
+        error instanceof AmazonRuntimeErrorV1
           ? error
-          : new AmazonProviderErrorV1("amazon_provider_response_invalid");
-      const provider = exceptionProviderReceipt(providerError, input.observedAt);
+          : new AmazonRuntimeErrorV1("RESPONSE", "amazon_provider_response_invalid");
+      const provider = exceptionProviderReceipt(runtimeError, input.observedAt);
       const emptyProjection: AmazonProjectionV1 = { registryRevisionRef: null, orderRefs: [] };
       return {
         state: "EXCEPTION",
@@ -685,12 +719,12 @@ export class AmazonOrdersGovernedRuntimeV1 {
         empire: { ...emptyProjection },
         exception: {
           code:
-            providerError.message === "amazon_provider_response_invalid"
-              ? "AMAZON_RESPONSE_INVALID"
-              : "AMAZON_PROVIDER_ERROR",
-          reason: providerError.message,
-          providerStatusCode: providerError.metadata.statusCode,
-          providerRequestRef: providerError.metadata.providerRequestRef,
+            runtimeError.kind === "PROVIDER"
+              ? "AMAZON_PROVIDER_ERROR"
+              : "AMAZON_RESPONSE_INVALID",
+          reason: runtimeError.message,
+          providerStatusCode: runtimeError.metadata.statusCode,
+          providerRequestRef: runtimeError.metadata.providerRequestRef,
         },
         realWorldWriteEffectOccurred: false,
       };
