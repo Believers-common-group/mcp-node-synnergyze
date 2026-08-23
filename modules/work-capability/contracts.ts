@@ -32,6 +32,7 @@ export interface WorkUnitV1 {
   inputStateRef: string;
   requiredOutputStateRef: string;
   requiredCapabilityRefs: readonly string[];
+  requiredContext: Readonly<Record<string, string>>;
   qualityThresholds: WorkUnitQualityThresholdsV1;
   deadline: string;
   riskClass: "R1" | "R2" | "R3" | "R4";
@@ -47,12 +48,16 @@ export interface CapabilityV1 {
   verificationRequired: boolean;
 }
 
+export type CapabilityEvidenceStateV1 = "CURRENT" | "REVOKED" | "SUPERSEDED" | "EXPIRED";
+
 export interface ActorCapabilityProfileV1 {
   actorRef: string;
   actorClass: WorkCapabilityActorClassV1;
   capabilityRefs: readonly string[];
   context: Readonly<Record<string, string>>;
   evidenceRefs: readonly string[];
+  evidenceState?: CapabilityEvidenceStateV1;
+  evidenceValidUntil?: string;
   available: boolean;
   implementationRef?: string;
   versionRef?: string;
@@ -81,6 +86,9 @@ export interface CandidateCompositionV1 {
 
 export interface WorkAssignmentV1 {
   assignmentRef: string;
+  assignmentDigest: string;
+  assignmentBindingRef: string;
+  authorizationDecisionRef: string;
   workUnitRef: string;
   compositionRef: string;
   actorRefs: readonly string[];
@@ -120,6 +128,9 @@ export interface CapabilityOutcomeV1 {
   reworkQuantity: number;
   firstPassQuality: number;
   requiredFirstPassQuality: number;
+  requiredOutputStateRef: string;
+  observedStateRef: string;
+  stateMet: boolean;
 }
 
 export interface RemainingWorkProposalV1 {
