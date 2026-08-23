@@ -11,10 +11,14 @@ import {
   mapSyntheticFactoryLineToQelFrameV01,
 } from "./factory-line-fixture.ts";
 import { buildQelPodPulseV01 } from "./pulse.ts";
+import {
+  makeSyntheticRecoveryNodeSnapshotV01,
+  mapSyntheticRecoveryNodeToQelFrameV01,
+} from "./recovery-node-fixture.ts";
 
 describe("QEL cross-domain Pod Pulse", () => {
-  it("reduces compute, factory, and product-passport objects through one shared operating grammar", () => {
-    const observedAt = "2026-08-23T05:45:00.000Z";
+  it("reduces compute, factory, passport, and recovery-node objects through one shared operating grammar", () => {
+    const observedAt = "2026-08-23T06:45:00.000Z";
     const compute = mapAlphaComputeRunnerToQelFrameV01({
       registration: new SyntheticCpuComputeRunner().registration,
       observedAt,
@@ -36,17 +40,27 @@ describe("QEL cross-domain Pod Pulse", () => {
         lifecycleState: "RETURN_PENDING",
       }),
     );
+    const recovery = mapSyntheticRecoveryNodeToQelFrameV01(
+      makeSyntheticRecoveryNodeSnapshotV01({
+        observedAt,
+        correlationId: "QEL-CROSS-DOMAIN-RECOVERY-001",
+        nodeState: "IDENTIFIED",
+        assetRef: "GARMENT-98F1",
+        passportCycleRef: "GARMENT-98F1:CYCLE-01",
+      }),
+    );
 
     const pulse = buildQelPodPulseV01({
       podRef: "POD-QEL-CROSS-DOMAIN-001",
       observedAt,
-      frames: [compute, factory, passport],
+      frames: [compute, factory, passport, recovery],
     });
 
     expect(compute.object.type).toBe("COMPUTE_SERVICE");
     expect(factory.object.type).toBe("PRODUCTION_LINE");
     expect(passport.object.type).toBe("PRODUCT_PASSPORT");
-    expect(pulse.now.objectCount).toBe(3);
+    expect(recovery.object.type).toBe("RECOVERY_NODE");
+    expect(pulse.now.objectCount).toBe(4);
     expect(pulse.now.health).toBe("WATCH");
     expect(pulse.needs).toEqual([
       {
@@ -60,6 +74,12 @@ describe("QEL cross-domain Pod Pulse", () => {
         type: "TRANSPORT",
         priority: "HIGH",
         target: "return_asset_to_network",
+      },
+      {
+        objectRef: "RECOVERY-NODE-BLR-001",
+        type: "APPROVAL",
+        priority: "HIGH",
+        target: "accept_recovery_custody",
       },
     ]);
     expect(pulse.risks[0]).toMatchObject({
@@ -83,7 +103,12 @@ describe("QEL cross-domain Pod Pulse", () => {
         (move) => move.objectRef === passport.object.id && move.action === "ROUTE_NEXT_CYCLE",
       ),
     ).toBe(true);
+    expect(
+      pulse.moves.some(
+        (move) => move.objectRef === recovery.object.id && move.action === "ACCEPT_CUSTODY",
+      ),
+    ).toBe(true);
     expect(pulse.proof.verifiedOutcomes).toBe(0);
-    expect(pulse.proof.unresolvedOutcomes).toBe(3);
+    expect(pulse.proof.unresolvedOutcomes).toBe(4);
   });
 });
