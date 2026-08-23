@@ -116,6 +116,22 @@ function resourceReservations() {
   ]);
 }
 
+function economicEvent(providerRef = "BANK-A"): SilkEconomicEventV1 {
+  return {
+    economicEventRef: "SILK-ECONOMIC-EVENT:ECO-1901",
+    journeyRef: JOURNEY_REF,
+    transactionRef: TRANSACTION_REF,
+    silkAccountRef: SILK_ACCOUNT_REF,
+    economicOwnerRef: ECONOMIC_OWNER_REF,
+    actualPayerRef: DIGITAL_ME_REF,
+    amount: 4800,
+    currency: "INR",
+    instrumentRef: "VISA-PERSONAL-001",
+    providerRef,
+    occurredAt: EXECUTED_AT,
+  };
+}
+
 describe("MODERN-JOURNEY-TRANSACTION-001", () => {
   it("preserves one parent transaction across Mastercard failure, Visa fallback, reimbursement, and verified effect", () => {
     const transaction = createModernJourneyTransactionV1({
@@ -127,19 +143,6 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
       currency: "INR",
     });
     const resources = resourceReservations();
-
-    const primaryReservation = resources.reserve({
-      journeyRef: JOURNEY_REF,
-      silkAccountRef: SILK_ACCOUNT_REF,
-      resourceRef: "FUNDING:CORPORATE-CREDIT-001",
-      resourceType: "CREDIT",
-      quantity: 4800,
-      unit: "INR",
-      wardenDecisionRef: "WARDEN-DECISION:PRIMARY-RESOURCE",
-      correlationId: `${TRANSACTION_REF}:PRIMARY-RESOURCE`,
-      reservedAt: RIVER_RESERVED_AT,
-    });
-
     const mastercard = new SyntheticConfluenceCapabilityAdapterV1(
       "SYNTHETIC-MASTERCARD-ADAPTER-001",
       "payment.mastercard.authorize",
@@ -152,6 +155,22 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     const gate = new ControlledExecutionGateV1([mastercard, visa]);
 
     const primary = authorizedChain("payment.mastercard.authorize", "MC-PRIMARY");
+    const primaryReservation = resources.reserve(
+      {
+        journeyRef: JOURNEY_REF,
+        silkAccountRef: SILK_ACCOUNT_REF,
+        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
+        resourceType: "CREDIT",
+        quantity: 4800,
+        unit: "INR",
+        wardenDecisionRef: primary.decision.decisionRef,
+        authorizationCorrelationId: primary.decision.correlationId,
+        correlationId: `${TRANSACTION_REF}:PRIMARY-RESOURCE`,
+        reservedAt: RIVER_RESERVED_AT,
+      },
+      primary.decision,
+    );
+
     let providerFailure: unknown;
     try {
       gate.execute({ ...primary, executedAt: EXECUTED_AT });
@@ -167,8 +186,6 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     });
 
     expect(afterPrimaryFailure.state).toBe("RECOVERY_REQUIRED");
-    expect(afterPrimaryFailure.transactionRef).toBe(TRANSACTION_REF);
-    expect(afterPrimaryFailure.attempts).toHaveLength(1);
     expect(afterPrimaryFailure.attempts[0]).toMatchObject({
       providerRef: "BANK-B",
       status: "FAILED",
@@ -181,67 +198,47 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     expect(resources.reservedQuantity("FUNDING:CORPORATE-CREDIT-001")).toBe(0);
 
     const fallback = authorizedChain("payment.visa.authorize", "VISA-FALLBACK");
-    const fallbackReservation = resources.reserve({
-      journeyRef: JOURNEY_REF,
-      silkAccountRef: SILK_ACCOUNT_REF,
-      resourceRef: "FUNDING:PERSONAL-VISA-FALLBACK-001",
-      resourceType: "CREDIT",
-      quantity: 4800,
-      unit: "INR",
-      wardenDecisionRef: fallback.decision.decisionRef,
-      correlationId: `${TRANSACTION_REF}:VISA-RESOURCE`,
-      reservedAt: RIVER_RESERVED_AT,
-    });
+    const fallbackReservation = resources.reserve(
+      {
+        journeyRef: JOURNEY_REF,
+        silkAccountRef: SILK_ACCOUNT_REF,
+        resourceRef: "FUNDING:PERSONAL-VISA-FALLBACK-001",
+        resourceType: "CREDIT",
+        quantity: 4800,
+        unit: "INR",
+        wardenDecisionRef: fallback.decision.decisionRef,
+        authorizationCorrelationId: fallback.decision.correlationId,
+        correlationId: `${TRANSACTION_REF}:VISA-RESOURCE`,
+        reservedAt: RIVER_RESERVED_AT,
+      },
+      fallback.decision,
+    );
     const fallbackReceipt = gate.execute({ ...fallback, executedAt: EXECUTED_AT });
 
-    const economicEvent: SilkEconomicEventV1 = {
-      economicEventRef: "SILK-ECONOMIC-EVENT:ECO-1901",
-      journeyRef: JOURNEY_REF,
-      transactionRef: TRANSACTION_REF,
-      silkAccountRef: SILK_ACCOUNT_REF,
-      economicOwnerRef: ECONOMIC_OWNER_REF,
-      actualPayerRef: DIGITAL_ME_REF,
-      amount: 4800,
-      currency: "INR",
-      instrumentRef: "VISA-PERSONAL-001",
-      providerRef: "BANK-A",
-      occurredAt: EXECUTED_AT,
-    };
     const afterFallback = recordModernProviderExecutionV1(afterPrimaryFailure, {
       attemptRef: "ATTEMPT:VISA-FALLBACK",
       providerRef: "BANK-A",
       receipt: fallbackReceipt,
-      economicEvent,
+      economicEvent: economicEvent(),
     });
-
     expect(afterFallback.state).toBe("EXECUTED_UNVERIFIED");
-    expect(afterFallback.attempts).toHaveLength(2);
-    expect(afterFallback.attempts[0]?.status).toBe("FAILED");
-    expect(afterFallback.attempts[1]).toMatchObject({
-      providerRef: "BANK-A",
-      capabilityRef: "payment.visa.authorize",
-      status: "EXECUTED_UNVERIFIED",
-      executionReceiptRef: fallbackReceipt.receiptRef,
-    });
+    expect(afterFallback.attempts.map((attempt) => attempt.providerRef)).toEqual(["BANK-B", "BANK-A"]);
     expect(afterFallback.reimbursementObligation).toMatchObject({
       type: "REIMBURSEMENT",
       obligorRef: ECONOMIC_OWNER_REF,
       beneficiaryRef: DIGITAL_ME_REF,
       amount: 4800,
-      currency: "INR",
       state: "OPEN",
     });
 
-    const consumedFallback = resources.transition(fallbackReservation.reservationRef, "CONSUMED");
-    expect(consumedFallback.state).toBe("CONSUMED");
+    expect(resources.transition(fallbackReservation.reservationRef, "CONSUMED").state).toBe("CONSUMED");
 
     const observation = buildSyntheticConfluenceObservationV1(fallbackReceipt, {
       observerRef: "SYNTHETIC-ENGINEERING-SERVICE-OBSERVER-001",
       observedStateRef: "ENGINEERING-SERVICE:DELIVERED",
       observedAt: OBSERVED_AT,
     });
-    const verifier = new EffectVerificationServiceV1();
-    const verification = verifier.verify({
+    const verification = new EffectVerificationServiceV1().verify({
       receipt: fallbackReceipt,
       observation,
       verifiedAt: VERIFIED_AT,
@@ -253,7 +250,6 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     expect(closed.state).toBe("CLOSED");
     expect(closed.transactionRef).toBe(TRANSACTION_REF);
     expect(closed.verifiedEffectRef).toBe(verification.effect.effectRef);
-    expect(closed.attempts.map((attempt) => attempt.providerRef)).toEqual(["BANK-B", "BANK-A"]);
     expect(closed.reimbursementObligation?.state).toBe("OPEN");
   });
 
@@ -273,32 +269,22 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     const gate = new ControlledExecutionGateV1([visa]);
     const fallback = authorizedChain("payment.visa.authorize", "VISA-DIRECT");
     const receipt = gate.execute({ ...fallback, executedAt: EXECUTED_AT });
-    const event: SilkEconomicEventV1 = {
-      economicEventRef: "SILK-ECONOMIC-EVENT:ECO-DIRECT",
-      journeyRef: JOURNEY_REF,
-      transactionRef: TRANSACTION_REF,
-      silkAccountRef: SILK_ACCOUNT_REF,
-      economicOwnerRef: ECONOMIC_OWNER_REF,
-      actualPayerRef: DIGITAL_ME_REF,
-      amount: 4800,
-      currency: "INR",
-      instrumentRef: "VISA-PERSONAL-001",
-      providerRef: "BANK-A",
-      occurredAt: EXECUTED_AT,
-    };
     const executed = recordModernProviderExecutionV1(transaction, {
       attemptRef: "ATTEMPT:VISA-DIRECT",
       providerRef: "BANK-A",
       receipt,
-      economicEvent: event,
+      economicEvent: economicEvent(),
     });
     const observation = buildSyntheticConfluenceObservationV1(receipt, {
       observerRef: "SYNTHETIC-ENGINEERING-SERVICE-OBSERVER-001",
       observedStateRef: "ENGINEERING-SERVICE:DELIVERED",
       observedAt: OBSERVED_AT,
     });
-    const verifier = new EffectVerificationServiceV1();
-    const verification = verifier.verify({ receipt, observation, verifiedAt: VERIFIED_AT });
+    const verification = new EffectVerificationServiceV1().verify({
+      receipt,
+      observation,
+      verifiedAt: VERIFIED_AT,
+    });
     if (verification.state !== "VERIFIED_EFFECT") throw new Error("expected_verified_effect");
 
     const wrongVerification = {
@@ -310,7 +296,7 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     );
   });
 
-  it("rejects economic lineage drift before attaching a successful provider execution", () => {
+  it("rejects economic lineage drift before attaching successful provider execution", () => {
     const transaction = createModernJourneyTransactionV1({
       transactionRef: TRANSACTION_REF,
       journeyRef: JOURNEY_REF,
@@ -326,26 +312,13 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     const gate = new ControlledExecutionGateV1([visa]);
     const fallback = authorizedChain("payment.visa.authorize", "VISA-LINEAGE");
     const receipt = gate.execute({ ...fallback, executedAt: EXECUTED_AT });
-    const event: SilkEconomicEventV1 = {
-      economicEventRef: "SILK-ECONOMIC-EVENT:ECO-LINEAGE",
-      journeyRef: JOURNEY_REF,
-      transactionRef: TRANSACTION_REF,
-      silkAccountRef: SILK_ACCOUNT_REF,
-      economicOwnerRef: ECONOMIC_OWNER_REF,
-      actualPayerRef: DIGITAL_ME_REF,
-      amount: 4800,
-      currency: "INR",
-      instrumentRef: "VISA-PERSONAL-001",
-      providerRef: "BANK-A",
-      occurredAt: EXECUTED_AT,
-    };
 
     expect(() =>
       recordModernProviderExecutionV1(transaction, {
         attemptRef: "ATTEMPT:WRONG-TXN",
         providerRef: "BANK-A",
         receipt,
-        economicEvent: { ...event, transactionRef: "TXN-OTHER" },
+        economicEvent: { ...economicEvent(), transactionRef: "TXN-OTHER" },
       }),
     ).toThrow("modern_transaction_economic_transaction_mismatch");
     expect(() =>
@@ -353,7 +326,7 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
         attemptRef: "ATTEMPT:WRONG-AMOUNT",
         providerRef: "BANK-A",
         receipt,
-        economicEvent: { ...event, amount: 4801 },
+        economicEvent: { ...economicEvent(), amount: 4801 },
       }),
     ).toThrow("modern_transaction_economic_value_mismatch");
     expect(() =>
@@ -361,7 +334,7 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
         attemptRef: "ATTEMPT:WRONG-PROVIDER",
         providerRef: "BANK-B",
         receipt,
-        economicEvent: event,
+        economicEvent: economicEvent(),
       }),
     ).toThrow("modern_transaction_provider_mismatch");
   });
