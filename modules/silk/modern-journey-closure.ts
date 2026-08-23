@@ -59,7 +59,9 @@ function canonicalJson(value: unknown): string {
     );
     return `{${entries.map(([key, entry]) => `${JSON.stringify(key)}:${canonicalJson(entry)}`).join(",")}}`;
   }
-  return JSON.stringify(value);
+  const encoded = JSON.stringify(value);
+  if (encoded === undefined) throw new Error("modern_journey_closure_non_serializable_value");
+  return encoded;
 }
 
 function assertReceiptMatchesConfluence(confluence: ModernJourneyConfluenceV1): void {
