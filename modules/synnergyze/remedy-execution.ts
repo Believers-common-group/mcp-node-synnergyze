@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import type { WardenExecutionCheckpointV1 } from "../warden/contracts.ts";
 import type {
   ReconciliationDeterminationV1,
   ReconciliationRemedyProposalV1,
@@ -17,6 +18,7 @@ export interface RemedyExecutionReceiptV1 {
   remedyCorrelationId: string;
   originalWardenDecisionRef: string;
   remedyWardenDecisionRef: string;
+  remedyCheckpointRef: string;
   capabilityRef: string;
   targetRef: string;
   adapterRef: string;
@@ -90,8 +92,12 @@ export type RemedyExecutionResultV1 =
         | "REMEDY_EXECUTION_PROPOSAL_NOT_BOUND"
         | "REMEDY_EXECUTION_MANUAL_REVIEW_NOT_EXECUTABLE"
         | "REMEDY_EXECUTION_GRANT_SCOPE_MISMATCH"
+        | "REMEDY_EXECUTION_CHECKPOINT_MISMATCH"
+        | "REMEDY_EXECUTION_CHECKPOINT_NOT_VALID"
         | "REMEDY_EXECUTION_INVALID_TIME"
         | "REMEDY_EXECUTION_BEFORE_AUTHORIZATION"
+        | "REMEDY_EXECUTION_CHECKPOINT_BEFORE_AUTHORIZATION"
+        | "REMEDY_EXECUTION_CHECKPOINT_AFTER_EXECUTION"
         | "REMEDY_EXECUTION_AUTHORIZATION_EXPIRED"
         | "REMEDY_EXECUTION_ADAPTER_NOT_REGISTERED"
         | "REMEDY_EXECUTION_JOURNAL_CONFLICT";
@@ -161,10 +167,11 @@ export class RemedyExecutionGateV1 {
     determination: ReconciliationDeterminationV1;
     proposal: ReconciliationRemedyProposalV1;
     grant: RemedyAuthorizationGrantV1;
+    checkpoint: WardenExecutionCheckpointV1;
     journal: RemedyExecutionJournalV1;
     executedAt: string;
   }): Promise<RemedyExecutionResultV1> {
-    const { determination, proposal, grant } = input;
+    const { determination, proposal, grant, checkpoint } = input;
 
     if (
       determination.state !== "EXCEPTION" ||
@@ -196,14 +203,27 @@ export class RemedyExecutionGateV1 {
       return { state: "REJECTED_INPUT", reasonCode: "REMEDY_EXECUTION_GRANT_SCOPE_MISMATCH" };
     }
 
+    if (
+      checkpoint.decisionRef !== grant.remedyWardenDecisionRef ||
+      checkpoint.wardenRef !== grant.remedyWardenRef ||
+      checkpoint.correlationId !== grant.remedyCorrelationId
+    ) {
+      return { state: "REJECTED_INPUT", reasonCode: "REMEDY_EXECUTION_CHECKPOINT_MISMATCH" };
+    }
+    if (checkpoint.state !== "VALID") {
+      return { state: "REJECTED_INPUT", reasonCode: "REMEDY_EXECUTION_CHECKPOINT_NOT_VALID" };
+    }
+
     const reconciledAtMs = parseInstant(determination.reconciledAt);
     const authorizedAtMs = parseInstant(grant.authorizedAt);
     const validUntilMs = parseInstant(grant.validUntil);
+    const checkpointAtMs = parseInstant(checkpoint.checkedAt);
     const executedAtMs = parseInstant(input.executedAt);
     if (
       reconciledAtMs === null ||
       authorizedAtMs === null ||
       validUntilMs === null ||
+      checkpointAtMs === null ||
       executedAtMs === null ||
       validUntilMs < authorizedAtMs
     ) {
@@ -212,7 +232,13 @@ export class RemedyExecutionGateV1 {
     if (authorizedAtMs < reconciledAtMs || executedAtMs < authorizedAtMs) {
       return { state: "REJECTED_INPUT", reasonCode: "REMEDY_EXECUTION_BEFORE_AUTHORIZATION" };
     }
-    if (executedAtMs > validUntilMs) {
+    if (checkpointAtMs < authorizedAtMs) {
+      return { state: "REJECTED_INPUT", reasonCode: "REMEDY_EXECUTION_CHECKPOINT_BEFORE_AUTHORIZATION" };
+    }
+    if (checkpointAtMs > executedAtMs) {
+      return { state: "REJECTED_INPUT", reasonCode: "REMEDY_EXECUTION_CHECKPOINT_AFTER_EXECUTION" };
+    }
+    if (checkpointAtMs > validUntilMs || executedAtMs > validUntilMs) {
       return { state: "REJECTED_INPUT", reasonCode: "REMEDY_EXECUTION_AUTHORIZATION_EXPIRED" };
     }
 
@@ -231,6 +257,8 @@ export class RemedyExecutionGateV1 {
       remedyCorrelationId: grant.remedyCorrelationId,
       originalWardenDecisionRef: grant.originalWardenDecisionRef,
       remedyWardenDecisionRef: grant.remedyWardenDecisionRef,
+      remedyWardenRef: grant.remedyWardenRef,
+      remedyCheckpointRef: checkpoint.checkpointRef,
       capabilityRef: grant.capabilityRef,
       targetRef: grant.targetRef,
       actionTokenDigest: grant.actionTokenDigest,
@@ -267,12 +295,20 @@ export class RemedyExecutionGateV1 {
       adapterResultRef = result.adapterResultRef;
       if (!adapterResultRef.trim()) throw new Error("remedy_adapter_result_missing");
     } catch (error) {
-      await input.journal.fail({
-        authorizationRef: grant.authorizationRef,
-        executionFingerprint: fingerprint,
-        reason: error instanceof Error ? error.message : "remedy_provider_outcome_uncertain",
-        failedAtMs: executedAtMs,
-      });
+      // If the failure marker cannot be committed, the durable row remains
+      // IN_PROGRESS. That is still fail-stop: a restart returns
+      // RECOVERY_REQUIRED instead of re-invoking the provider.
+      try {
+        await input.journal.fail({
+          authorizationRef: grant.authorizationRef,
+          executionFingerprint: fingerprint,
+          reason: error instanceof Error ? error.message : "remedy_provider_outcome_uncertain",
+          failedAtMs: executedAtMs,
+        });
+      } catch {
+        // Preserve the uncertain-provider outcome as the externally visible
+        // state. Never convert journal failure into permission to retry.
+      }
       return recovery(grant, "REMEDY_PROVIDER_OUTCOME_UNCERTAIN");
     }
 
@@ -289,6 +325,7 @@ export class RemedyExecutionGateV1 {
       remedyCorrelationId: grant.remedyCorrelationId,
       originalWardenDecisionRef: grant.originalWardenDecisionRef,
       remedyWardenDecisionRef: grant.remedyWardenDecisionRef,
+      remedyCheckpointRef: checkpoint.checkpointRef,
       capabilityRef: grant.capabilityRef,
       targetRef: grant.targetRef,
       adapterRef: adapter.adapterRef,
