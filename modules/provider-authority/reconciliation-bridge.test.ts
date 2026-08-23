@@ -115,4 +115,40 @@ describe("Provider authority reconciliation bridge R0.4-B", () => {
     expect(interpretation.closureEligible).toBe(false);
     expect(interpretation.remedy?.kind).toBe("MANUAL_REVIEW");
   });
+
+  it("preserves COMPENSATE as an unauthorized fresh-Warden remedy for a partial effect", () => {
+    const partialEffect: ProviderExceptionV1 = {
+      ...providerException,
+      exceptionRef: "PROVIDER-EXCEPTION:PARTIAL-001",
+      exceptionClass: "PARTIAL_EFFECT_EXCEPTION",
+      effectState: "PARTIAL",
+      retryability: "POLICY_DECISION_REQUIRED",
+      severity: "E4",
+      failureKind: "PARTIAL_EFFECT",
+      executionRef: "PROVIDER-EXECUTION:ORIGINAL-001",
+      message: "partial_effect_observed",
+    };
+
+    const interpretation = interpretProviderReconciliationV1(
+      partialEffect,
+      resultFor("UNEXPECTED_EFFECT", {
+        remedy: {
+          proposalRef: "REMEDY-PROPOSAL:COMPENSATE-001",
+          kind: "COMPENSATE",
+          capabilityRef: "reconciliation.compensate",
+          reasonCode: "unexpected_effect_observed",
+          requiresFreshWardenDecision: true,
+          authorized: false,
+        },
+      }),
+    );
+
+    expect(interpretation.disposition).toBe("REMEDY_PROPOSED");
+    expect(interpretation.retryAllowed).toBe(false);
+    expect(interpretation.remedy).toMatchObject({
+      kind: "COMPENSATE",
+      requiresFreshWardenDecision: true,
+      authorized: false,
+    });
+  });
 });
