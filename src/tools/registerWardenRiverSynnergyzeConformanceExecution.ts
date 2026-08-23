@@ -9,6 +9,7 @@ import {
 } from "../../modules/synnergyze/execution-gate.ts";
 import {
   enableEnvironmentVariable as wardenEnableEnvironmentVariable,
+  parseWardenConformanceDecisionInput,
   wardenConformanceRequestJsonSchema,
 } from "./registerWardenConformanceDecision.ts";
 import {
@@ -87,7 +88,12 @@ export class WardenRiverSynnergyzeConformanceExecutionServiceV1 {
   ) {}
 
   execute(input: unknown, now: string): ExecutionResponse {
-    const binding = this.binding.executeInternal(input, now);
+    const parsed = parseWardenConformanceDecisionInput(input);
+    if (parsed.request.executionDeviceRef) {
+      throw new Error("synnergyze_conformance_execution_device_security_not_bound");
+    }
+
+    const binding = this.binding.executeInternal(parsed, now);
     const existing = this.byRequestRef.get(binding.request.requestRef);
 
     if (existing) {
@@ -133,10 +139,6 @@ export class WardenRiverSynnergyzeConformanceExecutionServiceV1 {
         response: structuredClone(response),
       });
       return response;
-    }
-
-    if (binding.action.executionDeviceRef) {
-      throw new Error("synnergyze_conformance_execution_device_security_not_bound");
     }
 
     const checkpoint = this.checkpointFactory(binding, now);
