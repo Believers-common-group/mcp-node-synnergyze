@@ -32,10 +32,17 @@
     "test:site-handoff": "vitest run site-handoff",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
-    "debug": "mcp-inspector npm start"
+    "debug": "mcp-inspector npm start",
+    "test:reconciliation": "vitest run modules/synnergyze/effect-expectation.test.ts modules/synnergyze/exception-fabric.test.ts modules/synnergyze/reconciliation-fabric.test.ts modules/synnergyze/reconciliation-expectation.test.ts",
+    "test:remedy-runtime": "vitest run modules/synnergyze/remedy-authorization.test.ts modules/synnergyze/remedy-execution.test.ts modules/synnergyze/remedy-runtime.test.ts"
   },
   "type": "module",
-  "keywords": ["mcp", "synnergyze", "genesis", "vsr"],
+  "keywords": [
+    "mcp",
+    "synnergyze",
+    "genesis",
+    "vsr"
+  ],
   "author": "Believers Common Group",
   "license": "MIT",
   "description": "Synnergyze Genesis MCP service for governed VSR/Genesis integrations.",

@@ -309,3 +309,270 @@ components:
       - modules/synnergyze/effect-verification.test.ts
     activation_gate: synthetic-objective-proof-only-real-canary-separately-authorized
     activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-EFFECT-EXPECTATION-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: authorized-intent-to-pre-execution-effect-matcher
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/effect-expectation.ts
+    contract_paths:
+      - modules/synnergyze/effect-expectation.ts
+      - modules/river/contracts.ts
+    input_contracts:
+      - ActionEnvelopeV1
+      - EvidenceReservationV1
+    output_contracts:
+      - ExpectedEffectContractV1
+    depends_on:
+      - CMP-SYNNERGYZE-WARDEN-REQUEST-001
+      - MOD-RIVEROS-001
+    required_guards:
+      - river-reservation-required-before-expectation
+      - exact-action-reservation-decision-correlation-lineage
+      - capability-specific-expectation-compiler
+      - expectation-bound-before-execution
+      - idempotent-replay-and-conflicting-mutation-rejection
+    forbidden:
+      - infer-authority-from-expected-effect
+      - compile-unsupported-effect
+      - bind-expectation-after-execution
+      - infer-observed-effect-from-requested-effect
+      - invoke-real-external-provider
+    tests:
+      - modules/synnergyze/effect-expectation.test.ts
+      - modules/river/reservation-service.test.ts
+      - modules/synnergyze/reconciliation-expectation.test.ts
+    activation_gate: synthetic-expected-effect-conformance-only
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-EXCEPTION-FABRIC-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: effect-verification-failure-to-canonical-exception
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/exception-fabric.ts
+    contract_paths:
+      - modules/synnergyze/exception-fabric.ts
+      - modules/synnergyze/effect-verification.ts
+      - modules/synnergyze/contracts.ts
+    input_contracts:
+      - SynnergyzeExecutionReceiptV1
+      - EffectVerificationFailureV1
+      - PostExecutionObservationV1
+    output_contracts:
+      - CanonicalExceptionRecordV1
+      - ExceptionCaptureResultV1
+    depends_on:
+      - CMP-SYNNERGYZE-CONTROLLED-EXECUTION-001
+      - CMP-SYNNERGYZE-EFFECT-VERIFY-001
+    required_guards:
+      - exact-failure-receipt-binding
+      - observation-presence-and-reference-binding
+      - preserve-lineage-violations-without-normalization
+      - detection-not-before-execution
+      - idempotent-replay-and-conflicting-mutation-rejection
+    forbidden:
+      - mint-or-imply-authority
+      - normalize-lineage-or-replay-conflict-away
+      - close-exception-without-reconciliation
+      - mutate-captured-history
+      - invoke-real-external-provider
+    tests:
+      - modules/synnergyze/exception-fabric.test.ts
+      - modules/synnergyze/effect-verification.test.ts
+    activation_gate: synthetic-exception-capture-conformance-only
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-RECONCILIATION-FABRIC-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: canonical-exception-and-provider-readback-to-unauthorized-determination
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/reconciliation-fabric.ts
+    contract_paths:
+      - modules/synnergyze/reconciliation-fabric.ts
+      - modules/synnergyze/exception-fabric.ts
+      - modules/synnergyze/effect-expectation.ts
+    input_contracts:
+      - CanonicalExceptionRecordV1
+      - ExpectedEffectContractV1
+      - ProviderReadbackV1
+    output_contracts:
+      - ReconciliationDeterminationV1
+      - ReconciliationRemedyProposalV1
+      - ReconciliationResultV1
+    determination_states:
+      - DETERMINED_UNAUTHORIZED
+    depends_on:
+      - CMP-SYNNERGYZE-EFFECT-EXPECTATION-001
+      - CMP-SYNNERGYZE-EXCEPTION-FABRIC-001
+      - RIVEROS-001-CONTRACT
+    required_guards:
+      - open-exception-required
+      - exact-exception-expectation-readback-lineage
+      - expectation-bound-before-original-execution
+      - provider-readback-source-evidence-required
+      - lineage-and-replay-conflict-precedence
+      - provider-unavailable-before-retry
+      - idempotent-replay-and-conflicting-evidence-rejection
+      - remedy-proposals-remain-unauthorized
+    forbidden:
+      - treat-provider-state-as-authority
+      - let-matching-readback-erase-lineage-or-replay-conflict
+      - retry-uncertain-effect-before-reconciliation
+      - authorize-or-execute-remedy
+      - imply-effect-or-settlement-finality
+    tests:
+      - modules/synnergyze/reconciliation-fabric.test.ts
+      - modules/synnergyze/reconciliation-expectation.test.ts
+    activation_gate: synthetic-provider-readback-conformance-only
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-REMEDY-AUTH-001
+    network_object: WARDEN-RUNTIME-001
+    role: reconciliation-remedy-to-fresh-warden-authorization
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/remedy-authorization.ts
+    contract_paths:
+      - modules/synnergyze/remedy-authorization.ts
+      - modules/warden/contracts.ts
+      - modules/synnergyze/reconciliation-fabric.ts
+    input_contracts:
+      - ReconciliationDeterminationV1
+      - ReconciliationRemedyProposalV1
+      - WardenDecisionRequestV1
+      - WardenDecisionV1
+    output_contracts:
+      - RemedyAuthorizationGrantV1
+      - RemedyAuthorizationResultV1
+    depends_on:
+      - MOD-WARDEN-001
+      - CMP-SYNNERGYZE-RECONCILIATION-FABRIC-001
+    required_guards:
+      - exact-bound-proposal
+      - fresh-warden-decision-distinct-from-original
+      - distinct-child-correlation
+      - exact-program-event-target-capability-lineage
+      - canonical-remedy-effect-binding
+      - authorization-within-decision-window
+      - action-token-digest-without-token-disclosure
+    forbidden:
+      - reuse-original-execution-decision
+      - authorize-from-reconciliation-or-provider-state
+      - expose-raw-action-token
+      - widen-remedy-scope
+      - execute-remedy
+    tests:
+      - modules/synnergyze/remedy-authorization.test.ts
+    activation_gate: fresh-warden-remedy-decision-conformance-only
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-REMEDY-RUNTIME-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: fresh-authorized-remedy-to-unverified-recovery-or-compensation
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/remedy-runtime.ts
+    contract_paths:
+      - modules/synnergyze/remedy-runtime.ts
+      - modules/synnergyze/remedy-authorization.ts
+      - modules/synnergyze/reconciliation-fabric.ts
+      - modules/synnergyze/execution-gate.ts
+      - modules/river/contracts.ts
+      - modules/warden/contracts.ts
+    input_contracts:
+      - ReconciliationDeterminationV1
+      - ReconciliationRemedyProposalV1
+      - RemedyAuthorizationGrantV1
+      - ActionEnvelopeV1
+      - EvidenceReservationV1
+      - WardenDecisionV1
+      - WardenExecutionCheckpointV1
+    output_contracts:
+      - RecoveryContractV1
+      - CompensationContractV1
+      - RemedyExecutionContractV1
+    execution_states:
+      - RECOVERED_UNVERIFIED
+      - COMPENSATED_UNVERIFIED
+    depends_on:
+      - CMP-SYNNERGYZE-REMEDY-AUTH-001
+      - CMP-SYNNERGYZE-CONTROLLED-EXECUTION-001
+      - MOD-RIVEROS-001
+    adapter_allowlist:
+      - SYNTHETIC-RECOVERY-ADAPTER-001
+      - SYNTHETIC-COMPENSATION-ADAPTER-001
+    required_guards:
+      - executable-recovery-or-compensation-kind-only
+      - exact-determination-proposal-grant-lineage
+      - fresh-warden-decision-and-request
+      - fresh-river-reservation
+      - distinct-child-correlation
+      - grant-action-token-digest-binding
+      - grant-and-decision-validity-window
+      - fresh-warden-execution-checkpoint
+      - idempotent-replay-without-adapter-reinvocation
+      - mutated-replay-rejected
+    forbidden:
+      - execute-manual-review-as-remedy
+      - reuse-original-decision-reservation-or-correlation
+      - mark-recovery-or-compensation-effect-verified
+      - seal-river-evidence
+      - mutate-registry-effect
+      - imply-objective-closure-or-settlement-finality
+      - invoke-real-external-provider
+    tests:
+      - modules/synnergyze/remedy-authorization.test.ts
+      - modules/synnergyze/remedy-runtime.test.ts
+      - modules/synnergyze/execution-gate.test.ts
+    activation_gate: synthetic-remedy-execution-conformance-only
+    activation_implied: false
+
+  - component_id: CMP-SYNNERGYZE-REMEDY-JOURNAL-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: durable-restart-safe-authorized-observation-retry
+    state: conformance_implemented
+    implementation_path: modules/synnergyze/remedy-execution.ts
+    contract_paths:
+      - modules/synnergyze/remedy-execution.ts
+      - modules/synnergyze/postgres-remedy-journal.ts
+      - modules/synnergyze/sql/001_remedy_execution_journal.sql
+      - modules/synnergyze/remedy-authorization.ts
+    input_contracts:
+      - ReconciliationDeterminationV1
+      - ReconciliationRemedyProposalV1
+      - RemedyAuthorizationGrantV1
+      - RemedyExecutionJournalV1
+    output_contracts:
+      - RemedyExecutionReceiptV1
+      - RemedyExecutionResultV1
+    execution_states:
+      - EXECUTED_UNVERIFIED_REMEDY
+      - RECOVERY_REQUIRED
+    depends_on:
+      - CMP-SYNNERGYZE-REMEDY-AUTH-001
+      - CMP-SYNNERGYZE-RECONCILIATION-FABRIC-001
+    supported_remedy_kinds:
+      - RETRY_OBSERVATION
+    storage_adapters:
+      - IN_MEMORY_TEST_ONLY
+      - POSTGRES_JOURNAL
+    required_guards:
+      - exact-determination-proposal-grant-lineage
+      - authorization-validity-window
+      - authorization-ref-and-fingerprint-uniqueness
+      - durable-in-progress-before-adapter-invocation
+      - completed-replay-without-adapter-reinvocation
+      - crash-after-effect-stops-at-recovery-required
+      - failed-attempt-stops-at-recovery-required
+      - uncertain-outcome-never-automatically-retried
+    forbidden:
+      - execute-recover-or-compensate-kind
+      - bypass-controlled-remedy-runtime
+      - retry-uncertain-provider-effect
+      - treat-journal-or-provider-state-as-authority
+      - mark-remedy-effect-verified
+      - imply-objective-closure-or-settlement-finality
+    tests:
+      - modules/synnergyze/remedy-execution.test.ts
+      - modules/synnergyze/reconciliation-manifest.test.ts
+    activation_gate: postgres-journal-migration-and-restart-conformance-only
+    activation_implied: false
+
