@@ -1,5 +1,6 @@
 name: Runtime AuthZ Bridge
 
+# GCS-20260823-002 CI evidence branch marker; no runtime behavior change.
 on:
   push:
     branches:
