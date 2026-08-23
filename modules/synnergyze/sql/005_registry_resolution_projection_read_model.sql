@@ -36,14 +36,16 @@ CREATE TABLE IF NOT EXISTS vsr_registry_exception_resolution_revision (
     predecessor_registry_revision_ref IS NULL
     OR predecessor_registry_revision_ref <> registry_revision_ref
   ),
-  UNIQUE (registry_object_ref, registry_revision_ref)
+  CONSTRAINT vsr_registry_resolution_object_revision_uq
+    UNIQUE (registry_object_ref, registry_revision_ref),
+  CONSTRAINT vsr_registry_resolution_predecessor_same_object_fk
+    FOREIGN KEY (registry_object_ref, predecessor_registry_revision_ref)
+    REFERENCES vsr_registry_exception_resolution_revision (
+      registry_object_ref,
+      registry_revision_ref
+    )
+    DEFERRABLE INITIALLY IMMEDIATE
 );
-
-ALTER TABLE vsr_registry_exception_resolution_revision
-  ADD CONSTRAINT vsr_registry_resolution_predecessor_same_object_fk
-  FOREIGN KEY (registry_object_ref, predecessor_registry_revision_ref)
-  REFERENCES vsr_registry_exception_resolution_revision (registry_object_ref, registry_revision_ref)
-  DEFERRABLE INITIALLY IMMEDIATE;
 
 CREATE UNIQUE INDEX IF NOT EXISTS vsr_registry_resolution_single_child_uq
   ON vsr_registry_exception_resolution_revision (
