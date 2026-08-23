@@ -85,6 +85,62 @@ function cloneRecord(record: ModernJourneyEventRecordV1, replay: boolean): Moder
   };
 }
 
+export function modernJourneyPayloadDigestV1(
+  payload: Readonly<Record<string, unknown>>,
+): string {
+  return `sha256:${digest(canonicalPayload(payload))}`;
+}
+
+export function modernJourneyEventRefV1(input: {
+  transactionRef: string;
+  sequence: number;
+  eventType: ModernJourneyEventTypeV1;
+  payloadDigest: string;
+  idempotencyKey: string;
+}): string {
+  return `MODERN-JOURNEY-EVENT:${digest(
+    `${input.transactionRef}|${input.sequence}|${input.eventType}|${input.payloadDigest}|${input.idempotencyKey}`,
+  ).slice(0, 24)}`;
+}
+
+export function validateModernJourneyEventRecordV1(
+  record: ModernJourneyEventRecordV1,
+): void {
+  if (!record.eventRef.trim()) throw new Error("modern_event_record_event_ref_required");
+  if (!record.transactionRef.trim()) throw new Error("modern_event_record_transaction_ref_required");
+  if (!record.journeyRef.trim()) throw new Error("modern_event_record_journey_ref_required");
+  if (!record.actorRef.trim()) throw new Error("modern_event_record_actor_ref_required");
+  if (!record.idempotencyKey.trim()) throw new Error("modern_event_record_idempotency_key_required");
+  if (record.correlationId !== record.transactionRef) {
+    throw new Error("modern_event_record_correlation_mismatch");
+  }
+  if (!Number.isInteger(record.sequence) || record.sequence <= 0) {
+    throw new Error("modern_event_record_invalid_sequence");
+  }
+  if (record.sequence === 1 && record.predecessorEventRef) {
+    throw new Error("modern_event_record_root_predecessor_forbidden");
+  }
+  if (record.sequence > 1 && !record.predecessorEventRef) {
+    throw new Error("modern_event_record_predecessor_required");
+  }
+  parseInstant(record.occurredAt, "modern_event_record_invalid_time");
+
+  const expectedPayloadDigest = modernJourneyPayloadDigestV1(record.payload);
+  if (record.payloadDigest !== expectedPayloadDigest) {
+    throw new Error("modern_event_record_payload_digest_mismatch");
+  }
+  const expectedEventRef = modernJourneyEventRefV1({
+    transactionRef: record.transactionRef,
+    sequence: record.sequence,
+    eventType: record.eventType as ModernJourneyEventTypeV1,
+    payloadDigest: record.payloadDigest,
+    idempotencyKey: record.idempotencyKey,
+  });
+  if (record.eventRef !== expectedEventRef) {
+    throw new Error("modern_event_record_event_ref_mismatch");
+  }
+}
+
 export class ModernJourneyEventLogV1 {
   private readonly byTransaction = new Map<string, StoredEventV1[]>();
   private readonly byIdempotencyKey = new Map<string, StoredEventV1>();
@@ -95,8 +151,7 @@ export class ModernJourneyEventLogV1 {
     if (!input.journeyRef.trim()) throw new Error("modern_event_journey_ref_required");
     if (!input.actorRef.trim()) throw new Error("modern_event_actor_ref_required");
     const occurred = parseInstant(input.occurredAt, "modern_event_invalid_time");
-    const payloadCanonical = canonicalPayload(input.payload);
-    const payloadDigest = `sha256:${digest(payloadCanonical)}`;
+    const payloadDigest = modernJourneyPayloadDigestV1(input.payload);
     const fingerprint = digest(
       JSON.stringify({
         transactionRef: input.transactionRef,
@@ -125,9 +180,13 @@ export class ModernJourneyEventLogV1 {
     }
 
     const sequence = (previous?.sequence ?? 0) + 1;
-    const eventRef = `MODERN-JOURNEY-EVENT:${digest(
-      `${input.transactionRef}|${sequence}|${input.eventType}|${payloadDigest}|${input.idempotencyKey}`,
-    ).slice(0, 24)}`;
+    const eventRef = modernJourneyEventRefV1({
+      transactionRef: input.transactionRef,
+      sequence,
+      eventType: input.eventType,
+      payloadDigest,
+      idempotencyKey: input.idempotencyKey,
+    });
     const record: ModernJourneyEventRecordV1 = {
       eventRef,
       correlationId: input.transactionRef,
@@ -143,6 +202,7 @@ export class ModernJourneyEventLogV1 {
       payload: clonePayload(input.payload),
       idempotentReplay: false,
     };
+    validateModernJourneyEventRecordV1(record);
     const stored = { fingerprint, record };
     stream.push(stored);
     this.byTransaction.set(input.transactionRef, stream);
