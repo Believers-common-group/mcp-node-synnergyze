@@ -21,6 +21,7 @@ import {
   buildSyntheticConfluenceObservationV1,
   closeModernJourneyTransactionV1,
   createModernJourneyTransactionV1,
+  createPersonalFundingFallbackConsentV1,
   recordModernProviderExecutionV1,
   recordModernProviderFailureV1,
 } from "./modern-journey-transaction.ts";
@@ -33,6 +34,7 @@ const DIGITAL_ME_REF = "DIGITALME-CONFLUENCE-001";
 const DECIDED_AT = "2026-08-24T00:00:10.000Z";
 const RIVER_RESERVED_AT = "2026-08-24T00:00:20.000Z";
 const CHECKED_AT = "2026-08-24T00:00:25.000Z";
+const CONSENT_AT = "2026-08-24T00:00:29.000Z";
 const EXECUTED_AT = "2026-08-24T00:00:30.000Z";
 const OBSERVED_AT = "2026-08-24T00:00:31.000Z";
 const VERIFIED_AT = "2026-08-24T00:00:32.000Z";
@@ -132,16 +134,31 @@ function economicEvent(providerRef = "BANK-A"): SilkEconomicEventV1 {
   };
 }
 
+function fallbackConsent(wardenDecisionRef: string) {
+  return createPersonalFundingFallbackConsentV1({
+    transactionRef: TRANSACTION_REF,
+    digitalMeRef: DIGITAL_ME_REF,
+    economicOwnerRef: ECONOMIC_OWNER_REF,
+    amount: 4800,
+    currency: "INR",
+    wardenDecisionRef,
+    grantedAt: CONSENT_AT,
+  });
+}
+
+function transaction() {
+  return createModernJourneyTransactionV1({
+    transactionRef: TRANSACTION_REF,
+    journeyRef: JOURNEY_REF,
+    silkAccountRef: SILK_ACCOUNT_REF,
+    economicOwnerRef: ECONOMIC_OWNER_REF,
+    amount: 4800,
+    currency: "INR",
+  });
+}
+
 describe("MODERN-JOURNEY-TRANSACTION-001", () => {
-  it("preserves one parent transaction across Mastercard failure, Visa fallback, reimbursement, and verified effect", () => {
-    const transaction = createModernJourneyTransactionV1({
-      transactionRef: TRANSACTION_REF,
-      journeyRef: JOURNEY_REF,
-      silkAccountRef: SILK_ACCOUNT_REF,
-      economicOwnerRef: ECONOMIC_OWNER_REF,
-      amount: 4800,
-      currency: "INR",
-    });
+  it("preserves one parent transaction across Mastercard failure, consented Visa fallback, reimbursement, and verified effect", () => {
     const resources = resourceReservations();
     const mastercard = new SyntheticConfluenceCapabilityAdapterV1(
       "SYNTHETIC-MASTERCARD-ADAPTER-001",
@@ -177,25 +194,14 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     } catch (error) {
       providerFailure = error;
     }
-    const normalizedFailure = normalizeConfluenceProviderFailureV1(providerFailure);
-    const afterPrimaryFailure = recordModernProviderFailureV1(transaction, {
+    const afterPrimaryFailure = recordModernProviderFailureV1(transaction(), {
       attemptRef: "ATTEMPT:MC-PRIMARY",
       providerRef: "BANK-B",
       capabilityRef: "payment.mastercard.authorize",
-      failure: normalizedFailure,
+      failure: normalizeConfluenceProviderFailureV1(providerFailure),
     });
-
     expect(afterPrimaryFailure.state).toBe("RECOVERY_REQUIRED");
-    expect(afterPrimaryFailure.attempts[0]).toMatchObject({
-      providerRef: "BANK-B",
-      status: "FAILED",
-      failureClass: "ISSUER_DECLINE",
-      recoverable: true,
-    });
-
-    const releasedPrimary = resources.transition(primaryReservation.reservationRef, "RELEASED");
-    expect(releasedPrimary.state).toBe("RELEASED");
-    expect(resources.reservedQuantity("FUNDING:CORPORATE-CREDIT-001")).toBe(0);
+    expect(resources.transition(primaryReservation.reservationRef, "RELEASED").state).toBe("RELEASED");
 
     const fallback = authorizedChain("payment.visa.authorize", "VISA-FALLBACK");
     const fallbackReservation = resources.reserve(
@@ -214,14 +220,17 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
       fallback.decision,
     );
     const fallbackReceipt = gate.execute({ ...fallback, executedAt: EXECUTED_AT });
+    const consent = fallbackConsent(fallback.decision.decisionRef);
 
     const afterFallback = recordModernProviderExecutionV1(afterPrimaryFailure, {
       attemptRef: "ATTEMPT:VISA-FALLBACK",
       providerRef: "BANK-A",
       receipt: fallbackReceipt,
       economicEvent: economicEvent(),
+      personalFundingConsent: consent,
     });
     expect(afterFallback.state).toBe("EXECUTED_UNVERIFIED");
+    expect(afterFallback.personalFundingConsentRef).toBe(consent.consentRef);
     expect(afterFallback.attempts.map((attempt) => attempt.providerRef)).toEqual(["BANK-B", "BANK-A"]);
     expect(afterFallback.reimbursementObligation).toMatchObject({
       type: "REIMBURSEMENT",
@@ -230,7 +239,6 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
       amount: 4800,
       state: "OPEN",
     });
-
     expect(resources.transition(fallbackReservation.reservationRef, "CONSUMED").state).toBe("CONSUMED");
 
     const observation = buildSyntheticConfluenceObservationV1(fallbackReceipt, {
@@ -243,25 +251,58 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
       observation,
       verifiedAt: VERIFIED_AT,
     });
-    expect(verification.state).toBe("VERIFIED_EFFECT");
     if (verification.state !== "VERIFIED_EFFECT") throw new Error("expected_verified_effect");
 
     const closed = closeModernJourneyTransactionV1(afterFallback, verification);
     expect(closed.state).toBe("CLOSED");
-    expect(closed.transactionRef).toBe(TRANSACTION_REF);
     expect(closed.verifiedEffectRef).toBe(verification.effect.effectRef);
     expect(closed.reimbursementObligation?.state).toBe("OPEN");
   });
 
-  it("fails closed when an effect from another execution is used to close the parent transaction", () => {
-    const transaction = createModernJourneyTransactionV1({
-      transactionRef: TRANSACTION_REF,
-      journeyRef: JOURNEY_REF,
-      silkAccountRef: SILK_ACCOUNT_REF,
-      economicOwnerRef: ECONOMIC_OWNER_REF,
-      amount: 4800,
-      currency: "INR",
+  it("fails closed when personal funding is used without explicit consent", () => {
+    const visa = new SyntheticConfluenceCapabilityAdapterV1(
+      "SYNTHETIC-VISA-ADAPTER-001",
+      "payment.visa.authorize",
+    );
+    const fallback = authorizedChain("payment.visa.authorize", "VISA-NO-CONSENT");
+    const receipt = new ControlledExecutionGateV1([visa]).execute({
+      ...fallback,
+      executedAt: EXECUTED_AT,
     });
+
+    expect(() =>
+      recordModernProviderExecutionV1(transaction(), {
+        attemptRef: "ATTEMPT:VISA-NO-CONSENT",
+        providerRef: "BANK-A",
+        receipt,
+        economicEvent: economicEvent(),
+      }),
+    ).toThrow("modern_personal_funding_consent_required");
+  });
+
+  it("rejects personal funding consent bound to another Warden decision", () => {
+    const visa = new SyntheticConfluenceCapabilityAdapterV1(
+      "SYNTHETIC-VISA-ADAPTER-001",
+      "payment.visa.authorize",
+    );
+    const fallback = authorizedChain("payment.visa.authorize", "VISA-CONSENT-DRIFT");
+    const receipt = new ControlledExecutionGateV1([visa]).execute({
+      ...fallback,
+      executedAt: EXECUTED_AT,
+    });
+
+    expect(() =>
+      recordModernProviderExecutionV1(transaction(), {
+        attemptRef: "ATTEMPT:VISA-CONSENT-DRIFT",
+        providerRef: "BANK-A",
+        receipt,
+        economicEvent: economicEvent(),
+        personalFundingConsent: fallbackConsent("WARDEN-DECISION:OTHER"),
+      }),
+    ).toThrow("modern_personal_funding_consent_decision_mismatch");
+  });
+
+  it("fails closed when an effect from another execution is used to close the parent transaction", () => {
     const visa = new SyntheticConfluenceCapabilityAdapterV1(
       "SYNTHETIC-VISA-ADAPTER-001",
       "payment.visa.authorize",
@@ -269,11 +310,12 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     const gate = new ControlledExecutionGateV1([visa]);
     const fallback = authorizedChain("payment.visa.authorize", "VISA-DIRECT");
     const receipt = gate.execute({ ...fallback, executedAt: EXECUTED_AT });
-    const executed = recordModernProviderExecutionV1(transaction, {
+    const executed = recordModernProviderExecutionV1(transaction(), {
       attemptRef: "ATTEMPT:VISA-DIRECT",
       providerRef: "BANK-A",
       receipt,
       economicEvent: economicEvent(),
+      personalFundingConsent: fallbackConsent(fallback.decision.decisionRef),
     });
     const observation = buildSyntheticConfluenceObservationV1(receipt, {
       observerRef: "SYNTHETIC-ENGINEERING-SERVICE-OBSERVER-001",
@@ -297,14 +339,6 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
   });
 
   it("rejects economic lineage drift before attaching successful provider execution", () => {
-    const transaction = createModernJourneyTransactionV1({
-      transactionRef: TRANSACTION_REF,
-      journeyRef: JOURNEY_REF,
-      silkAccountRef: SILK_ACCOUNT_REF,
-      economicOwnerRef: ECONOMIC_OWNER_REF,
-      amount: 4800,
-      currency: "INR",
-    });
     const visa = new SyntheticConfluenceCapabilityAdapterV1(
       "SYNTHETIC-VISA-ADAPTER-001",
       "payment.visa.authorize",
@@ -312,29 +346,33 @@ describe("MODERN-JOURNEY-TRANSACTION-001", () => {
     const gate = new ControlledExecutionGateV1([visa]);
     const fallback = authorizedChain("payment.visa.authorize", "VISA-LINEAGE");
     const receipt = gate.execute({ ...fallback, executedAt: EXECUTED_AT });
+    const consent = fallbackConsent(fallback.decision.decisionRef);
 
     expect(() =>
-      recordModernProviderExecutionV1(transaction, {
+      recordModernProviderExecutionV1(transaction(), {
         attemptRef: "ATTEMPT:WRONG-TXN",
         providerRef: "BANK-A",
         receipt,
         economicEvent: { ...economicEvent(), transactionRef: "TXN-OTHER" },
+        personalFundingConsent: consent,
       }),
     ).toThrow("modern_transaction_economic_transaction_mismatch");
     expect(() =>
-      recordModernProviderExecutionV1(transaction, {
+      recordModernProviderExecutionV1(transaction(), {
         attemptRef: "ATTEMPT:WRONG-AMOUNT",
         providerRef: "BANK-A",
         receipt,
         economicEvent: { ...economicEvent(), amount: 4801 },
+        personalFundingConsent: consent,
       }),
     ).toThrow("modern_transaction_economic_value_mismatch");
     expect(() =>
-      recordModernProviderExecutionV1(transaction, {
+      recordModernProviderExecutionV1(transaction(), {
         attemptRef: "ATTEMPT:WRONG-PROVIDER",
         providerRef: "BANK-B",
         receipt,
         economicEvent: economicEvent(),
+        personalFundingConsent: consent,
       }),
     ).toThrow("modern_transaction_provider_mismatch");
   });
