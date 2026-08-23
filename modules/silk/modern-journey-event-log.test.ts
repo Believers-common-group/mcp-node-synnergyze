@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { ModernJourneyEventLogV1 } from "./modern-journey-event-log.ts";
+import {
+  ModernJourneyEventLogV1,
+  type ModernJourneyEventTypeV1,
+} from "./modern-journey-event-log.ts";
 
 const TRANSACTION_REF = "TXN-00088";
 const JOURNEY_REF = "MODERN-JOURNEY:MJ-000001";
@@ -9,18 +12,7 @@ const ACTOR_REF = "DIGITALME-CONFLUENCE-001";
 function append(
   log: ModernJourneyEventLogV1,
   sequence: number,
-  eventType:
-    | "TRANSACTION_OPENED"
-    | "RESOURCE_RESERVED"
-    | "PROVIDER_EXECUTION_FAILED"
-    | "RESOURCE_RELEASED"
-    | "FALLBACK_AUTHORIZED"
-    | "FALLBACK_RESOURCE_RESERVED"
-    | "PROVIDER_EXECUTED_UNVERIFIED"
-    | "ECONOMIC_EVENT_RECORDED"
-    | "OBLIGATION_CREATED"
-    | "EFFECT_VERIFIED"
-    | "TRANSACTION_CLOSED",
+  eventType: ModernJourneyEventTypeV1,
   payload: Record<string, unknown>,
 ) {
   return log.append({
@@ -39,19 +31,37 @@ describe("MODERN-JOURNEY-EVENT-LOG-001", () => {
     const log = new ModernJourneyEventLogV1();
     append(log, 1, "TRANSACTION_OPENED", { amount: 4800, currency: "INR" });
     append(log, 2, "RESOURCE_RESERVED", { resourceRef: "FUNDING:CORPORATE-CREDIT-001" });
-    append(log, 3, "PROVIDER_EXECUTION_FAILED", { providerRef: "BANK-B", failureClass: "ISSUER_DECLINE" });
+    append(log, 3, "PROVIDER_EXECUTION_FAILED", {
+      providerRef: "BANK-B",
+      failureClass: "ISSUER_DECLINE",
+    });
     append(log, 4, "RESOURCE_RELEASED", { resourceRef: "FUNDING:CORPORATE-CREDIT-001" });
-    append(log, 5, "FALLBACK_AUTHORIZED", { providerRef: "BANK-A", capabilityRef: "payment.visa.authorize" });
-    append(log, 6, "FALLBACK_RESOURCE_RESERVED", { resourceRef: "FUNDING:PERSONAL-VISA-FALLBACK-001" });
+    append(log, 5, "FALLBACK_AUTHORIZED", {
+      providerRef: "BANK-A",
+      capabilityRef: "payment.visa.authorize",
+    });
+    append(log, 6, "FALLBACK_RESOURCE_RESERVED", {
+      resourceRef: "FUNDING:PERSONAL-VISA-FALLBACK-001",
+    });
     append(log, 7, "PROVIDER_EXECUTED_UNVERIFIED", { providerRef: "BANK-A" });
-    append(log, 8, "ECONOMIC_EVENT_RECORDED", { economicOwnerRef: "ENTERPRISE-CONFLUENCE-001", actualPayerRef: ACTOR_REF });
-    append(log, 9, "OBLIGATION_CREATED", { type: "REIMBURSEMENT", amount: 4800 });
-    append(log, 10, "EFFECT_VERIFIED", { observedStateRef: "ENGINEERING-SERVICE:DELIVERED" });
-    append(log, 11, "TRANSACTION_CLOSED", { state: "CLOSED" });
+    append(log, 8, "RESOURCE_CONSUMED", {
+      resourceRef: "FUNDING:PERSONAL-VISA-FALLBACK-001",
+    });
+    append(log, 9, "ECONOMIC_EVENT_RECORDED", {
+      economicOwnerRef: "ENTERPRISE-CONFLUENCE-001",
+      actualPayerRef: ACTOR_REF,
+    });
+    append(log, 10, "OBLIGATION_CREATED", { type: "REIMBURSEMENT", amount: 4800 });
+    append(log, 11, "EFFECT_VERIFIED", {
+      observedStateRef: "ENGINEERING-SERVICE:DELIVERED",
+    });
+    append(log, 12, "TRANSACTION_CLOSED", { state: "CLOSED" });
 
     const stream = log.stream(TRANSACTION_REF);
-    expect(stream).toHaveLength(11);
-    expect(stream.map((event) => event.sequence)).toEqual([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+    expect(stream).toHaveLength(12);
+    expect(stream.map((event) => event.sequence)).toEqual([
+      1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12,
+    ]);
     expect(stream[0]?.predecessorEventRef).toBeUndefined();
     for (let index = 1; index < stream.length; index += 1) {
       expect(stream[index]?.predecessorEventRef).toBe(stream[index - 1]?.eventRef);
