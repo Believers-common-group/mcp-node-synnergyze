@@ -38,6 +38,7 @@ function assertPersistable(record: ModernJourneyEventRecordV1): void {
   if (!record.eventRef.trim()) throw new Error("modern_event_store_event_ref_required");
   if (!record.transactionRef.trim()) throw new Error("modern_event_store_transaction_ref_required");
   if (!record.journeyRef.trim()) throw new Error("modern_event_store_journey_ref_required");
+  if (!record.actorRef.trim()) throw new Error("modern_event_store_actor_ref_required");
   if (!record.idempotencyKey.trim()) throw new Error("modern_event_store_idempotency_key_required");
   if (record.correlationId !== record.transactionRef) {
     throw new Error("modern_event_store_correlation_mismatch");
@@ -59,7 +60,14 @@ function assertPersistable(record: ModernJourneyEventRecordV1): void {
   }
 }
 
+function sameInstant(left: string, right: string): boolean {
+  const leftMs = Date.parse(left);
+  const rightMs = Date.parse(right);
+  return Number.isFinite(leftMs) && Number.isFinite(rightMs) && leftMs === rightMs;
+}
+
 function sameIdentity(row: EventRowV1, record: ModernJourneyEventRecordV1): boolean {
+  const persisted = parseJson(row.event_json);
   return (
     row.event_ref === record.eventRef &&
     row.transaction_ref === record.transactionRef &&
@@ -68,9 +76,28 @@ function sameIdentity(row: EventRowV1, record: ModernJourneyEventRecordV1): bool
     (row.predecessor_event_ref ?? undefined) === record.predecessorEventRef &&
     row.correlation_id === record.correlationId &&
     row.event_type === record.eventType &&
+    sameInstant(row.occurred_at, record.occurredAt) &&
     row.payload_digest === record.payloadDigest &&
-    row.idempotency_key === record.idempotencyKey
+    row.idempotency_key === record.idempotencyKey &&
+    persisted.eventRef === record.eventRef &&
+    persisted.transactionRef === record.transactionRef &&
+    persisted.journeyRef === record.journeyRef &&
+    persisted.actorRef === record.actorRef &&
+    persisted.sequence === record.sequence &&
+    persisted.predecessorEventRef === record.predecessorEventRef &&
+    persisted.correlationId === record.correlationId &&
+    persisted.eventType === record.eventType &&
+    sameInstant(persisted.occurredAt, record.occurredAt) &&
+    persisted.payloadDigest === record.payloadDigest &&
+    persisted.idempotencyKey === record.idempotencyKey
   );
+}
+
+function recordFromRow(row: EventRowV1): ModernJourneyEventRecordV1 {
+  const record = parseJson(row.event_json);
+  assertPersistable(record);
+  if (!sameIdentity(row, record)) throw new Error("modern_event_store_persisted_identity_mismatch");
+  return cloneRecord(record);
 }
 
 export class PostgresModernJourneyEventStoreV1 {
@@ -122,7 +149,7 @@ export class PostgresModernJourneyEventStoreV1 {
     const row = selected.rows[0];
     if (!row) throw new Error("modern_event_store_race_missing_row");
     if (!sameIdentity(row, record)) return { state: "CONFLICT" };
-    return { state: "IDEMPOTENT_REPLAY", record: cloneRecord(parseJson(row.event_json)) };
+    return { state: "IDEMPOTENT_REPLAY", record: recordFromRow(row) };
   }
 
   async load(transactionRef: string): Promise<readonly ModernJourneyEventRecordV1[]> {
@@ -135,6 +162,6 @@ export class PostgresModernJourneyEventStoreV1 {
        ORDER BY sequence ASC`,
       [transactionRef],
     );
-    return selected.rows.map((row) => cloneRecord(parseJson(row.event_json)));
+    return selected.rows.map(recordFromRow);
   }
 }
