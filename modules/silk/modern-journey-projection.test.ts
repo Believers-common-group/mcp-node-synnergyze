@@ -31,7 +31,7 @@ function buildClosedStream() {
   append(2, "RESOURCE_RESERVED", { resourceRef: "FUNDING:CORPORATE-CREDIT-001" });
   append(3, "PROVIDER_EXECUTION_FAILED", { providerRef: "BANK-B" });
   append(4, "RESOURCE_RELEASED", { resourceRef: "FUNDING:CORPORATE-CREDIT-001" });
-  append(5, "FALLBACK_AUTHORIZED", { providerRef: "BANK-A" });
+  append(5, "FALLBACK_AUTHORIZED", { providerRef: "BANK-A", wardenDecisionRef: "WARDEN-DECISION:VISA" });
   append(6, "FALLBACK_RESOURCE_RESERVED", {
     resourceRef: "FUNDING:PERSONAL-VISA-FALLBACK-001",
   });
@@ -55,12 +55,26 @@ describe("MODERN-JOURNEY-PROJECTION-001", () => {
       sequence: 12,
       failedProviderCount: 1,
       currentProviderRef: "BANK-A",
+      fallbackAuthorized: true,
       economicEventRecorded: true,
       obligationCount: 1,
       effectVerified: true,
     });
     expect(projection.activeResourceRefs).toEqual([]);
     expect(projection.consumedResourceRefs).toEqual(["FUNDING:PERSONAL-VISA-FALLBACK-001"]);
+  });
+
+  it("rejects recovery reservation or execution without an explicit fallback authorization event", () => {
+    const events = buildClosedStream().filter((event) => event.eventType !== "FALLBACK_AUTHORIZED");
+    const resequenced = events.map((event, index) => ({
+      ...event,
+      sequence: index + 1,
+      predecessorEventRef: index === 0 ? undefined : events[index - 1]?.eventRef,
+    }));
+
+    expect(() => projectModernJourneyTransactionV1(resequenced)).toThrow(
+      "modern_projection_fallback_reservation_requires_authorization",
+    );
   });
 
   it("rejects transaction closure before effect verification", () => {
