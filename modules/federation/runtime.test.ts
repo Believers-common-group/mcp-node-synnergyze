@@ -90,26 +90,30 @@ function destinationPolicy(): SyntheticWardenDecisionPolicyV1 {
   };
 }
 
+function execute(destinationPolicyOverride: Partial<SyntheticWardenDecisionPolicyV1> = {}) {
+  return executeSyntheticFederatedLicenceR1({
+    missionRef: MISSION_REF,
+    federationObjectRef: "FEDERATION-OBJECT:IN-MY:LICENCE:001",
+    productRef: PRODUCT_REF,
+    source: {
+      request: sourceRequest(),
+      policy: sourcePolicy(),
+      decidedAt: "2026-08-24T00:00:30.000Z",
+    },
+    destination: {
+      request: destinationRequest(),
+      policy: { ...destinationPolicy(), ...destinationPolicyOverride },
+      decidedAt: "2026-08-24T00:01:30.000Z",
+    },
+    executedAt: "2026-08-24T00:02:00.000Z",
+    observedAt: "2026-08-24T00:02:30.000Z",
+    verifiedAt: "2026-08-24T00:03:00.000Z",
+  });
+}
+
 describe("VSR-FEDERATED-MISSION-REFERENCE-001 R1.0", () => {
   it("creates a Malaysian licence effect only after independent source and destination Warden ALLOW decisions", () => {
-    const result = executeSyntheticFederatedLicenceR1({
-      missionRef: MISSION_REF,
-      federationObjectRef: "FEDERATION-OBJECT:IN-MY:LICENCE:001",
-      productRef: PRODUCT_REF,
-      source: {
-        request: sourceRequest(),
-        policy: sourcePolicy(),
-        decidedAt: "2026-08-24T00:00:30.000Z",
-      },
-      destination: {
-        request: destinationRequest(),
-        policy: destinationPolicy(),
-        decidedAt: "2026-08-24T00:01:30.000Z",
-      },
-      executedAt: "2026-08-24T00:02:00.000Z",
-      observedAt: "2026-08-24T00:02:30.000Z",
-      verifiedAt: "2026-08-24T00:03:00.000Z",
-    });
+    const result = execute();
 
     expect(result.state).toBe("COMPLETED");
     if (result.state !== "COMPLETED") throw new Error("expected_completed");
@@ -123,5 +127,19 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-001 R1.0", () => {
     expect(result.localRecognition.effectRef).toBe(result.effectReceipt.effectRef);
     expect(result.effectReceipt.observedStateRef).toContain("LICENCE_RECOGNISED");
     expect(result.riverEventReceipt.correlationId).toBe(CORRELATION_ID);
+  });
+
+  it("returns a blocked destination result and creates no local effect when the Malaysian Warden denies", () => {
+    const result = execute({ lifecycle: "REVOKED" });
+
+    expect(result.state).toBe("BLOCKED_DESTINATION");
+    if (result.state !== "BLOCKED_DESTINATION") throw new Error("expected_blocked_destination");
+
+    expect(result.sourceDecision.decision).toBe("ALLOW");
+    expect(result.destinationDecision.decision).toBe("DENY");
+    expect(result.destinationDecision.reasonCodes).toEqual(["authority_revoked"]);
+    expect("localRecognition" in result).toBe(false);
+    expect("riverEventReceipt" in result).toBe(false);
+    expect("effectReceipt" in result).toBe(false);
   });
 });
