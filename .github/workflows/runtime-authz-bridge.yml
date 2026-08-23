@@ -45,4 +45,12 @@ jobs:
       - name: Existing Warden decision suite
         run: npm run test:warden-decision -- --run
       - name: Runtime AuthZ bridge suite
+        env:
+          RUNTIME_AUTHZ_FIXTURE_DIR: runtime-authz-fixture
         run: npx vitest run modules/warden/runtime-authz-bridge.test.ts modules/warden/runtime-authz-signed-export.test.ts
+      - name: Upload signed Warden fixture
+        uses: actions/upload-artifact@v4
+        with:
+          name: warden-runtime-authz-fixture
+          path: runtime-authz-fixture
+          if-no-files-found: error
