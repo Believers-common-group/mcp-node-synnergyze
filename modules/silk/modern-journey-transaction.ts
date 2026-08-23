@@ -19,6 +19,19 @@ export type ModernJourneyTransactionStateV1 =
   | "EXECUTED_UNVERIFIED"
   | "CLOSED";
 
+export interface PersonalFundingFallbackConsentV1 {
+  consentRef: string;
+  transactionRef: string;
+  digitalMeRef: string;
+  economicOwnerRef: string;
+  amount: number;
+  currency: string;
+  wardenDecisionRef: string;
+  grantedAt: string;
+  state: "GRANTED";
+  synthetic: true;
+}
+
 export interface ModernJourneyTransactionAttemptV1 {
   attemptRef: string;
   providerRef: string;
@@ -39,6 +52,7 @@ export interface ModernJourneyTransactionV1 {
   state: ModernJourneyTransactionStateV1;
   attempts: readonly ModernJourneyTransactionAttemptV1[];
   successfulExecutionReceiptRef?: string;
+  personalFundingConsentRef?: string;
   economicEvent?: SilkEconomicEventV1;
   reimbursementObligation?: SilkReimbursementObligationV1;
   verifiedEffectRef?: string;
@@ -53,12 +67,28 @@ export interface CreateModernJourneyTransactionInputV1 {
   currency: string;
 }
 
+export interface CreatePersonalFundingFallbackConsentInputV1 {
+  transactionRef: string;
+  digitalMeRef: string;
+  economicOwnerRef: string;
+  amount: number;
+  currency: string;
+  wardenDecisionRef: string;
+  grantedAt: string;
+}
+
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
 function assertFinitePositive(value: number, code: string): void {
   if (!Number.isFinite(value) || value <= 0) throw new Error(code);
+}
+
+function parseInstant(value: string, code: string): number {
+  const parsed = Date.parse(value);
+  if (!Number.isFinite(parsed)) throw new Error(code);
+  return parsed;
 }
 
 function cloneAttempt(attempt: ModernJourneyTransactionAttemptV1): ModernJourneyTransactionAttemptV1 {
@@ -83,6 +113,70 @@ function assertAttemptRefAvailable(
   if (transaction.attempts.some((attempt) => attempt.attemptRef === attemptRef)) {
     throw new Error("modern_transaction_attempt_ref_conflict");
   }
+}
+
+function assertPersonalFundingConsent(
+  transaction: ModernJourneyTransactionV1,
+  event: SilkEconomicEventV1,
+  receipt: SynnergyzeExecutionReceiptV1,
+  consent: PersonalFundingFallbackConsentV1 | undefined,
+): string | undefined {
+  const usesPersonalFunding = event.actualPayerRef !== event.economicOwnerRef;
+  if (!usesPersonalFunding) {
+    if (consent) throw new Error("modern_personal_funding_consent_unexpected");
+    return undefined;
+  }
+  if (!consent) throw new Error("modern_personal_funding_consent_required");
+  if (consent.state !== "GRANTED") throw new Error("modern_personal_funding_consent_not_granted");
+  if (consent.transactionRef !== transaction.transactionRef) {
+    throw new Error("modern_personal_funding_consent_transaction_mismatch");
+  }
+  if (consent.digitalMeRef !== event.actualPayerRef) {
+    throw new Error("modern_personal_funding_consent_principal_mismatch");
+  }
+  if (consent.economicOwnerRef !== transaction.economicOwnerRef) {
+    throw new Error("modern_personal_funding_consent_owner_mismatch");
+  }
+  if (consent.amount !== transaction.amount || consent.currency !== transaction.currency) {
+    throw new Error("modern_personal_funding_consent_value_mismatch");
+  }
+  if (consent.wardenDecisionRef !== receipt.wardenDecisionRef) {
+    throw new Error("modern_personal_funding_consent_decision_mismatch");
+  }
+  const granted = parseInstant(consent.grantedAt, "modern_personal_funding_consent_invalid_time");
+  const executed = parseInstant(receipt.executedAt, "modern_personal_funding_execution_invalid_time");
+  if (granted > executed) throw new Error("modern_personal_funding_consent_after_execution");
+  return consent.consentRef;
+}
+
+export function createPersonalFundingFallbackConsentV1(
+  input: CreatePersonalFundingFallbackConsentInputV1,
+): PersonalFundingFallbackConsentV1 {
+  assertFinitePositive(input.amount, "modern_personal_funding_consent_amount_positive_required");
+  if (!input.transactionRef.trim()) throw new Error("modern_personal_funding_consent_transaction_required");
+  if (!input.digitalMeRef.trim()) throw new Error("modern_personal_funding_consent_principal_required");
+  if (!input.economicOwnerRef.trim()) throw new Error("modern_personal_funding_consent_owner_required");
+  if (!input.currency.trim()) throw new Error("modern_personal_funding_consent_currency_required");
+  if (!input.wardenDecisionRef.trim()) throw new Error("modern_personal_funding_consent_decision_required");
+  parseInstant(input.grantedAt, "modern_personal_funding_consent_invalid_time");
+
+  const identity = digest(
+    JSON.stringify({
+      transactionRef: input.transactionRef,
+      digitalMeRef: input.digitalMeRef,
+      economicOwnerRef: input.economicOwnerRef,
+      amount: input.amount,
+      currency: input.currency,
+      wardenDecisionRef: input.wardenDecisionRef,
+      grantedAt: input.grantedAt,
+    }),
+  ).slice(0, 24);
+  return {
+    consentRef: `PERSONAL-FUNDING-CONSENT:${identity}`,
+    ...input,
+    state: "GRANTED",
+    synthetic: true,
+  };
 }
 
 export function createModernJourneyTransactionV1(
@@ -143,6 +237,7 @@ export function recordModernProviderExecutionV1(
     providerRef: string;
     receipt: SynnergyzeExecutionReceiptV1;
     economicEvent: SilkEconomicEventV1;
+    personalFundingConsent?: PersonalFundingFallbackConsentV1;
   },
 ): ModernJourneyTransactionV1 {
   if (transaction.state !== "OPEN" && transaction.state !== "RECOVERY_REQUIRED") {
@@ -177,6 +272,12 @@ export function recordModernProviderExecutionV1(
     throw new Error("modern_transaction_provider_mismatch");
   }
 
+  const personalFundingConsentRef = assertPersonalFundingConsent(
+    transaction,
+    input.economicEvent,
+    input.receipt,
+    input.personalFundingConsent,
+  );
   const reimbursementObligation = deriveReimbursementObligationV1(input.economicEvent);
   return {
     ...cloneTransaction(transaction),
@@ -192,6 +293,7 @@ export function recordModernProviderExecutionV1(
       },
     ],
     successfulExecutionReceiptRef: input.receipt.receiptRef,
+    personalFundingConsentRef,
     economicEvent: { ...input.economicEvent },
     reimbursementObligation: reimbursementObligation
       ? { ...reimbursementObligation }
