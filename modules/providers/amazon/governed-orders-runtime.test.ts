@@ -68,18 +68,14 @@ function policy(
   };
 }
 
-function authorizationChain(input?: {
-  request?: WardenDecisionRequestV1;
-  policy?: SyntheticWardenDecisionPolicyV1;
-}) {
-  const requestValue = input?.request ?? request();
+function allowedChain() {
+  const requestValue = request();
   const decision = evaluateSyntheticWardenDecisionV1({
     request: requestValue,
-    policy: input?.policy ?? policy(),
+    policy: policy(),
     decidedAt: DECIDED_AT,
   });
-
-  if (decision.decision !== "ALLOW") return { request: requestValue, decision };
+  if (decision.decision !== "ALLOW") throw new Error("expected_allow_chain");
 
   const action = buildAuthorizedActionEnvelopeV1(requestValue, decision);
   const river = new SyntheticRiverReservationServiceV1();
@@ -98,8 +94,18 @@ function authorizationChain(input?: {
     checkedAt: CHECKED_AT,
     reasonCodes: ["decision_active_for_execution"],
   };
-
   return { request: requestValue, decision, action, reservation, checkpoint };
+}
+
+function deniedChain() {
+  const requestValue = request();
+  const decision = evaluateSyntheticWardenDecisionV1({
+    request: requestValue,
+    policy: policy({ allowedCapabilityRefs: [] }),
+    decidedAt: DECIDED_AT,
+  });
+  if (decision.decision === "ALLOW") throw new Error("expected_denied_chain");
+  return { request: requestValue, decision };
 }
 
 function config(): AmazonSpApiConfigV1 {
@@ -162,9 +168,7 @@ function successFetch(calls: Array<{ url: string; init?: RequestInit }>) {
 
 describe("PROVIDER-AMAZON-ORDERS-E2E-001", () => {
   it("carries an authorized Amazon order observation through provider evidence, Registry, SILK non-final economics, and equivalent VSR/Empire projections", async () => {
-    const chain = authorizationChain();
-    if (chain.decision.decision !== "ALLOW" || !("action" in chain)) throw new Error("expected allow chain");
-
+    const chain = allowedChain();
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const registry = new InMemoryAmazonRegistryProjectionWriterV1();
     const runtime = new AmazonOrdersGovernedRuntimeV1({
@@ -217,9 +221,7 @@ describe("PROVIDER-AMAZON-ORDERS-E2E-001", () => {
   });
 
   it("fails closed before Amazon when Warden does not allow the capability", async () => {
-    const chain = authorizationChain({ policy: policy({ allowedCapabilityRefs: [] }) });
-    expect(chain.decision.decision).toBe("DENY");
-
+    const chain = deniedChain();
     const calls: Array<{ url: string; init?: RequestInit }> = [];
     const registry = new InMemoryAmazonRegistryProjectionWriterV1();
     const runtime = new AmazonOrdersGovernedRuntimeV1({
@@ -242,9 +244,7 @@ describe("PROVIDER-AMAZON-ORDERS-E2E-001", () => {
   });
 
   it("records an exception and leaves Registry unchanged when Amazon fails", async () => {
-    const chain = authorizationChain();
-    if (chain.decision.decision !== "ALLOW" || !("action" in chain)) throw new Error("expected allow chain");
-
+    const chain = allowedChain();
     const registry = new InMemoryAmazonRegistryProjectionWriterV1();
     const runtime = new AmazonOrdersGovernedRuntimeV1({
       config: config(),
