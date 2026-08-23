@@ -1,6 +1,9 @@
 import { describe, expect, it } from "vitest";
 
-import { ModernJourneyEventLogV1 } from "./modern-journey-event-log.ts";
+import {
+  ModernJourneyEventLogV1,
+  type ModernJourneyEventTypeV1,
+} from "./modern-journey-event-log.ts";
 import { projectModernJourneyTransactionV1 } from "./modern-journey-projection.ts";
 
 const TRANSACTION_REF = "TXN-00088";
@@ -11,18 +14,7 @@ function buildClosedStream() {
   const log = new ModernJourneyEventLogV1();
   const append = (
     index: number,
-    eventType:
-      | "TRANSACTION_OPENED"
-      | "RESOURCE_RESERVED"
-      | "PROVIDER_EXECUTION_FAILED"
-      | "RESOURCE_RELEASED"
-      | "FALLBACK_AUTHORIZED"
-      | "FALLBACK_RESOURCE_RESERVED"
-      | "PROVIDER_EXECUTED_UNVERIFIED"
-      | "ECONOMIC_EVENT_RECORDED"
-      | "OBLIGATION_CREATED"
-      | "EFFECT_VERIFIED"
-      | "TRANSACTION_CLOSED",
+    eventType: ModernJourneyEventTypeV1,
     payload: Record<string, unknown>,
   ) =>
     log.append({
@@ -40,12 +32,15 @@ function buildClosedStream() {
   append(3, "PROVIDER_EXECUTION_FAILED", { providerRef: "BANK-B" });
   append(4, "RESOURCE_RELEASED", { resourceRef: "FUNDING:CORPORATE-CREDIT-001" });
   append(5, "FALLBACK_AUTHORIZED", { providerRef: "BANK-A" });
-  append(6, "FALLBACK_RESOURCE_RESERVED", { resourceRef: "FUNDING:PERSONAL-VISA-FALLBACK-001" });
+  append(6, "FALLBACK_RESOURCE_RESERVED", {
+    resourceRef: "FUNDING:PERSONAL-VISA-FALLBACK-001",
+  });
   append(7, "PROVIDER_EXECUTED_UNVERIFIED", { providerRef: "BANK-A" });
-  append(8, "ECONOMIC_EVENT_RECORDED", { economicEventRef: "ECO-1901" });
-  append(9, "OBLIGATION_CREATED", { obligationRef: "OBL-551" });
-  append(10, "EFFECT_VERIFIED", { effectRef: "EFF-909" });
-  append(11, "TRANSACTION_CLOSED", { state: "CLOSED" });
+  append(8, "RESOURCE_CONSUMED", { resourceRef: "FUNDING:PERSONAL-VISA-FALLBACK-001" });
+  append(9, "ECONOMIC_EVENT_RECORDED", { economicEventRef: "ECO-1901" });
+  append(10, "OBLIGATION_CREATED", { obligationRef: "OBL-551" });
+  append(11, "EFFECT_VERIFIED", { effectRef: "EFF-909" });
+  append(12, "TRANSACTION_CLOSED", { state: "CLOSED" });
   return log.stream(TRANSACTION_REF);
 }
 
@@ -57,14 +52,15 @@ describe("MODERN-JOURNEY-PROJECTION-001", () => {
       transactionRef: TRANSACTION_REF,
       journeyRef: JOURNEY_REF,
       state: "CLOSED",
-      sequence: 11,
+      sequence: 12,
       failedProviderCount: 1,
       currentProviderRef: "BANK-A",
       economicEventRecorded: true,
       obligationCount: 1,
       effectVerified: true,
     });
-    expect(projection.activeResourceRefs).toEqual(["FUNDING:PERSONAL-VISA-FALLBACK-001"]);
+    expect(projection.activeResourceRefs).toEqual([]);
+    expect(projection.consumedResourceRefs).toEqual(["FUNDING:PERSONAL-VISA-FALLBACK-001"]);
   });
 
   it("rejects transaction closure before effect verification", () => {
@@ -77,6 +73,19 @@ describe("MODERN-JOURNEY-PROJECTION-001", () => {
 
     expect(() => projectModernJourneyTransactionV1(resequenced)).toThrow(
       "modern_projection_close_requires_verified_effect",
+    );
+  });
+
+  it("rejects transaction closure while a reservation is still active", () => {
+    const events = buildClosedStream().filter((event) => event.eventType !== "RESOURCE_CONSUMED");
+    const resequenced = events.map((event, index) => ({
+      ...event,
+      sequence: index + 1,
+      predecessorEventRef: index === 0 ? undefined : events[index - 1]?.eventRef,
+    }));
+
+    expect(() => projectModernJourneyTransactionV1(resequenced)).toThrow(
+      "modern_projection_close_with_active_resource",
     );
   });
 
