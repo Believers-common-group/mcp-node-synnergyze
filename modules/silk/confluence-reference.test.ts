@@ -59,10 +59,7 @@ function policy(): SyntheticWardenDecisionPolicyV1 {
     programRef: "MODERN-JOURNEY:MJ-000001",
     requiredAuthorityRefs: ["AUTHORITY:PROJECT-SPEND-001"],
     requiredPolicyRefs: ["POLICY:SILK-CONFLUENCE-PILOT-001"],
-    allowedCapabilityRefs: [
-      "payment.mastercard.authorize",
-      "payment.visa.authorize",
-    ],
+    allowedCapabilityRefs: ["payment.mastercard.authorize", "payment.visa.authorize"],
     manualReviewCapabilityRefs: [],
     constraints: ["SYNTHETIC_CONFLUENCE_ONLY", "NO_LIVE_MONEY_MOVEMENT"],
   };
@@ -131,8 +128,15 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
     ]);
   });
 
-  it("prevents two journeys from over-reserving the same scarce financial capacity", () => {
-    const reservations = new SyntheticSilkResourceReservationServiceV1();
+  it("prevents two journeys from over-reserving authoritative scarce financial capacity", () => {
+    const reservations = new SyntheticSilkResourceReservationServiceV1([
+      {
+        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
+        resourceType: "CREDIT",
+        capacity: 5000,
+        unit: "INR",
+      },
+    ]);
     const first = reservations.reserve({
       journeyRef: "MJ-000001",
       silkAccountRef: "SILK-ENT-042",
@@ -140,13 +144,13 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
       resourceType: "CREDIT",
       quantity: 4800,
       unit: "INR",
-      capacity: 5000,
       wardenDecisionRef: "WARDEN-DECISION:001",
       correlationId: "TXN-00088:RESERVE",
       reservedAt: RESERVED_AT,
     });
 
     expect(first.state).toBe("RESERVED");
+    expect(first.capacity).toBe(5000);
     expect(reservations.reservedQuantity("FUNDING:CORPORATE-CREDIT-001")).toBe(4800);
 
     expect(() =>
@@ -157,7 +161,6 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
         resourceType: "CREDIT",
         quantity: 500,
         unit: "INR",
-        capacity: 5000,
         wardenDecisionRef: "WARDEN-DECISION:002",
         correlationId: "TXN-00089:RESERVE",
         reservedAt: RESERVED_AT,
@@ -171,13 +174,51 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
       resourceType: "CREDIT",
       quantity: 4800,
       unit: "INR",
-      capacity: 5000,
       wardenDecisionRef: "WARDEN-DECISION:001",
       correlationId: "TXN-00088:RESERVE",
       reservedAt: RESERVED_AT,
     });
     expect(replay.reservationRef).toBe(first.reservationRef);
     expect(replay.idempotentReplay).toBe(true);
+  });
+
+  it("rejects resource requests that drift from the registered resource type or unit", () => {
+    const reservations = new SyntheticSilkResourceReservationServiceV1([
+      {
+        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
+        resourceType: "CREDIT",
+        capacity: 5000,
+        unit: "INR",
+      },
+    ]);
+
+    expect(() =>
+      reservations.reserve({
+        journeyRef: "MJ-000001",
+        silkAccountRef: "SILK-ENT-042",
+        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
+        resourceType: "COMPUTE",
+        quantity: 1,
+        unit: "INR",
+        wardenDecisionRef: "WARDEN-DECISION:001",
+        correlationId: "TXN-TYPE-DRIFT",
+        reservedAt: RESERVED_AT,
+      }),
+    ).toThrow("silk_resource_type_mismatch");
+
+    expect(() =>
+      reservations.reserve({
+        journeyRef: "MJ-000001",
+        silkAccountRef: "SILK-ENT-042",
+        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
+        resourceType: "CREDIT",
+        quantity: 1,
+        unit: "USD",
+        wardenDecisionRef: "WARDEN-DECISION:001",
+        correlationId: "TXN-UNIT-DRIFT",
+        reservedAt: RESERVED_AT,
+      }),
+    ).toThrow("silk_resource_unit_mismatch");
   });
 
   it("normalizes a synthetic Mastercard decline, executes a separately authorized Visa fallback, and derives reimbursement", () => {
