@@ -1,9 +1,9 @@
 import { createHash } from "node:crypto";
 
 import type { SynnergyzeExecutionReceiptV1 } from "../synnergyze/contracts.ts";
-import {
+import type {
   ControlledExecutionGateV1,
-  type ControlledExecutionRequestV1,
+  ControlledExecutionRequestV1,
 } from "../synnergyze/execution-gate.ts";
 import type {
   AuthorizedProviderExecutionV1,
