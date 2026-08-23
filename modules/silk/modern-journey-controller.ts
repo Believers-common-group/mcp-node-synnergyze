@@ -86,6 +86,15 @@ function assertPlan(plan: ModernJourneyPlanV1): void {
     visited.add(legType);
   };
   for (const leg of plan.legs) visit(leg.legType);
+
+  const indexByType = new Map(plan.legs.map((leg, index) => [leg.legType, index]));
+  for (const [index, leg] of plan.legs.entries()) {
+    for (const dependency of leg.dependsOn) {
+      const dependencyIndex = indexByType.get(dependency);
+      if (dependencyIndex === undefined) throw new Error("modern_controller_unknown_dependency");
+      if (dependencyIndex >= index) throw new Error("modern_controller_dependency_order_invalid");
+    }
+  }
 }
 
 function snapshotLegRef(
