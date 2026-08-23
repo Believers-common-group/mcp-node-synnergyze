@@ -1,6 +1,7 @@
 import { z } from "zod";
 
 import type { CustomMcpServer } from "../CustomMcpServer.ts";
+import { isToolAllowed, type ToolFilter } from "../toolFilters.ts";
 import type { WardenDecisionRequestV1 } from "../../modules/warden/contracts.ts";
 import {
   evaluateSyntheticWardenDecisionV1,
@@ -10,6 +11,7 @@ import {
 export const operationId = "wardenEvaluateConformanceDecision";
 export const description =
   "Evaluate the bounded synthetic Warden conformance policy. This tool does not perform an external effect and is disabled unless explicitly enabled.";
+export const enableEnvironmentVariable = "VSR_WARDEN_MCP_CONFORMANCE";
 
 const requestSchema = z
   .object({
@@ -95,4 +97,20 @@ export function registerWardenConformanceDecision(server: CustomMcpServer): void
     },
     cb: async (args) => JSON.stringify(evaluateWardenConformanceDecision(args)),
   });
+}
+
+/**
+ * Dual opt-in gate: the environment switch must be enabled and the tool must
+ * be named explicitly in --allow-tools. "all" intentionally does not expose it.
+ */
+export function maybeRegisterWardenConformanceDecision(
+  server: CustomMcpServer,
+  filter: ToolFilter,
+  env: NodeJS.ProcessEnv = process.env,
+): boolean {
+  if (env[enableEnvironmentVariable] !== "1") return false;
+  if (!filter.allowedTools?.has(operationId)) return false;
+  if (!isToolAllowed(operationId, filter)) return false;
+  registerWardenConformanceDecision(server);
+  return true;
 }
