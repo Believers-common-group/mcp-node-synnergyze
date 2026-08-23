@@ -101,6 +101,9 @@ export interface ProviderExceptionV1 {
   severity: ProviderExceptionSeverityV1;
   failureKind: ProviderFailureKindV1;
   message: string;
+  executionRef?: string;
+  parentExceptionRef?: string;
+  originatingExecutionRef?: string;
 }
 
 export type ProviderAttemptResultV1<T> =
@@ -113,3 +116,45 @@ export type ProviderRecoveryActionV1 =
   | "ABORT"
   | "CONTAIN"
   | "POLICY_DECISION_REQUIRED";
+
+export interface ProviderExecutionIntentV1 {
+  effectKey: string;
+  requestDigest: string;
+}
+
+export interface ProviderExecutionRecordV1 {
+  version: ProviderAuthorityBridgeVersionV1;
+  executionRef: string;
+  effectKey: string;
+  governedIntentDigest: string;
+  firstAuthorizationRef: string;
+  requestDigest: string;
+  agentRef: string;
+  providerRef: string;
+  providerPrincipalRef: string;
+  capabilityRef: string;
+  purposeRef: string;
+  resourceRefs: readonly string[];
+  correlationId: string;
+}
+
+export interface ProviderExecutionResolutionV1 {
+  execution: ProviderExecutionRecordV1;
+  idempotentReplay: boolean;
+}
+
+export interface ProviderAttemptEvidenceV1 {
+  attemptRef: string;
+  executionRef: string;
+  authorizationRef: string;
+  requestHash: string;
+  responseHash?: string;
+  capturedAt: string;
+}
+
+export interface ProviderCompensationLineageV1 {
+  compensationPlanRef: string;
+  originalExecutionRef: string;
+  compensationExecutionRef: string;
+  originalExceptionRef: string;
+}
