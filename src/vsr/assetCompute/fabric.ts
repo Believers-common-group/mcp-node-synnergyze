@@ -211,12 +211,12 @@ export class AssetComputeFabric {
         });
       }
 
-      if (state !== "SETTLED" && state !== "CLOSED") {
+      if (!settlementCompleted) {
         move("EXCEPTION");
         record("execution.exception", "SYNNERGYZE", { errorCode });
         move("RECONCILIATION");
         record("reconciliation.completed", "SYNNERGYZE", {
-          reservationReleased: reservationCreated && !settlementCompleted,
+          reservationReleased: reservationCreated,
         });
         move("CLOSED");
         record("execution.closed", "SYNNERGYZE", { result: "FAILED", errorCode });
