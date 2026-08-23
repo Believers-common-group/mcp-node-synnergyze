@@ -13,6 +13,7 @@ export interface WardenTrustResolutionV1 {
   result: WardenTrustResolutionStateV1;
   material: boolean;
   irreversibleEffect: boolean;
+  reasonCodes?: readonly string[];
 }
 
 export interface WardenDecisionRequestV1 {
