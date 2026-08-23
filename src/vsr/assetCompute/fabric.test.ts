@@ -13,6 +13,12 @@ const source = {
   available: 100,
 };
 
+const allowedDecisionScope = {
+  assetId: "AST-ALPHA-001",
+  operations: ["EXECUTE", "DERIVE"] as const,
+  selectedRoute: "SIMULATED-PROVIDER-001",
+};
+
 describe("AssetComputeFabric", () => {
   it("executes the governed INR 100 -> reserve 50 -> settle 32 -> derived asset flow", async () => {
     const fundingLedger = new InMemoryFundingLedger([source]);
@@ -57,6 +63,7 @@ describe("AssetComputeFabric", () => {
         decisionId: "WD-FABRIC-001",
         executionId: "EXEC-FABRIC-001",
         principalId: "DM-ALPHA-001",
+        ...allowedDecisionScope,
         outcome: "ALLOW",
         maxCost: 50,
         currency: "INR",
@@ -129,6 +136,7 @@ describe("AssetComputeFabric", () => {
           decisionId: "WD-FABRIC-FAIL-001",
           executionId: "EXEC-FABRIC-FAIL-001",
           principalId: "DM-ALPHA-001",
+          ...allowedDecisionScope,
           outcome: "ALLOW",
           maxCost: 40,
           currency: "INR",
@@ -195,6 +203,7 @@ describe("AssetComputeFabric", () => {
           decisionId: "WD-FABRIC-EFFECT-FAIL-001",
           executionId: "EXEC-FABRIC-EFFECT-FAIL-001",
           principalId: "DM-ALPHA-001",
+          ...allowedDecisionScope,
           outcome: "ALLOW",
           maxCost: 40,
           currency: "INR",
@@ -222,7 +231,7 @@ describe("AssetComputeFabric", () => {
     expect(eventTypes).not.toContain("settlement.completed");
   });
 
-  it("returns the completed result on exact replay without re-running provider or settlement", async () => {
+  it("returns the completed result on replay at a later clock time without re-running provider or settlement", async () => {
     const fundingLedger = new InMemoryFundingLedger([source]);
     const eventLog = new InMemoryEventLog();
     const baseProvider = new DeterministicProviderAdapter({
@@ -270,6 +279,7 @@ describe("AssetComputeFabric", () => {
         decisionId: "WD-FABRIC-REPLAY-001",
         executionId: "EXEC-FABRIC-REPLAY-001",
         principalId: "DM-ALPHA-001",
+        ...allowedDecisionScope,
         outcome: "ALLOW",
         maxCost: 50,
         currency: "INR",
@@ -279,7 +289,10 @@ describe("AssetComputeFabric", () => {
 
     const first = await fabric.execute(input);
     const eventCount = eventLog.eventsFor(input.executionId).length;
-    const second = await fabric.execute(input);
+    const second = await fabric.execute({
+      ...input,
+      now: new Date("2026-08-23T05:40:00.000Z"),
+    });
 
     expect(second).toEqual(first);
     expect(providerCalls).toBe(1);
@@ -340,6 +353,7 @@ describe("AssetComputeFabric", () => {
         decisionId: "WD-FABRIC-CONFLICT-001",
         executionId: "EXEC-FABRIC-CONFLICT-001",
         principalId: "DM-ALPHA-001",
+        ...allowedDecisionScope,
         outcome: "ALLOW",
         maxCost: 40,
         currency: "INR",
