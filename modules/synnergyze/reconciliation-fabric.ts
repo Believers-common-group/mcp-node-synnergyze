@@ -282,7 +282,10 @@ export class ReconciliationFabricV1 {
       return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_BEFORE_OBSERVATION" };
     }
 
-    if (verification.executionReceiptRef !== receipt.receiptRef) {
+    const verificationReceiptRef = verification.state === "VERIFIED_EFFECT"
+      ? verification.effect.executionReceiptRef
+      : verification.executionReceiptRef;
+    if (verificationReceiptRef !== receipt.receiptRef) {
       return { state: "REJECTED_INPUT", reasonCode: "RECONCILIATION_VERIFICATION_RECEIPT_MISMATCH" };
     }
     if (
