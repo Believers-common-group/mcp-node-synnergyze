@@ -111,6 +111,7 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
       payload: {
         reservationRef: input.reservation.reservationRef,
         resourceRef: input.reservation.resourceRef,
+        resourceOwnerRef: input.reservation.resourceOwnerRef,
         resourceType: input.reservation.resourceType,
         quantity: input.reservation.quantity,
         unit: input.reservation.unit,
@@ -179,6 +180,7 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
       payload: {
         reservationRef: input.reservation.reservationRef,
         resourceRef: input.reservation.resourceRef,
+        resourceOwnerRef: input.reservation.resourceOwnerRef,
       },
     });
     return this.snapshot(transaction.transactionRef);
@@ -249,6 +251,9 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
     if (input.consumedReservation.wardenDecisionRef !== input.receipt.wardenDecisionRef) {
       throw new Error("modern_runtime_consumed_resource_decision_mismatch");
     }
+    if (input.consumedReservation.resourceOwnerRef !== input.economicEvent.actualPayerRef) {
+      throw new Error("modern_runtime_resource_payer_mismatch");
+    }
     if (transaction.state === "RECOVERY_REQUIRED") {
       const fallbackDecisionRef = this.latestFallbackDecisionRef(transaction.transactionRef);
       if (!fallbackDecisionRef) throw new Error("modern_runtime_fallback_authorization_required");
@@ -293,6 +298,7 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
       payload: {
         reservationRef: input.consumedReservation.reservationRef,
         resourceRef: input.consumedReservation.resourceRef,
+        resourceOwnerRef: input.consumedReservation.resourceOwnerRef,
       },
     });
     this.eventLog.append({
