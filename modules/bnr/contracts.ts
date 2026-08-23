@@ -65,14 +65,19 @@ export interface BnrActivationInputsV1 {
   readinessCheckedAt: string;
 }
 
+/** Legacy readiness shape retained for existing callers. */
 export interface BnrReadinessStateV1 {
   nodeRef: string;
-  partnerLifecycle: BnrPartnerLifecycleV1;
   runtimeReadiness: BnrRuntimeReadinessV1;
   authorityState: BnrAuthorityStateV1;
   evidenceState: BnrEvidenceStateV1;
-  commercialState: BnrCommercialStateV1;
-  activationState: BnrActivationStateV1;
   blockers: readonly string[];
   readinessCheckedAt: string;
+}
+
+/** Partner-aware readiness used by external BNR partner nodes. */
+export interface BnrPartnerReadinessStateV1 extends BnrReadinessStateV1 {
+  partnerLifecycle: BnrPartnerLifecycleV1;
+  commercialState: BnrCommercialStateV1;
+  activationState: BnrActivationStateV1;
 }
