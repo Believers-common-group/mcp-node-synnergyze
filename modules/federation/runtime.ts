@@ -1,7 +1,12 @@
 import { createHash } from "node:crypto";
 
 import type { EffectReceiptV1, EventReceiptV1 } from "../river/contracts.ts";
-import type { WardenDecisionRequestV1, WardenDecisionV1 } from "../warden/contracts.ts";
+import type {
+  WardenAllowDecisionV1,
+  WardenDecisionRequestV1,
+  WardenDecisionV1,
+  WardenNonAllowDecisionV1,
+} from "../warden/contracts.ts";
 import {
   evaluateSyntheticWardenDecisionV1,
   type SyntheticWardenDecisionPolicyV1,
@@ -29,12 +34,22 @@ export interface FederatedLicenceRecognitionR1 {
 
 export interface FederatedLicenceCompletedR1 {
   state: "COMPLETED";
-  sourceDecision: WardenDecisionV1 & { decision: "ALLOW" };
-  destinationDecision: WardenDecisionV1 & { decision: "ALLOW" };
+  sourceDecision: WardenAllowDecisionV1;
+  destinationDecision: WardenAllowDecisionV1;
   localRecognition: FederatedLicenceRecognitionR1;
   riverEventReceipt: EventReceiptV1;
   effectReceipt: EffectReceiptV1;
 }
+
+export interface FederatedLicenceBlockedDestinationR1 {
+  state: "BLOCKED_DESTINATION";
+  sourceDecision: WardenAllowDecisionV1;
+  destinationDecision: WardenNonAllowDecisionV1;
+}
+
+export type FederatedLicenceResultR1 =
+  | FederatedLicenceCompletedR1
+  | FederatedLicenceBlockedDestinationR1;
 
 export interface ExecuteSyntheticFederatedLicenceInputR1 {
   missionRef: string;
@@ -51,24 +66,26 @@ function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function requireAllow(decision: WardenDecisionV1, side: "source" | "destination") {
+function requireSourceAllow(decision: WardenDecisionV1): WardenAllowDecisionV1 {
   if (decision.decision !== "ALLOW") {
-    throw new Error(`federation_${side}_warden_allow_required`);
+    throw new Error("federation_source_warden_allow_required");
   }
   return decision;
 }
 
 export function executeSyntheticFederatedLicenceR1(
   input: ExecuteSyntheticFederatedLicenceInputR1,
-): FederatedLicenceCompletedR1 {
-  const sourceDecision = requireAllow(
-    evaluateSyntheticWardenDecisionV1(input.source),
-    "source",
-  );
-  const destinationDecision = requireAllow(
-    evaluateSyntheticWardenDecisionV1(input.destination),
-    "destination",
-  );
+): FederatedLicenceResultR1 {
+  const sourceDecision = requireSourceAllow(evaluateSyntheticWardenDecisionV1(input.source));
+  const destinationDecision = evaluateSyntheticWardenDecisionV1(input.destination);
+
+  if (destinationDecision.decision !== "ALLOW") {
+    return {
+      state: "BLOCKED_DESTINATION",
+      sourceDecision,
+      destinationDecision,
+    };
+  }
 
   const correlationId = input.destination.request.correlationId;
   const lineage = JSON.stringify({
