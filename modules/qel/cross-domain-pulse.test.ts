@@ -15,10 +15,14 @@ import {
   makeSyntheticRecoveryNodeSnapshotV01,
   mapSyntheticRecoveryNodeToQelFrameV01,
 } from "./recovery-node-fixture.ts";
+import {
+  makeSyntheticRecoverySettlementSnapshotV01,
+  mapSyntheticRecoverySettlementToQelFrameV01,
+} from "./recovery-settlement-fixture.ts";
 
 describe("QEL cross-domain Pod Pulse", () => {
-  it("reduces compute, factory, passport, and recovery-node objects through one shared operating grammar", () => {
-    const observedAt = "2026-08-23T06:45:00.000Z";
+  it("reduces compute, factory, passport, recovery-node, and settlement objects through one shared operating grammar", () => {
+    const observedAt = "2026-08-23T07:00:00.000Z";
     const compute = mapAlphaComputeRunnerToQelFrameV01({
       registration: new SyntheticCpuComputeRunner().registration,
       observedAt,
@@ -33,34 +37,51 @@ describe("QEL cross-domain Pod Pulse", () => {
         materialCoverMinutes: 0,
       }),
     );
-    const passport = mapSyntheticCircularPassportToQelFrameV01(
-      makeSyntheticCircularPassportSnapshotV01({
+    const passportSnapshot = makeSyntheticCircularPassportSnapshotV01({
+      observedAt,
+      correlationId: "QEL-CROSS-DOMAIN-PASSPORT-001",
+      lifecycleState: "ASSESSED",
+    });
+    const passport = mapSyntheticCircularPassportToQelFrameV01(passportSnapshot);
+    const recoverySnapshot = makeSyntheticRecoveryNodeSnapshotV01({
+      observedAt,
+      correlationId: "QEL-CROSS-DOMAIN-RECOVERY-001",
+      nodeState: "ASSESSED",
+      assetRef: passportSnapshot.assetRef,
+      passportCycleRef: passportSnapshot.cycleRef,
+      custodyRef: "CUSTODY-CROSS-DOMAIN-001",
+    });
+    const recovery = mapSyntheticRecoveryNodeToQelFrameV01(recoverySnapshot);
+    const settlement = mapSyntheticRecoverySettlementToQelFrameV01({
+      settlement: makeSyntheticRecoverySettlementSnapshotV01({
         observedAt,
-        correlationId: "QEL-CROSS-DOMAIN-PASSPORT-001",
-        lifecycleState: "RETURN_PENDING",
+        correlationId: "QEL-CROSS-DOMAIN-SETTLEMENT-001",
+        state: "AUTHORIZED",
+        recoveryNodeRef: recoverySnapshot.nodeRef,
+        assetRef: passportSnapshot.assetRef,
+        passportCycleRef: passportSnapshot.cycleRef,
+        assessedValueMinor: 5000,
+        rewardAmountMinor: 1000,
+        assessmentRef: "ASSESSMENT-CROSS-DOMAIN-001",
+        authorityState: "ALLOWED",
+        authorityRef: "WARDEN-AUTH-CROSS-DOMAIN-001",
       }),
-    );
-    const recovery = mapSyntheticRecoveryNodeToQelFrameV01(
-      makeSyntheticRecoveryNodeSnapshotV01({
-        observedAt,
-        correlationId: "QEL-CROSS-DOMAIN-RECOVERY-001",
-        nodeState: "IDENTIFIED",
-        assetRef: "GARMENT-98F1",
-        passportCycleRef: "GARMENT-98F1:CYCLE-01",
-      }),
-    );
+      recovery: recoverySnapshot,
+      passport: passportSnapshot,
+    });
 
     const pulse = buildQelPodPulseV01({
       podRef: "POD-QEL-CROSS-DOMAIN-001",
       observedAt,
-      frames: [compute, factory, passport, recovery],
+      frames: [compute, factory, passport, recovery, settlement],
     });
 
     expect(compute.object.type).toBe("COMPUTE_SERVICE");
     expect(factory.object.type).toBe("PRODUCTION_LINE");
     expect(passport.object.type).toBe("PRODUCT_PASSPORT");
     expect(recovery.object.type).toBe("RECOVERY_NODE");
-    expect(pulse.now.objectCount).toBe(4);
+    expect(settlement.object.type).toBe("RECOVERY_SETTLEMENT");
+    expect(pulse.now.objectCount).toBe(5);
     expect(pulse.now.health).toBe("WATCH");
     expect(pulse.needs).toEqual([
       {
@@ -70,27 +91,22 @@ describe("QEL cross-domain Pod Pulse", () => {
         target: "restore_material_flow",
       },
       {
-        objectRef: "GARMENT-98F1",
-        type: "TRANSPORT",
+        objectRef: "SILK-RECOVERY-SETTLEMENT-001",
+        type: "SETTLEMENT",
         priority: "HIGH",
-        target: "return_asset_to_network",
+        target: "submit_silk_settlement",
       },
       {
-        objectRef: "RECOVERY-NODE-BLR-001",
+        objectRef: "GARMENT-98F1",
         type: "APPROVAL",
-        priority: "HIGH",
-        target: "accept_recovery_custody",
+        priority: "MODERATE",
+        target: "select_next_lifecycle_route",
       },
     ]);
     expect(pulse.risks[0]).toMatchObject({
       objectRef: "FACTORY-LINE-03",
       type: "MATERIAL_STARVATION",
       severity: "HIGH",
-    });
-    expect(pulse.risks[1]).toMatchObject({
-      objectRef: "GARMENT-98F1",
-      type: "RECOVERY_DELAY",
-      severity: "MODERATE",
     });
     expect(
       pulse.moves.some((move) => move.objectRef === compute.object.id && move.action === "RUN_COMPUTE"),
@@ -104,11 +120,14 @@ describe("QEL cross-domain Pod Pulse", () => {
       ),
     ).toBe(true);
     expect(
+      pulse.moves.some((move) => move.objectRef === recovery.object.id && move.action === "ROUTE"),
+    ).toBe(true);
+    expect(
       pulse.moves.some(
-        (move) => move.objectRef === recovery.object.id && move.action === "ACCEPT_CUSTODY",
+        (move) => move.objectRef === settlement.object.id && move.action === "SUBMIT_SETTLEMENT",
       ),
     ).toBe(true);
     expect(pulse.proof.verifiedOutcomes).toBe(0);
-    expect(pulse.proof.unresolvedOutcomes).toBe(4);
+    expect(pulse.proof.unresolvedOutcomes).toBe(5);
   });
 });
