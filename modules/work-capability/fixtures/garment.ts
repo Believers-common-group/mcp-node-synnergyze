@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { SynnergyzeExecutionReceiptV1 } from "../../synnergyze/contracts.ts";
+import type {
+  ResolvedDeviceSecurityContextV1,
+  SynnergyzeExecutionReceiptV1,
+} from "../../synnergyze/contracts.ts";
 import {
   EffectVerificationServiceV1,
   type EffectVerificationSuccessV1,
@@ -11,7 +14,11 @@ import type {
   SyntheticCapabilityAdapterResultV1,
   SyntheticCapabilityAdapterV1,
 } from "../../synnergyze/execution-gate.ts";
-import type { WardenDecisionRequestV1 } from "../../warden/contracts.ts";
+import type {
+  WardenDecisionRequestV1,
+  WardenExecutionCheckpointStateV1,
+} from "../../warden/contracts.ts";
+import { SyntheticWardenExecutionCheckpointServiceV1 } from "../../warden/checkpoint-service.ts";
 import type { SyntheticWardenDecisionPolicyV1 } from "../../warden/decision-service.ts";
 import type {
   ActorCapabilityProfileV1,
@@ -19,6 +26,7 @@ import type {
   CapabilityEvidenceV1,
   CapabilityOutcomeV1,
   RemainingWorkProposalV1,
+  WorkAssignmentV1,
   WorkUnitV1,
 } from "../contracts.ts";
 import { projectProfileBoundCapabilityEvidenceV1 } from "../evidence.ts";
@@ -34,14 +42,20 @@ const CORRELATION_ID = "WORK-CAPABILITY-CORR:B124-WAISTBAND-R01";
 const WORKFLOW_REF = "WORKFLOW:B124:R0.1";
 const WORK_UNIT_REF = "WORK-UNIT:B124:09";
 const COMPOSITION_REF = "COMPOSITION:P17-M04-A2";
+const MACHINE_ASSET_REF = "GENESIS-ASSET:LOCKSTITCH-M04";
+const DEVICE_SECURITY_POLICY_REF = "POLICY:DEVICE-SECURITY:LOCKSTITCH-R0.1";
+const DEVICE_SECURITY_EVIDENCE_REF = "DEVICE-SECURITY-EVIDENCE:M04:CURRENT";
 
 const REQUESTED_AT = "2026-08-24T00:30:00.000Z";
+const DEVICE_RESOLVED_AT = "2026-08-24T00:30:05.000Z";
 const DECIDED_AT = "2026-08-24T00:30:10.000Z";
 const RESERVED_AT = "2026-08-24T00:30:20.000Z";
 const CHECKED_AT = "2026-08-24T00:30:25.000Z";
 const EXECUTED_AT = "2026-08-24T00:30:30.000Z";
 const OBSERVED_AT = "2026-08-24T00:30:40.000Z";
 const VERIFIED_AT = "2026-08-24T00:30:50.000Z";
+const SECURITY_VALID_UNTIL = "2026-08-24T00:35:00.000Z";
+const CAPABILITY_EVIDENCE_VALID_UNTIL = "2026-08-24T00:40:00.000Z";
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -61,6 +75,8 @@ export interface SyntheticGarmentPerformanceInputV1 {
 }
 
 export interface VerifiedWaistbandFixtureResultV1 {
+  workUnit: WorkUnitV1;
+  assignment: WorkAssignmentV1;
   execution: SynnergyzeExecutionReceiptV1;
   observation: PostExecutionObservationV1;
   verification: EffectVerificationSuccessV1;
@@ -94,17 +110,20 @@ export class SyntheticGarmentWorkAdapterV1 implements SyntheticCapabilityAdapter
     if (input.action.targetRef !== TARGET_REF) {
       throw new Error("garment_adapter_target_mismatch");
     }
+    if (this.batch.stateRef !== "GARMENT-STATE:back_assembled") {
+      throw new Error("garment_adapter_input_state_mismatch");
+    }
     if (this.batch.processedQuantity !== 0) {
       throw new Error("garment_batch_already_processed");
     }
 
     this.invocations += 1;
     this.batch.processedQuantity = this.batch.inputQuantity;
-    this.batch.stateRef = "GARMENT-STATE:waistband_execution_complete";
+    this.batch.stateRef = "GARMENT-STATE:waistband_attached";
 
     return {
       adapterResultRef: `SYNTHETIC-GARMENT-WAISTBAND:${digest(
-        `${input.action.actionRef}|${this.batch.batchRef}|${this.batch.processedQuantity}`,
+        `${input.action.actionRef}|${this.batch.batchRef}|${this.batch.processedQuantity}|${this.batch.stateRef}`,
       ).slice(0, 24)}`,
     };
   }
@@ -115,6 +134,10 @@ export class SyntheticGarmentWorkAdapterV1 implements SyntheticCapabilityAdapter
 
   fingerprintMaterial(): unknown {
     return { ...this.initialFingerprintMaterial };
+  }
+
+  currentStateRef(): string {
+    return this.batch.stateRef;
   }
 }
 
@@ -129,10 +152,11 @@ function workUnit(): WorkUnitV1 {
     inputStateRef: "GARMENT-STATE:back_assembled",
     requiredOutputStateRef: "GARMENT-STATE:waistband_attached",
     requiredCapabilityRefs: [CAPABILITY_REF],
+    requiredContext: { materialFamily: "denim" },
     qualityThresholds: { firstPassQuality: 0.97 },
     deadline: "2026-08-30T12:30:00.000Z",
     riskClass: "R2",
-    requiredEvidenceRefs: ["EVIDENCE-REQUIREMENT:garment.waistband.attach"],
+    requiredEvidenceRefs: [`EVIDENCE-REQUIREMENT:${CAPABILITY_REF}`],
     correlationId: CORRELATION_ID,
   };
 }
@@ -162,14 +186,18 @@ function actorProfiles(): readonly ActorCapabilityProfileV1[] {
       capabilityRefs: [CAPABILITY_REF],
       context: { materialFamily: "denim", role: "operator" },
       evidenceRefs: ["CAPABILITY-EVIDENCE:P17:WAISTBAND:CURRENT"],
+      evidenceState: "CURRENT",
+      evidenceValidUntil: CAPABILITY_EVIDENCE_VALID_UNTIL,
       available: true,
     },
     {
       actorRef: "AGENT:WORK-INSTRUCTION-A2",
       actorClass: "AGENT",
       capabilityRefs: ["garment.work_instruction.assist"],
-      context: { domain: "garment-production" },
+      context: { domain: "garment-production", materialFamily: "denim" },
       evidenceRefs: ["CAPABILITY-EVIDENCE:A2:WORK-INSTRUCTION:CURRENT"],
+      evidenceState: "CURRENT",
+      evidenceValidUntil: CAPABILITY_EVIDENCE_VALID_UNTIL,
       available: true,
       implementationRef: "WORK-INSTRUCTION-AGENT-A2",
       versionRef: "A2-R1",
@@ -180,8 +208,10 @@ function actorProfiles(): readonly ActorCapabilityProfileV1[] {
       capabilityRefs: [CAPABILITY_REF],
       context: { machineClass: "lockstitch", materialFamily: "denim" },
       evidenceRefs: ["CAPABILITY-EVIDENCE:M04:LOCKSTITCH:CURRENT"],
+      evidenceState: "CURRENT",
+      evidenceValidUntil: CAPABILITY_EVIDENCE_VALID_UNTIL,
       available: true,
-      assetRef: "GENESIS-ASSET:LOCKSTITCH-M04",
+      assetRef: MACHINE_ASSET_REF,
     },
   ];
 }
@@ -199,6 +229,12 @@ function request(): WardenDecisionRequestV1 {
     capabilityRef: CAPABILITY_REF,
     targetRef: TARGET_REF,
     requestedEffect: "GARMENT-STATE:waistband_attached",
+    executionDeviceRef: MACHINE_ASSET_REF,
+    deviceSecurityState: "ACTIVE",
+    deviceSecurityPolicyRef: DEVICE_SECURITY_POLICY_REF,
+    deviceSecuritySourceRefs: [DEVICE_SECURITY_EVIDENCE_REF],
+    deviceSecurityResolvedAt: DEVICE_RESOLVED_AT,
+    deviceSecurityValidUntil: SECURITY_VALID_UNTIL,
     authorityRefs: ["AUTHORITY:DDB-SYNTHETIC-PRODUCTION-001"],
     policyRefs: ["POLICY:WORK-CAPABILITY-R0.1"],
     representationSourceRefs: [
@@ -207,6 +243,19 @@ function request(): WardenDecisionRequestV1 {
     ],
     requestedAt: REQUESTED_AT,
     correlationId: CORRELATION_ID,
+  };
+}
+
+function deviceSecurity(): ResolvedDeviceSecurityContextV1 {
+  return {
+    resolutionRef: "DEVICE-SECURITY-RESOLUTION:M04:CURRENT",
+    deviceRef: MACHINE_ASSET_REF,
+    state: "ACTIVE",
+    policyRef: DEVICE_SECURITY_POLICY_REF,
+    evidenceRef: DEVICE_SECURITY_EVIDENCE_REF,
+    assuranceLevel: "L2",
+    resolvedAt: DEVICE_RESOLVED_AT,
+    validUntil: SECURITY_VALID_UNTIL,
   };
 }
 
@@ -235,21 +284,24 @@ function policy(
 function fixture(
   decisionMode: "ALLOW" | "DENY" | "ESCALATE",
   inputQuantity = 500,
+  initialStateRef = "GARMENT-STATE:back_assembled",
+  checkpointState: WardenExecutionCheckpointStateV1 = "VALID",
 ): AssignedWorkExecutionInputV1 {
   const batch: SyntheticGarmentBatchStateV1 = {
     batchRef: "GARMENT-BATCH:B124",
     inputQuantity,
     processedQuantity: 0,
-    stateRef: "GARMENT-STATE:back_assembled",
+    stateRef: initialStateRef,
   };
   const adapter = new SyntheticGarmentWorkAdapterV1(batch);
-
   return {
     workUnit: workUnit(),
     composition: composition(),
     actorProfiles: actorProfiles(),
     request: request(),
     policy: policy(decisionMode),
+    checkpointSource: new SyntheticWardenExecutionCheckpointServiceV1(checkpointState),
+    executionDeviceSecurity: deviceSecurity(),
     adapter,
     decidedAt: DECIDED_AT,
     reservedAt: RESERVED_AT,
@@ -262,6 +314,7 @@ export function observeSyntheticGarmentWorkV1(input: {
   execution: SynnergyzeExecutionReceiptV1;
   performance: SyntheticGarmentPerformanceInputV1;
   observedAt: string;
+  observedStateRef?: string;
 }): PostExecutionObservationV1 {
   const { execution, performance, observedAt } = input;
   const outputQuantity = performance.acceptedQuantity + performance.reworkQuantity;
@@ -276,24 +329,19 @@ export function observeSyntheticGarmentWorkV1(input: {
   ) {
     throw new Error("garment_observation_quantity_invalid");
   }
-
-  const observedStateRef = `GARMENT-WAISTBAND-OBSERVED:${digest(
-    JSON.stringify({
-      executionReceiptRef: execution.receiptRef,
-      inputQuantity: performance.inputQuantity,
-      outputQuantity,
-      acceptedQuantity: performance.acceptedQuantity,
-      reworkQuantity: performance.reworkQuantity,
-    }),
-  ).slice(0, 24)}`;
-  const sourceEvidenceRef = `SYNTHETIC-GARMENT-EVIDENCE:${digest(
-    `${execution.receiptRef}|${observedStateRef}|${observedAt}`,
-  ).slice(0, 24)}`;
-
+  const observedStateRef = input.observedStateRef ??
+    (outputQuantity > 0 ? "GARMENT-STATE:waistband_attached" : "GARMENT-STATE:back_assembled");
+  const sourceEvidenceRef = `SYNTHETIC-GARMENT-EVIDENCE:${digest(JSON.stringify({
+    executionReceiptRef: execution.receiptRef,
+    inputQuantity: performance.inputQuantity,
+    outputQuantity,
+    acceptedQuantity: performance.acceptedQuantity,
+    reworkQuantity: performance.reworkQuantity,
+    observedStateRef,
+    observedAt,
+  })).slice(0, 24)}`;
   return {
-    observationRef: `POST-EXECUTION-OBSERVATION:${digest(
-      `${execution.receiptRef}|${sourceEvidenceRef}`,
-    ).slice(0, 24)}`,
+    observationRef: `POST-EXECUTION-OBSERVATION:${digest(`${execution.receiptRef}|${sourceEvidenceRef}|${observedStateRef}`).slice(0, 24)}`,
     executionReceiptRef: execution.receiptRef,
     actionRef: execution.actionRef,
     programRef: execution.programRef,
@@ -316,6 +364,14 @@ export function mutatedWaistbandFixtureV1(): AssignedWorkExecutionInputV1 {
   return fixture("ALLOW", 499);
 }
 
+export function wrongInputStateWaistbandFixtureV1(): AssignedWorkExecutionInputV1 {
+  return fixture("ALLOW", 500, "GARMENT-STATE:front_assembled");
+}
+
+export function revokedCheckpointWaistbandFixtureV1(): AssignedWorkExecutionInputV1 {
+  return fixture("ALLOW", 500, "GARMENT-STATE:back_assembled", "REVOKED");
+}
+
 export function invalidWardenWaistbandFixtureV1(
   decision: "DENY" | "ESCALATE",
 ): AssignedWorkExecutionInputV1 {
@@ -324,6 +380,7 @@ export function invalidWardenWaistbandFixtureV1(
 
 export function runVerifiedWaistbandFixtureV1(
   performance: SyntheticGarmentPerformanceInputV1,
+  observedStateRef = "GARMENT-STATE:waistband_attached",
 ): VerifiedWaistbandFixtureResultV1 {
   const executionInput = fixture("ALLOW", performance.inputQuantity);
   const proof = executeAssignedWorkUnitV1(executionInput);
@@ -331,6 +388,7 @@ export function runVerifiedWaistbandFixtureV1(
     execution: proof.execution,
     performance,
     observedAt: OBSERVED_AT,
+    observedStateRef,
   });
   const verificationResult = new EffectVerificationServiceV1().verify({
     receipt: proof.execution,
@@ -340,10 +398,8 @@ export function runVerifiedWaistbandFixtureV1(
   if (verificationResult.state !== "VERIFIED_EFFECT") {
     throw new Error(`garment_effect_verification_failed:${verificationResult.reasonCode}`);
   }
-
   const outputQuantity = performance.acceptedQuantity + performance.reworkQuantity;
-  const firstPassQuality =
-    outputQuantity === 0 ? 0 : performance.acceptedQuantity / outputQuantity;
+  const firstPassQuality = outputQuantity === 0 ? 0 : performance.acceptedQuantity / outputQuantity;
   const observedPerformance = {
     inputQuantity: performance.inputQuantity,
     outputQuantity,
@@ -366,6 +422,7 @@ export function runVerifiedWaistbandFixtureV1(
   const reconciled = reconcileWorkUnitOutcomeV1({
     workUnit: executionInput.workUnit,
     requiredQuantity: performance.inputQuantity,
+    observedStateRef: verificationResult.effect.observedStateRef,
     observedPerformance: {
       inputQuantity: performance.inputQuantity,
       outputQuantity,
@@ -373,8 +430,9 @@ export function runVerifiedWaistbandFixtureV1(
       reworkQuantity: performance.reworkQuantity,
     },
   });
-
   return {
+    workUnit: executionInput.workUnit,
+    assignment: proof.assignment,
     execution: proof.execution,
     observation,
     verification: verificationResult,
