@@ -113,7 +113,7 @@ export function projectModernJourneyTransactionV1(
         break;
       }
       case "RESOURCE_RELEASED": {
-        if (state !== "RECOVERY_REQUIRED") {
+        if (state !== "RECOVERY_REQUIRED" && state !== "BLOCKED") {
           throw new Error("modern_projection_release_state_conflict");
         }
         const resourceRef = stringPayload(event, "resourceRef");
