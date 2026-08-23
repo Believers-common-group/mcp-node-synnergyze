@@ -43,6 +43,7 @@ export interface SilkCapabilityResolutionV1 {
 
 export interface SilkResourceCapacityV1 {
   resourceRef: string;
+  silkAccountRef: string;
   resourceType: SilkResourceTypeV1;
   capacity: number;
   unit: string;
@@ -200,6 +201,9 @@ export class SyntheticSilkResourceReservationServiceV1 {
 
     const authoritative = this.capacities.get(input.resourceRef);
     if (!authoritative) throw new Error("silk_resource_capacity_not_registered");
+    if (authoritative.silkAccountRef !== input.silkAccountRef) {
+      throw new Error("silk_resource_account_mismatch");
+    }
     if (authoritative.resourceType !== input.resourceType) {
       throw new Error("silk_resource_type_mismatch");
     }
