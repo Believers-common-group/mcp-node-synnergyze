@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
 import type {
+  CandidateCompositionV1,
+  CapabilityDemandV1,
+  CapabilityV1,
   ObjectiveWorkRefV1,
   WorkflowInstanceV1,
   WorkUnitV1,
@@ -142,6 +145,11 @@ function assertInstant(value: string, errorCode: string): void {
   if (!Number.isFinite(Date.parse(value))) throw new Error(errorCode);
 }
 
+function includesAll(actual: readonly string[], required: readonly string[]): boolean {
+  const values = new Set(actual);
+  return required.every((value) => values.has(value));
+}
+
 export function compileSyntheticGarmentWorkflowV1(
   objective: ObjectiveWorkRefV1,
 ): {
@@ -205,4 +213,72 @@ export function compileSyntheticGarmentWorkflowV1(
     workflow,
     workUnits,
   };
+}
+
+export function resolveCapabilityDemandV1(input: {
+  workUnit: WorkUnitV1;
+  capabilities: readonly CapabilityV1[];
+  candidates: readonly CandidateCompositionV1[];
+}): CapabilityDemandV1 {
+  const availableCapabilityRefs = new Set(input.capabilities.map((item) => item.capabilityRef));
+  const missingCapabilityRefs = input.workUnit.requiredCapabilityRefs.filter(
+    (capabilityRef) => !availableCapabilityRefs.has(capabilityRef),
+  );
+
+  const matchingCandidates = input.candidates.filter(
+    (candidate) =>
+      candidate.workUnitRef === input.workUnit.workUnitRef &&
+      includesAll(candidate.capabilityRefs, input.workUnit.requiredCapabilityRefs),
+  );
+  const eligibleCandidates = matchingCandidates.filter((candidate) => candidate.eligible);
+
+  const state: CapabilityDemandV1["state"] =
+    missingCapabilityRefs.length > 0
+      ? "MISSING"
+      : eligibleCandidates.length > 0
+        ? "COVERED"
+        : "CONSTRAINED";
+
+  const material = JSON.stringify({
+    workUnitRef: input.workUnit.workUnitRef,
+    requiredCapabilityRefs: [...input.workUnit.requiredCapabilityRefs].sort(),
+  });
+
+  return {
+    demandRef: `CAPABILITY-DEMAND:${digest(material).slice(0, 24)}`,
+    workUnitRef: input.workUnit.workUnitRef,
+    requiredCapabilityRefs: [...input.workUnit.requiredCapabilityRefs],
+    state,
+    candidateCompositionRefs: eligibleCandidates
+      .map((candidate) => candidate.compositionRef)
+      .sort(),
+    missingCapabilityRefs: [...missingCapabilityRefs].sort(),
+  };
+}
+
+export function selectCandidateCompositionV1(
+  candidates: readonly CandidateCompositionV1[],
+): CandidateCompositionV1 | undefined {
+  const eligible = candidates.filter((candidate) => candidate.eligible);
+  eligible.sort((left, right) => {
+    if (left.evidenceConfidence !== right.evidenceConfidence) {
+      return right.evidenceConfidence - left.evidenceConfidence;
+    }
+    if (left.expectedFirstPassQuality !== right.expectedFirstPassQuality) {
+      return right.expectedFirstPassQuality - left.expectedFirstPassQuality;
+    }
+    if (left.expectedCycleSeconds !== right.expectedCycleSeconds) {
+      return left.expectedCycleSeconds - right.expectedCycleSeconds;
+    }
+    return left.compositionRef.localeCompare(right.compositionRef);
+  });
+
+  const selected = eligible[0];
+  return selected
+    ? {
+        ...selected,
+        actorRefs: [...selected.actorRefs],
+        capabilityRefs: [...selected.capabilityRefs],
+      }
+    : undefined;
 }
