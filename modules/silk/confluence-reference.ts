@@ -357,9 +357,15 @@ export function normalizeConfluenceProviderFailureV1(
     return { failureClass: "UNKNOWN_PROVIDER_FAILURE", recoverable: false, providerError: message };
   }
   const failureClass = message.slice(prefix.length) || "UNKNOWN_PROVIDER_FAILURE";
+  const recoverableClasses = new Set([
+    "ISSUER_DECLINE",
+    "PROVIDER_UNAVAILABLE",
+    "CONNECTIVITY_FAILURE",
+    "RESOURCE_UNAVAILABLE",
+  ]);
   return {
     failureClass,
-    recoverable: failureClass === "ISSUER_DECLINE" || failureClass === "PROVIDER_UNAVAILABLE",
+    recoverable: recoverableClasses.has(failureClass),
     providerError: message,
   };
 }
