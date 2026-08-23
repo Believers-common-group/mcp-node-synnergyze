@@ -115,11 +115,17 @@ export const wardenConformanceRequestJsonSchema = {
   },
 };
 
+export function parseWardenConformanceDecisionInput(
+  input: unknown,
+): WardenConformanceDecisionToolInput {
+  return toolInputSchema.parse(input);
+}
+
 export function evaluateWardenConformanceDecision(
   input: unknown,
   decidedAt = new Date().toISOString(),
 ) {
-  const parsed = toolInputSchema.parse(input);
+  const parsed = parseWardenConformanceDecisionInput(input);
   return evaluateSyntheticWardenDecisionV1({
     request: parsed.request as WardenDecisionRequestV1,
     policy: WARDEN_CONFORMANCE_POLICY,
