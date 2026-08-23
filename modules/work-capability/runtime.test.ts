@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { CandidateCompositionV1 } from "./contracts.ts";
 import {
   invalidWardenWaistbandFixtureV1,
+  runVerifiedWaistbandFixtureV1,
   validWaistbandFixtureV1,
 } from "./fixtures/garment.ts";
 import {
@@ -114,4 +115,44 @@ describe("WORK-CAPABILITY-RUNTIME-001 governed execution", () => {
       );
     },
   );
+});
+
+describe("WORK-CAPABILITY-RUNTIME-001 effect and capability evidence", () => {
+  it("projects actor and composite capability evidence only from verified effect lineage", () => {
+    const result = runVerifiedWaistbandFixtureV1({
+      inputQuantity: 500,
+      acceptedQuantity: 490,
+      reworkQuantity: 10,
+    });
+
+    expect(result.verification.state).toBe("VERIFIED_EFFECT");
+    expect(
+      result.capabilityEvidence.some(
+        (item) => item.actorOrCompositionRef === "HUMAN:OPERATOR-P17",
+      ),
+    ).toBe(true);
+    expect(
+      result.capabilityEvidence.some(
+        (item) => item.actorOrCompositionRef === "COMPOSITION:P17-M04-A2",
+      ),
+    ).toBe(true);
+    expect(
+      result.capabilityEvidence.every(
+        (item) => item.executionReceiptRef === result.execution.receiptRef,
+      ),
+    ).toBe(true);
+  });
+
+  it("keeps a quantity shortfall open and proposes the exact remaining quantity", () => {
+    const result = runVerifiedWaistbandFixtureV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+
+    expect(result.outcome.state).toBe("PARTIAL_EFFECT");
+    expect(result.outcome.firstPassQuality).toBeGreaterThanOrEqual(0.97);
+    expect(result.remainingWork?.remainingQuantity).toBe(7);
+    expect(result.remainingWork?.automaticExecutionAllowed).toBe(false);
+  });
 });
