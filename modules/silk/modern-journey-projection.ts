@@ -3,6 +3,7 @@ import type { ModernJourneyEventRecordV1 } from "./modern-journey-event-log.ts";
 export type ModernJourneyProjectionStateV1 =
   | "OPEN"
   | "RECOVERY_REQUIRED"
+  | "BLOCKED"
   | "EXECUTED_UNVERIFIED"
   | "EFFECT_VERIFIED"
   | "CLOSED";
@@ -26,6 +27,11 @@ export interface ModernJourneyTransactionProjectionV1 {
 function stringPayload(event: ModernJourneyEventRecordV1, key: string): string | undefined {
   const value = event.payload[key];
   return typeof value === "string" && value.trim() ? value : undefined;
+}
+
+function booleanPayload(event: ModernJourneyEventRecordV1, key: string): boolean | undefined {
+  const value = event.payload[key];
+  return typeof value === "boolean" ? value : undefined;
 }
 
 function assertStreamLineage(events: readonly ModernJourneyEventRecordV1[]): void {
@@ -94,15 +100,18 @@ export function projectModernJourneyTransactionV1(
         activeResources.add(resourceRef);
         break;
       }
-      case "PROVIDER_EXECUTION_FAILED":
+      case "PROVIDER_EXECUTION_FAILED": {
         if (state !== "OPEN" && state !== "RECOVERY_REQUIRED") {
           throw new Error("modern_projection_provider_failure_state_conflict");
         }
+        const recoverable = booleanPayload(event, "recoverable");
+        if (recoverable === undefined) throw new Error("modern_projection_failure_recoverable_required");
         failedProviderCount += 1;
         currentProviderRef = undefined;
         fallbackAuthorized = false;
-        state = "RECOVERY_REQUIRED";
+        state = recoverable ? "RECOVERY_REQUIRED" : "BLOCKED";
         break;
+      }
       case "RESOURCE_RELEASED": {
         if (state !== "RECOVERY_REQUIRED") {
           throw new Error("modern_projection_release_state_conflict");
