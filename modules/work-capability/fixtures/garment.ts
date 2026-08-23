@@ -73,8 +73,19 @@ export class SyntheticGarmentWorkAdapterV1 implements SyntheticCapabilityAdapter
   readonly adapterRef = "SYNTHETIC-GARMENT-WAISTBAND-ADAPTER-001";
   readonly capabilityRef = CAPABILITY_REF;
   private invocations = 0;
+  private readonly initialFingerprintMaterial: {
+    batchRef: string;
+    inputQuantity: number;
+    stateRef: string;
+  };
 
-  constructor(private readonly batch: SyntheticGarmentBatchStateV1) {}
+  constructor(private readonly batch: SyntheticGarmentBatchStateV1) {
+    this.initialFingerprintMaterial = {
+      batchRef: batch.batchRef,
+      inputQuantity: batch.inputQuantity,
+      stateRef: batch.stateRef,
+    };
+  }
 
   execute(input: SyntheticCapabilityAdapterInputV1): SyntheticCapabilityAdapterResultV1 {
     if (input.action.capabilityRef !== this.capabilityRef) {
@@ -100,6 +111,10 @@ export class SyntheticGarmentWorkAdapterV1 implements SyntheticCapabilityAdapter
 
   invocationCount(): number {
     return this.invocations;
+  }
+
+  fingerprintMaterial(): unknown {
+    return { ...this.initialFingerprintMaterial };
   }
 }
 
@@ -295,6 +310,10 @@ export function observeSyntheticGarmentWorkV1(input: {
 
 export function validWaistbandFixtureV1(): AssignedWorkExecutionInputV1 {
   return fixture("ALLOW");
+}
+
+export function mutatedWaistbandFixtureV1(): AssignedWorkExecutionInputV1 {
+  return fixture("ALLOW", 499);
 }
 
 export function invalidWardenWaistbandFixtureV1(
