@@ -7,7 +7,12 @@ import type {
   ProviderExecutionRequestV1,
   ProviderPrincipalBindingV1,
 } from "./contracts.ts";
-import { executeWithProviderAuthorityV1 } from "./runtime.ts";
+import {
+  determineProviderRecoveryV1,
+  executeProviderAttemptV1,
+  executeWithProviderAuthorityV1,
+  ProviderFailureErrorV1,
+} from "./runtime.ts";
 
 const decision: WardenAllowDecisionV1 = {
   decisionRef: "WARDEN-DECISION:PROVIDER-001",
@@ -125,5 +130,74 @@ describe("Provider authority gate R0.4-B", () => {
       ),
     ).toThrow("provider_authority_decision_expired");
     expect(providerInvoke).not.toHaveBeenCalled();
+  });
+
+  it("D: treats timeout after send as unknown effect requiring reconciliation", async () => {
+    const providerInvoke = vi.fn(async () => {
+      throw new ProviderFailureErrorV1("HTTP_TIMEOUT_AFTER_SEND", "socket_timeout_after_send");
+    });
+
+    const result = await executeProviderAttemptV1("PROVIDER-AUTH:001", providerInvoke);
+
+    expect(providerInvoke).toHaveBeenCalledTimes(1);
+    expect(result.state).toBe("EXCEPTION");
+    if (result.state !== "EXCEPTION") throw new Error("provider_exception_expected");
+    expect(result.exception.exceptionClass).toBe("NETWORK_EXCEPTION");
+    expect(result.exception.effectState).toBe("UNKNOWN");
+    expect(result.exception.retryability).toBe("AFTER_RECONCILIATION");
+    expect(determineProviderRecoveryV1(result.exception)).toBe("RECONCILE_FIRST");
+  });
+
+  it("E: marks a transient provider credential failure safe for bounded retry", async () => {
+    const result = await executeProviderAttemptV1("PROVIDER-AUTH:001", async () => {
+      throw new ProviderFailureErrorV1("CREDENTIAL_TRANSIENT", "temporary_adc_failure");
+    });
+
+    expect(result.state).toBe("EXCEPTION");
+    if (result.state !== "EXCEPTION") throw new Error("provider_exception_expected");
+    expect(result.exception.exceptionClass).toBe("CREDENTIAL_EXCEPTION");
+    expect(result.exception.effectState).toBe("NONE");
+    expect(result.exception.retryability).toBe("SAFE");
+    expect(determineProviderRecoveryV1(result.exception)).toBe("RETRY");
+  });
+
+  it("F: aborts rather than retrying a provider IAM denial", async () => {
+    const result = await executeProviderAttemptV1("PROVIDER-AUTH:001", async () => {
+      throw new ProviderFailureErrorV1("PROVIDER_AUTH_DENIED", "google_iam_403");
+    });
+
+    expect(result.state).toBe("EXCEPTION");
+    if (result.state !== "EXCEPTION") throw new Error("provider_exception_expected");
+    expect(result.exception.exceptionClass).toBe("PROVIDER_AUTH_EXCEPTION");
+    expect(result.exception.retryability).toBe("NEVER");
+    expect(determineProviderRecoveryV1(result.exception)).toBe("ABORT");
+  });
+
+  it("G: contains an Agent Identity context mismatch as an E3 event", async () => {
+    const result = await executeProviderAttemptV1("PROVIDER-AUTH:001", async () => {
+      throw new ProviderFailureErrorV1(
+        "AGENT_IDENTITY_CONTEXT_MISMATCH",
+        "context_aware_access_identity_mismatch",
+      );
+    });
+
+    expect(result.state).toBe("EXCEPTION");
+    if (result.state !== "EXCEPTION") throw new Error("provider_exception_expected");
+    expect(result.exception.exceptionClass).toBe("IDENTITY_EXCEPTION");
+    expect(result.exception.severity).toBe("E3");
+    expect(result.exception.retryability).toBe("NEVER");
+    expect(determineProviderRecoveryV1(result.exception)).toBe("CONTAIN");
+  });
+
+  it("H: never turns an unacknowledged timeout directly into RETRY", async () => {
+    const result = await executeProviderAttemptV1("PROVIDER-AUTH:001", async () => {
+      throw new ProviderFailureErrorV1("HTTP_TIMEOUT_AFTER_SEND", "timeout_without_ack");
+    });
+
+    expect(result.state).toBe("EXCEPTION");
+    if (result.state !== "EXCEPTION") throw new Error("provider_exception_expected");
+    expect(result.exception.effectState).toBe("UNKNOWN");
+    expect(determineProviderRecoveryV1(result.exception)).toBe("RECONCILE_FIRST");
+    expect(determineProviderRecoveryV1(result.exception)).not.toBe("RETRY");
   });
 });
