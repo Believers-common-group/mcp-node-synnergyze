@@ -44,6 +44,7 @@ const requestSchema = z
 const toolInputSchema = z.object({ request: requestSchema }).strict();
 
 export type WardenConformanceDecisionToolInput = z.infer<typeof toolInputSchema>;
+export type WardenConformanceClock = () => string;
 
 /**
  * Fixed, non-production policy for transport conformance only.
@@ -126,7 +127,10 @@ export function evaluateWardenConformanceDecision(
   });
 }
 
-export function registerWardenConformanceDecision(server: CustomMcpServer): void {
+export function registerWardenConformanceDecision(
+  server: CustomMcpServer,
+  clock: WardenConformanceClock = () => new Date().toISOString(),
+): void {
   server.tool({
     name: operationId,
     description,
@@ -139,7 +143,7 @@ export function registerWardenConformanceDecision(server: CustomMcpServer): void
         request: requestInputJsonSchema,
       },
     },
-    cb: async (args) => JSON.stringify(evaluateWardenConformanceDecision(args)),
+    cb: async (args) => JSON.stringify(evaluateWardenConformanceDecision(args, clock())),
   });
 }
 
