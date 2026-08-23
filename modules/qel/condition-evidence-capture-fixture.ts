@@ -518,8 +518,5 @@ export function makeSyntheticConditionEvidenceCaptureV01(
     inferences: [],
     synthetic: true,
     ...overrides,
-    observedAt,
-    sources,
-    facts,
   };
 }
