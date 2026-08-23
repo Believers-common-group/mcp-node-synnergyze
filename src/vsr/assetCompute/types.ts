@@ -111,3 +111,33 @@ export interface RiverEvent {
   source: string;
   payload: Readonly<Record<string, unknown>>;
 }
+
+export interface ProviderExecutionRequest {
+  executionId: string;
+  capability: CapabilityGrant;
+  inputRef: string;
+}
+
+export interface ProviderReceipt {
+  provider: string;
+  providerExecutionId: string;
+  executionId: string;
+  status: "COMPLETED";
+  actualCost: number;
+  currency: string;
+}
+
+export interface ProviderObservation {
+  executionId: string;
+  outputRef: string;
+  observed: true;
+}
+
+export interface ProviderExecutionResult {
+  receipt: ProviderReceipt;
+  observation: ProviderObservation;
+}
+
+export interface ProviderAdapter {
+  execute(input: ProviderExecutionRequest): Promise<ProviderExecutionResult>;
+}
