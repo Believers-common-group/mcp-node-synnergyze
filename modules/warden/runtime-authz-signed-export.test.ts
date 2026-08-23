@@ -13,6 +13,9 @@ import { buildSignedRuntimeWardenDecisionReceipt } from "./runtime-authz-signed-
 
 const EFFECT_POLICY = buildRuntimeEffectPolicyV1({
   "runtime.page.create": "WRITE",
+  "runtime.manifest.attach": "WRITE",
+  "runtime.event.ingest": "WRITE",
+  "runtime.stitch.run": "EXECUTE",
 });
 const PRINCIPAL_RECEIPT_ID = "DIGITALME-PRINCIPAL:097414e04f4e127bb1b5fa469b98ffe1";
 const RUNTIME_BODY = {
@@ -72,6 +75,9 @@ function policy(req: WardenDecisionRequestV1): SyntheticWardenDecisionPolicyV1 {
 describe("GCS-20260823-002 signed Warden Runtime receipt export", () => {
   it("signs the actual decision producer output and fails verification after tamper", () => {
     const req = request();
+    expect(EFFECT_POLICY.policyRef).toBe(
+      "RUNTIME-EFFECT-POLICY:6cf48672e30ba8f8ac660d86f8221372d813aa515c72e1e1fb0b2528403e420d",
+    );
     expect(BODY_DIGEST).toBe("181d11208c469c5d9d2788a023cceea7e38342fdbef73bb3e7d4fa3d0de2d787");
     const decision = evaluateSyntheticWardenDecisionV1({
       request: req,
@@ -136,6 +142,7 @@ describe("GCS-20260823-002 signed Warden Runtime receipt export", () => {
             digitalme_id: req.actorRef,
             principal_receipt_id: PRINCIPAL_RECEIPT_ID,
             decision_receipt_id: receipt.decision_receipt_id,
+            effect_policy_ref: EFFECT_POLICY.policyRef,
             material_effect: MATERIAL_EFFECT,
             validation_now: "2026-08-23T10:05:00.000Z",
           },
