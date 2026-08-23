@@ -2,8 +2,29 @@ import {
   AuthzenProfileError,
   type AuthzenAccessEvaluationRequestV1,
   type AuthzenAccessRequestSubmissionV1,
-  type SyntheticWardenAuthzenPdpV1,
+  type AuthzenAccessEvaluationResponseV1,
+  type AuthzenPdpMetadataV1,
+  type AuthzenTaskResponseV1,
 } from "./authzen-profile.ts";
+
+export interface SyntheticWardenAuthzenHttpPdpV1 {
+  metadata(): AuthzenPdpMetadataV1 | {
+    policy_decision_point: string;
+    access_evaluation_endpoint: string;
+    [key: string]: unknown;
+  };
+  evaluate(
+    request: AuthzenAccessEvaluationRequestV1,
+    runtime: { evaluatedAt: string; requestId: string },
+  ): AuthzenAccessEvaluationResponseV1;
+  submitAccessRequest(input: {
+    submission: AuthzenAccessRequestSubmissionV1;
+    requesterRef: string;
+    idempotencyKey: string;
+    submittedAt: string;
+  }): AuthzenTaskResponseV1;
+  getAccessRequest(taskId: string): AuthzenTaskResponseV1;
+}
 
 export interface SyntheticWardenAuthzenHttpOptionsV1 {
   now: () => string;
@@ -52,7 +73,7 @@ function requestId(request: Request): string {
 }
 
 export async function handleSyntheticWardenAuthzenHttpV1(
-  pdp: SyntheticWardenAuthzenPdpV1,
+  pdp: SyntheticWardenAuthzenHttpPdpV1,
   request: Request,
   options: SyntheticWardenAuthzenHttpOptionsV1,
 ): Promise<Response> {
@@ -107,6 +128,20 @@ export async function handleSyntheticWardenAuthzenHttpV1(
     return new Response(null, { status: 404 });
   } catch (error) {
     if (error instanceof AuthzenProfileError) return problem(error);
+    if (
+      error instanceof Error &&
+      ["authzen_subject_required", "authzen_resource_required", "authzen_action_required"].includes(
+        error.message,
+      )
+    ) {
+      return problem(
+        new AuthzenProfileError(
+          400,
+          "urn:openid:authzen:error:invalid_request",
+          error.message,
+        ),
+      );
+    }
     throw error;
   }
 }
