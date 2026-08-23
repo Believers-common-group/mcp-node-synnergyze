@@ -3,6 +3,11 @@ import { describe, expect, it } from "vitest";
 import { SyntheticCpuComputeRunner } from "../../compute/runtime.ts";
 import { mapAlphaComputeRunnerToQelFrameV01 } from "./alpha-compute-adapter.ts";
 import {
+  bindConditionEvidenceThroughAccreditedCalibrationV01,
+  makeSyntheticCalibrationAuthorityBundleV01,
+  mapCalibrationAuthorityToQelFrameV01,
+} from "./calibration-authority-fixture.ts";
+import {
   makeSyntheticCircularPassportSnapshotV01,
   mapSyntheticCircularPassportToQelFrameV01,
 } from "./circular-passport-fixture.ts";
@@ -37,7 +42,7 @@ import {
 } from "./recovery-value-policy-fixture.ts";
 
 describe("QEL cross-domain Pod Pulse", () => {
-  it("reduces compute, factory, passport, recovery, device trust, evidence, condition, value, and settlement objects through one shared operating grammar", () => {
+  it("reduces compute, factory, passport, recovery, calibration authority, device trust, evidence, condition, value, and settlement through one grammar", () => {
     const observedAt = "2026-08-23T08:30:00.000Z";
     const compute = mapAlphaComputeRunnerToQelFrameV01({
       registration: new SyntheticCpuComputeRunner().registration,
@@ -69,17 +74,38 @@ describe("QEL cross-domain Pod Pulse", () => {
       route: "REPAIR",
     });
     const recovery = mapSyntheticRecoveryNodeToQelFrameV01(recoverySnapshot);
+
+    const baseCapture = makeSyntheticConditionEvidenceCaptureV01({ observedAt });
     const captureSnapshot = makeSyntheticConditionEvidenceCaptureV01({
       observedAt,
       correlationId: "QEL-CROSS-DOMAIN-EVIDENCE-001",
       recoveryNodeRef: recoverySnapshot.nodeRef,
       assetRef: passportSnapshot.assetRef,
       passportCycleRef: passportSnapshot.cycleRef,
-      facts: makeSyntheticConditionEvidenceCaptureV01({ observedAt }).facts.map((fact) =>
+      facts: baseCapture.facts.map((fact) =>
         fact.semanticId === "MAX_TEAR_LENGTH_MM" ? { ...fact, value: 10 } : fact,
       ),
     });
     const trustBundle = makeSyntheticInspectionDeviceTrustBundleV01(captureSnapshot);
+    const authorityBundle = makeSyntheticCalibrationAuthorityBundleV01(
+      trustBundle.calibrationCertificates,
+    );
+    const accreditedTrust = bindConditionEvidenceThroughAccreditedCalibrationV01({
+      capture: captureSnapshot,
+      recovery: recoverySnapshot,
+      passport: passportSnapshot,
+      ...trustBundle,
+      ...authorityBundle,
+    });
+    expect(accreditedTrust.ok).toBe(true);
+
+    const calibrationAuthority = mapCalibrationAuthorityToQelFrameV01({
+      calibrationCertificates: trustBundle.calibrationCertificates,
+      ...authorityBundle,
+      observedAt,
+      correlationId: "QEL-CROSS-DOMAIN-CAL-AUTH-001",
+      locationRef: recoverySnapshot.locationRef,
+    });
     const deviceTrust = mapInspectionDeviceTrustToQelFrameV01({
       capture: captureSnapshot,
       recovery: recoverySnapshot,
@@ -107,6 +133,7 @@ describe("QEL cross-domain Pod Pulse", () => {
       recovery: recoverySnapshot,
       passport: passportSnapshot,
     });
+
     const priceBook = makeSyntheticRecoveryValuePriceBookV01();
     const assessment = makeRecoveryValueAssessmentFromConditionV01({
       observation: conditionObservation,
@@ -151,6 +178,7 @@ describe("QEL cross-domain Pod Pulse", () => {
         factory,
         passport,
         recovery,
+        calibrationAuthority,
         deviceTrust,
         evidenceCapture,
         condition,
@@ -163,12 +191,13 @@ describe("QEL cross-domain Pod Pulse", () => {
     expect(factory.object.type).toBe("PRODUCTION_LINE");
     expect(passport.object.type).toBe("PRODUCT_PASSPORT");
     expect(recovery.object.type).toBe("RECOVERY_NODE");
+    expect(calibrationAuthority.object.type).toBe("CALIBRATION_AUTHORITY_TRUST");
     expect(deviceTrust.object.type).toBe("INSPECTION_DEVICE_TRUST");
     expect(evidenceCapture.object.type).toBe("CONDITION_EVIDENCE_CAPTURE");
     expect(condition.object.type).toBe("CONDITION_ASSESSMENT");
     expect(valueQuote.object.type).toBe("RECOVERY_VALUE_QUOTE");
     expect(settlement.object.type).toBe("RECOVERY_SETTLEMENT");
-    expect(pulse.now.objectCount).toBe(9);
+    expect(pulse.now.objectCount).toBe(10);
     expect(pulse.now.health).toBe("WATCH");
     expect(pulse.needs).toEqual([
       {
@@ -194,6 +223,12 @@ describe("QEL cross-domain Pod Pulse", () => {
         type: "APPROVAL",
         priority: "MODERATE",
         target: "select_next_lifecycle_route",
+      },
+      {
+        objectRef: "CALIBRATION-AUTHORITY:QEL-CROSS-DOMAIN-CAL-AUTH-001",
+        type: "APPROVAL",
+        priority: "MODERATE",
+        target: "accept_accredited_calibration_chain",
       },
       {
         objectRef: "DEVICE-TRUST:CAPTURE:GARMENT-98F1:CYCLE-01",
@@ -236,6 +271,12 @@ describe("QEL cross-domain Pod Pulse", () => {
     expect(
       pulse.moves.some(
         (move) =>
+          move.objectRef === calibrationAuthority.object.id && move.action === "ACCEPT_CALIBRATION_CHAIN",
+      ),
+    ).toBe(true);
+    expect(
+      pulse.moves.some(
+        (move) =>
           move.objectRef === deviceTrust.object.id && move.action === "ACCEPT_TRUSTED_CAPTURE",
       ),
     ).toBe(true);
@@ -261,6 +302,6 @@ describe("QEL cross-domain Pod Pulse", () => {
       ),
     ).toBe(true);
     expect(pulse.proof.verifiedOutcomes).toBe(0);
-    expect(pulse.proof.unresolvedOutcomes).toBe(9);
+    expect(pulse.proof.unresolvedOutcomes).toBe(10);
   });
 });
