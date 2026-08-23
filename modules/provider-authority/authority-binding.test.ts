@@ -70,7 +70,7 @@ function fixture(options: {
     state: "RESERVED",
     reservedAt: "2026-08-24T04:13:00+05:30",
   };
-  const grant: ProviderAuthorityGrantV1 & { actionRef: string; reservationRef: string } = {
+  const grant: ProviderAuthorityGrantV1 = {
     version: "WARDEN-PROVIDER-AUTHORITY-BRIDGE-001",
     grantRef: "PROVIDER-GRANT:BINDING-001",
     actionRef: action.actionRef,
@@ -103,22 +103,18 @@ function fixture(options: {
     requestedAt: "2026-08-24T04:15:00+05:30",
     correlationId: grant.correlationId,
   };
-
-  return {
-    gate: {
-      grant,
-      binding,
-      request,
-      decision,
-      checkpoint,
-      action,
-      reservation,
-      authorizedAt: "2026-08-24T04:15:00+05:30",
-    } as ProviderAuthorityGateInputV1 & {
-      action: ActionEnvelopeV1;
-      reservation: EvidenceReservationV1;
-    },
+  const gate: ProviderAuthorityGateInputV1 = {
+    grant,
+    binding,
+    request,
+    decision,
+    checkpoint,
+    action,
+    reservation,
+    authorizedAt: "2026-08-24T04:15:00+05:30",
   };
+
+  return { gate };
 }
 
 describe("Provider authority source binding review", () => {
@@ -146,6 +142,8 @@ describe("Provider authority source binding review", () => {
       version: "WARDEN-PROVIDER-AUTHORITY-BRIDGE-001",
       exceptionRef: "PROVIDER-EXCEPTION:CREDENTIAL-001",
       authorizationRef: "PROVIDER-AUTH:001",
+      actionRef: "ACTION:BINDING-001",
+      reservationRef: "RIVER-RESERVATION:BINDING-001",
       exceptionClass: "CREDENTIAL_EXCEPTION",
       effectState: "NONE",
       retryability: "SAFE",
