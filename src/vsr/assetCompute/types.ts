@@ -102,3 +102,12 @@ export type ExecutionState =
   | "RECOVERY"
   | "COMPENSATION"
   | "CLOSED";
+
+export interface RiverEvent {
+  eventId: string;
+  executionId: string;
+  eventType: string;
+  timestamp: string;
+  source: string;
+  payload: Readonly<Record<string, unknown>>;
+}
