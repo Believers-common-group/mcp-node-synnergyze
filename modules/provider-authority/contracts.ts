@@ -1,3 +1,4 @@
+import type { ActionEnvelopeV1, EvidenceReservationV1 } from "../river/contracts.ts";
 import type { WardenDecisionV1, WardenExecutionCheckpointV1 } from "../warden/contracts.ts";
 
 export type ProviderAuthorityBridgeVersionV1 = "WARDEN-PROVIDER-AUTHORITY-BRIDGE-001";
@@ -5,6 +6,8 @@ export type ProviderAuthorityBridgeVersionV1 = "WARDEN-PROVIDER-AUTHORITY-BRIDGE
 export interface ProviderAuthorityGrantV1 {
   version: ProviderAuthorityBridgeVersionV1;
   grantRef: string;
+  actionRef: string;
+  reservationRef: string;
   wardenDecisionRef: string;
   wardenCheckpointRef: string;
   delegatedAgentRef: string;
@@ -40,6 +43,8 @@ export interface ProviderAuthorityGateInputV1 {
   grant: ProviderAuthorityGrantV1;
   binding: ProviderPrincipalBindingV1;
   request: ProviderExecutionRequestV1;
+  action: ActionEnvelopeV1;
+  reservation: EvidenceReservationV1;
   decision: WardenDecisionV1;
   checkpoint: WardenExecutionCheckpointV1;
   authorizedAt: string;
@@ -51,6 +56,8 @@ export interface AuthorizedProviderExecutionV1 {
   state: "AUTHORIZED";
   grantRef: string;
   bindingRef: string;
+  actionRef: string;
+  reservationRef: string;
   wardenDecisionRef: string;
   wardenCheckpointRef: string;
   agentRef: string;
@@ -95,58 +102,36 @@ export interface ProviderExceptionV1 {
   version: ProviderAuthorityBridgeVersionV1;
   exceptionRef: string;
   authorizationRef: string;
+  actionRef: string;
+  reservationRef: string;
   exceptionClass: ProviderExceptionClassV1;
   effectState: ProviderEffectStateV1;
   retryability: ProviderRetryabilityV1;
   severity: ProviderExceptionSeverityV1;
   failureKind: ProviderFailureKindV1;
   message: string;
-  executionRef?: string;
+  executionReceiptRef?: string;
   parentExceptionRef?: string;
-  originatingExecutionRef?: string;
+  originatingExecutionReceiptRef?: string;
 }
 
 export type ProviderAttemptResultV1<T> =
-  | { state: "SUCCEEDED"; authorizationRef: string; value: T }
-  | { state: "EXCEPTION"; authorizationRef: string; exception: ProviderExceptionV1 };
+  | { state: "SUCCEEDED"; authorization: AuthorizedProviderExecutionV1; value: T }
+  | { state: "EXCEPTION"; authorization: AuthorizedProviderExecutionV1; exception: ProviderExceptionV1 };
 
 export type ProviderRecoveryActionV1 =
-  | "RETRY"
+  | "RETRY_AFTER_REAUTHORIZATION"
   | "RECONCILE_FIRST"
   | "ABORT"
   | "CONTAIN"
   | "POLICY_DECISION_REQUIRED";
 
-export interface ProviderExecutionIntentV1 {
-  effectKey: string;
-  requestDigest: string;
-}
-
-export interface ProviderExecutionRecordV1 {
-  version: ProviderAuthorityBridgeVersionV1;
-  executionRef: string;
-  effectKey: string;
-  governedIntentDigest: string;
-  firstAuthorizationRef: string;
-  requestDigest: string;
-  agentRef: string;
-  providerRef: string;
-  providerPrincipalRef: string;
-  capabilityRef: string;
-  purposeRef: string;
-  resourceRefs: readonly string[];
-  correlationId: string;
-}
-
-export interface ProviderExecutionResolutionV1 {
-  execution: ProviderExecutionRecordV1;
-  idempotentReplay: boolean;
-}
-
 export interface ProviderAttemptEvidenceV1 {
   attemptRef: string;
-  executionRef: string;
   authorizationRef: string;
+  actionRef: string;
+  reservationRef: string;
+  executionReceiptRef?: string;
   requestHash: string;
   responseHash?: string;
   capturedAt: string;
@@ -154,7 +139,8 @@ export interface ProviderAttemptEvidenceV1 {
 
 export interface ProviderCompensationLineageV1 {
   compensationPlanRef: string;
-  originalExecutionRef: string;
-  compensationExecutionRef: string;
+  originalExecutionReceiptRef: string;
+  originalActionRef: string;
+  compensationActionRef: string;
   originalExceptionRef: string;
 }
