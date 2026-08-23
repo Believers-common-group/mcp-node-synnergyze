@@ -1,0 +1,41 @@
+name: Runtime AuthZ Bridge
+
+on:
+  push:
+    branches:
+      - genesis
+    paths:
+      - 'modules/warden/runtime-authz-bridge.ts'
+      - 'modules/warden/runtime-authz-bridge.test.ts'
+      - 'modules/warden/decision-service.ts'
+      - 'modules/warden/contracts.ts'
+      - '.github/workflows/runtime-authz-bridge.yml'
+  pull_request:
+    branches:
+      - genesis
+    paths:
+      - 'modules/warden/runtime-authz-bridge.ts'
+      - 'modules/warden/runtime-authz-bridge.test.ts'
+      - 'modules/warden/decision-service.ts'
+      - 'modules/warden/contracts.ts'
+      - '.github/workflows/runtime-authz-bridge.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-authz-bridge:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Type check
+        run: npm run type-check
+      - name: Existing Warden decision suite
+        run: npm run test:warden-decision -- --run
+      - name: Runtime AuthZ bridge suite
+        run: npx vitest run modules/warden/runtime-authz-bridge.test.ts
