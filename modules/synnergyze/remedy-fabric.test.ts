@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 
 import type { ActionEnvelopeV1, EvidenceReservationV1 } from "../river/contracts.ts";
-import type { WardenDecisionRequestV1 } from "../warden/contracts.ts";
+import type {
+  WardenDecisionRequestV1,
+  WardenExecutionCheckpointV1,
+} from "../warden/contracts.ts";
 import {
   evaluateSyntheticWardenDecisionV1,
   type SyntheticWardenDecisionPolicyV1,
@@ -37,6 +40,7 @@ import { RemedyLineageClosureServiceV1 } from "./remedy-lineage-closure.ts";
 
 const RECONCILED_AT = "2026-08-23T05:01:00.000Z";
 const DECIDED_AT = "2026-08-23T05:01:20.000Z";
+const CHECKED_AT = "2026-08-23T05:01:25.000Z";
 const EXECUTED_AT = "2026-08-23T05:01:30.000Z";
 const OBSERVED_AT = "2026-08-23T05:01:40.000Z";
 const VERIFIED_AT = "2026-08-23T05:01:50.000Z";
@@ -178,6 +182,22 @@ function authorize(kind: "RECOVER" | "COMPENSATE") {
   return { ...fixture, request, decision, grant: authorization.grant };
 }
 
+function checkpoint(
+  grant: RemedyAuthorizationGrantV1,
+  overrides: Partial<WardenExecutionCheckpointV1> = {},
+): WardenExecutionCheckpointV1 {
+  return {
+    checkpointRef: `WARDEN-REMEDY-CHECKPOINT:${grant.authorizationRef}`,
+    decisionRef: grant.remedyWardenDecisionRef,
+    wardenRef: grant.remedyWardenRef,
+    correlationId: grant.remedyCorrelationId,
+    state: "VALID",
+    checkedAt: CHECKED_AT,
+    reasonCodes: ["synthetic_remedy_checkpoint_valid"],
+    ...overrides,
+  };
+}
+
 function observation(
   receipt: RemedyExecutionReceiptV1,
   grant: RemedyAuthorizationGrantV1,
@@ -210,7 +230,9 @@ class FailingAdapter implements RemedyExecutionAdapterV1 {
   readonly adapterRef = "SYNTHETIC-FAILING-REMEDY-ADAPTER-001";
   readonly capabilityRef = "reconciliation.recover";
   invocations = 0;
-  async execute() {
+  async execute(
+    _input: Parameters<RemedyExecutionAdapterV1["execute"]>[0],
+  ): Promise<{ adapterResultRef: string }> {
     this.invocations += 1;
     throw new Error("provider_outcome_unknown");
   }
@@ -223,7 +245,7 @@ describe("WARDEN-REMEDY-FABRIC-1.1", () => {
     expect(fixture.grant.originalWardenDecisionRef).not.toBe(fixture.grant.remedyWardenDecisionRef);
     expect(fixture.grant.parentCorrelationId).not.toBe(fixture.grant.remedyCorrelationId);
     expect(fixture.grant.actionTokenDigest).toMatch(/^sha256:/);
-    expect(JSON.stringify(fixture.grant)).not.toContain("actionToken");
+    expect(Object.prototype.hasOwnProperty.call(fixture.grant, "actionToken")).toBe(false);
     expect(JSON.stringify(fixture.grant)).not.toContain(fixture.decision.actionToken);
   });
 
@@ -251,24 +273,46 @@ describe("WARDEN-REMEDY-FABRIC-1.1", () => {
     })).toEqual({ state: "REJECTED_INPUT", reasonCode: "REMEDY_MANUAL_REVIEW_NOT_EXECUTABLE" });
   });
 
+  it("rejects a revoked execution-time Warden checkpoint before invoking the adapter", async () => {
+    const fixture = authorize("RECOVER");
+    const adapter = new SyntheticRecoveryRemedyAdapterV1();
+    const result = await new RemedyExecutionGateV1([adapter]).execute({
+      determination: fixture.determination,
+      proposal: fixture.proposal,
+      grant: fixture.grant,
+      checkpoint: checkpoint(fixture.grant, { state: "REVOKED" }),
+      journal: new InMemoryRemedyExecutionJournalV1(),
+      executedAt: EXECUTED_AT,
+    });
+    expect(result).toEqual({
+      state: "REJECTED_INPUT",
+      reasonCode: "REMEDY_EXECUTION_CHECKPOINT_NOT_VALID",
+    });
+    expect(adapter.invocationCount()).toBe(0);
+  });
+
   it("executes recovery once, replays the durable receipt, verifies the remedy and supersedes append-only", async () => {
     const fixture = authorize("RECOVER");
     const adapter = new SyntheticRecoveryRemedyAdapterV1();
     const journal = new InMemoryRemedyExecutionJournalV1();
     const gate = new RemedyExecutionGateV1([adapter]);
+    const executionCheckpoint = checkpoint(fixture.grant);
     const first = await gate.execute({
       determination: fixture.determination,
       proposal: fixture.proposal,
       grant: fixture.grant,
+      checkpoint: executionCheckpoint,
       journal,
       executedAt: EXECUTED_AT,
     });
     expect(first.state).toBe("EXECUTED_UNVERIFIED_REMEDY");
     if (first.state !== "EXECUTED_UNVERIFIED_REMEDY") throw new Error("expected_execution");
+    expect(first.receipt.remedyCheckpointRef).toBe(executionCheckpoint.checkpointRef);
     const replay = await gate.execute({
       determination: fixture.determination,
       proposal: fixture.proposal,
       grant: fixture.grant,
+      checkpoint: executionCheckpoint,
       journal,
       executedAt: EXECUTED_AT,
     });
@@ -317,6 +361,7 @@ describe("WARDEN-REMEDY-FABRIC-1.1", () => {
       determination: fixture.determination,
       proposal: fixture.proposal,
       grant: fixture.grant,
+      checkpoint: checkpoint(fixture.grant),
       journal: new InMemoryRemedyExecutionJournalV1(),
       executedAt: EXECUTED_AT,
     });
@@ -362,10 +407,12 @@ describe("WARDEN-REMEDY-FABRIC-1.1", () => {
     const adapter = new FailingAdapter();
     const journal = new InMemoryRemedyExecutionJournalV1();
     const gate = new RemedyExecutionGateV1([adapter]);
+    const executionCheckpoint = checkpoint(fixture.grant);
     const first = await gate.execute({
       determination: fixture.determination,
       proposal: fixture.proposal,
       grant: fixture.grant,
+      checkpoint: executionCheckpoint,
       journal,
       executedAt: EXECUTED_AT,
     });
@@ -378,6 +425,7 @@ describe("WARDEN-REMEDY-FABRIC-1.1", () => {
       determination: fixture.determination,
       proposal: fixture.proposal,
       grant: fixture.grant,
+      checkpoint: executionCheckpoint,
       journal,
       executedAt: EXECUTED_AT,
     });
