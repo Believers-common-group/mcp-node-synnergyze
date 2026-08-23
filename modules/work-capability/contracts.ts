@@ -115,7 +115,9 @@ export interface CapabilityOutcomeV1 {
   workUnitRef: string;
   state: "FULL_EFFECT" | "PARTIAL_EFFECT" | "FAILED_EFFECT";
   requiredQuantity: number;
+  outputQuantity: number;
   acceptedQuantity: number;
+  reworkQuantity: number;
   firstPassQuality: number;
   requiredFirstPassQuality: number;
 }
