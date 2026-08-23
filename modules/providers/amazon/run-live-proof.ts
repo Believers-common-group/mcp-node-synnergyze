@@ -2,6 +2,7 @@ import { readFile } from "node:fs/promises";
 
 import { Pool } from "@neondatabase/serverless";
 
+import { AmazonBnrOrdersRuntimeV1 } from "./bnr-orders-runtime.ts";
 import {
   AmazonOrdersGovernedRuntimeV1,
   type AmazonOrdersSearchQueryV1,
@@ -9,6 +10,7 @@ import {
 } from "./governed-orders-runtime.ts";
 import {
   assertAmazonLiveProofPrerequisitesV1,
+  evaluateAmazonLiveProofBnrReadinessV1,
   type AmazonLiveAuthorityBundleV1,
 } from "./live-proof.ts";
 import { PostgresAmazonRegistryOutboxWriterV1 } from "./postgres-registry-outbox-writer.ts";
@@ -79,12 +81,14 @@ async function main(): Promise<void> {
 
   const authority = await loadAuthorityBundle(authorityPath);
   const query = searchQuery();
+  const activationAck = process.env.AMAZON_E2E_LIVE_ACK;
   assertAmazonLiveProofPrerequisitesV1({
-    activationAck: process.env.AMAZON_E2E_LIVE_ACK,
+    activationAck,
     authority,
     includedData: query.includedData ?? [],
   });
 
+  const config = amazonConfig();
   const databaseUrl = requiredEnv("CWR_REGISTRY_DATABASE_URL");
   const pool = new Pool({ connectionString: databaseUrl });
   const client = await pool.connect();
@@ -103,10 +107,11 @@ async function main(): Promise<void> {
 
   try {
     const registryWriter = new PostgresAmazonRegistryOutboxWriterV1(db);
-    const runtime = new AmazonOrdersGovernedRuntimeV1({
-      config: amazonConfig(),
+    const providerRuntime = new AmazonOrdersGovernedRuntimeV1({
+      config,
       registryWriter,
     });
+    const runtime = new AmazonBnrOrdersRuntimeV1(providerRuntime);
     const executedAt = new Date().toISOString();
     const result = await runtime.sync({
       action: authority.action,
@@ -118,22 +123,48 @@ async function main(): Promise<void> {
       observedAt: executedAt,
     });
 
+    const providerObserved = result.state === "SYNCED";
+    const registryCommitted = result.registry.registryRevisionRef !== null;
+    const riverSealVerified = result.river.sealed;
+    const bnrReadiness = evaluateAmazonLiveProofBnrReadinessV1({
+      activationAck,
+      authority,
+      includedData: query.includedData ?? [],
+      bnrEvidence: {
+        partnerLifecycle: "PROPOSED_PARTNER",
+        runtimeReadiness: providerObserved ? "READY" : "BLOCKED",
+        authorityState: "EXTERNAL_UNRESOLVED",
+        evidenceState: riverSealVerified ? "READY" : "UNRESOLVED",
+        commercialState: "UNRESOLVED",
+        requiredServicesResolved: true,
+        wardenPolicyActive: true,
+        riverOperational: riverSealVerified,
+        registryDurable: registryCommitted,
+        activationEvidenceValid: false,
+        suspended: false,
+        amazonCredentialsPresent: true,
+        engagementContextPresent: process.env.AMAZON_BNR_ENGAGEMENT_CONTEXT_PRESENT === "true",
+        readinessCheckedAt: executedAt,
+      },
+    });
+
     const report = {
       proof: "PROVIDER-AMAZON-ORDERS-LIVE-001",
+      bnrNodeRef: result.bnrNodeRef,
+      serviceRef: result.serviceRef,
+      bnrReadiness,
       state: result.state,
-      providerObserved: result.state === "SYNCED",
-      registryCommitted: result.registry.registryRevisionRef !== null,
-      registryOutboxCommitted: result.state === "SYNCED" && result.registry.registryRevisionRef !== null,
-      riverSealVerified: result.river.sealed,
+      providerObserved,
+      registryCommitted,
+      registryOutboxCommitted: providerObserved && registryCommitted,
+      riverSealVerified,
       silkSettlementFinality: result.silk.settlementFinality,
       moneyMoved: result.silk.moneyMoved,
       vsrEmpireRevisionEquivalent:
         result.vsr.registryRevisionRef === result.empire.registryRevisionRef &&
         JSON.stringify(result.vsr.orderRefs) === JSON.stringify(result.empire.orderRefs),
-      c2LiveProofComplete:
-        result.state === "SYNCED" &&
-        result.registry.registryRevisionRef !== null &&
-        result.river.sealed,
+      c2LiveProofComplete: providerObserved && registryCommitted && riverSealVerified,
+      bnrActivationComplete: bnrReadiness.activationState === "ACTIVE",
       result,
     };
 
