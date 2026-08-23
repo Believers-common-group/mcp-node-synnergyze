@@ -114,6 +114,7 @@ describe("PostgresRegistryExceptionResolutionWriterV1", () => {
 
     const result = await new PostgresRegistryExceptionResolutionWriterV1(db).append(source);
     expect(result.state).toBe("IDEMPOTENT_REPLAY");
+    if (result.state !== "IDEMPOTENT_REPLAY") throw new Error("expected_idempotent_replay");
     expect(result.registryRevisionRef).toBe(source.registryRevisionRef);
   });
 
