@@ -132,7 +132,7 @@ describe("QEL cross-domain Pod Pulse", () => {
         target: "restore_material_flow",
       },
       {
-        objectRef: "RECOVERY-VALUE:GARMENT-98F1:GARMENT-98F1:CYCLE-01",
+        objectRef: "RECOVERY-VALUE:GARMENT-98F1:CYCLE-01",
         type: "APPROVAL",
         priority: "HIGH",
         target: "create_recovery_settlement_obligation",
