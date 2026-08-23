@@ -46,11 +46,20 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
   private readonly transactions = new Map<string, ModernJourneyTransactionV1>();
   private readonly eventLog = new ModernJourneyEventLogV1();
 
-  open(input: CreateModernJourneyTransactionInputV1 & { actorRef: string; openedAt: string }): ModernJourneyRuntimeSnapshotV1 {
+  open(
+    input: CreateModernJourneyTransactionInputV1 & { actorRef: string; openedAt: string },
+  ): ModernJourneyRuntimeSnapshotV1 {
     if (this.transactions.has(input.transactionRef)) throw new Error("modern_runtime_transaction_exists");
     if (!input.actorRef.trim()) throw new Error("modern_runtime_actor_ref_required");
     assertInstant(input.openedAt, "modern_runtime_invalid_open_time");
-    const transaction = createModernJourneyTransactionV1(input);
+    const transaction = createModernJourneyTransactionV1({
+      transactionRef: input.transactionRef,
+      journeyRef: input.journeyRef,
+      silkAccountRef: input.silkAccountRef,
+      economicOwnerRef: input.economicOwnerRef,
+      amount: input.amount,
+      currency: input.currency,
+    });
     this.eventLog.append({
       idempotencyKey: `${transaction.transactionRef}:TRANSACTION_OPENED`,
       transactionRef: transaction.transactionRef,
@@ -82,8 +91,15 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
     if (!input.fallback && transaction.state !== "OPEN") {
       throw new Error("modern_runtime_primary_reservation_state_conflict");
     }
-    if (input.fallback && transaction.state !== "RECOVERY_REQUIRED") {
-      throw new Error("modern_runtime_fallback_reservation_state_conflict");
+    if (input.fallback) {
+      if (transaction.state !== "RECOVERY_REQUIRED") {
+        throw new Error("modern_runtime_fallback_reservation_state_conflict");
+      }
+      const fallbackDecisionRef = this.latestFallbackDecisionRef(transaction.transactionRef);
+      if (!fallbackDecisionRef) throw new Error("modern_runtime_fallback_authorization_required");
+      if (fallbackDecisionRef !== input.reservation.wardenDecisionRef) {
+        throw new Error("modern_runtime_fallback_reservation_decision_mismatch");
+      }
     }
     this.eventLog.append({
       idempotencyKey: `${transaction.transactionRef}:${input.reservation.reservationRef}:RESERVED`,
@@ -149,6 +165,10 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
     if (transaction.state !== "RECOVERY_REQUIRED") throw new Error("modern_runtime_release_state_conflict");
     if (input.reservation.state !== "RELEASED") throw new Error("modern_runtime_released_resource_required");
     this.assertReservationLineage(transaction, input.reservation);
+    const projection = this.snapshot(transaction.transactionRef).projection;
+    if (!projection.activeResourceRefs.includes(input.reservation.resourceRef)) {
+      throw new Error("modern_runtime_release_resource_not_active");
+    }
     this.eventLog.append({
       idempotencyKey: `${transaction.transactionRef}:${input.reservation.reservationRef}:RELEASED`,
       transactionRef: transaction.transactionRef,
@@ -176,6 +196,10 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
     const transaction = this.requireTransaction(input.transactionRef);
     if (transaction.state !== "RECOVERY_REQUIRED") {
       throw new Error("modern_runtime_fallback_authorization_state_conflict");
+    }
+    const projection = this.snapshot(transaction.transactionRef).projection;
+    if (projection.activeResourceRefs.length > 0) {
+      throw new Error("modern_runtime_fallback_requires_primary_release");
     }
     if (input.decision.decision !== "ALLOW") throw new Error("modern_runtime_fallback_warden_allow_required");
     if (input.decision.action !== input.capabilityRef) {
@@ -224,6 +248,17 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
     this.assertReservationLineage(transaction, input.consumedReservation);
     if (input.consumedReservation.wardenDecisionRef !== input.receipt.wardenDecisionRef) {
       throw new Error("modern_runtime_consumed_resource_decision_mismatch");
+    }
+    if (transaction.state === "RECOVERY_REQUIRED") {
+      const fallbackDecisionRef = this.latestFallbackDecisionRef(transaction.transactionRef);
+      if (!fallbackDecisionRef) throw new Error("modern_runtime_fallback_authorization_required");
+      if (fallbackDecisionRef !== input.receipt.wardenDecisionRef) {
+        throw new Error("modern_runtime_fallback_execution_decision_mismatch");
+      }
+    }
+    const projectionBefore = this.snapshot(transaction.transactionRef).projection;
+    if (!projectionBefore.activeResourceRefs.includes(input.consumedReservation.resourceRef)) {
+      throw new Error("modern_runtime_consumed_resource_not_reserved");
     }
     const updated = recordModernProviderExecutionV1(transaction, {
       attemptRef: input.attemptRef,
@@ -354,6 +389,14 @@ export class SyntheticModernJourneyTransactionRuntimeV1 {
     const transaction = this.transactions.get(transactionRef);
     if (!transaction) throw new Error("modern_runtime_transaction_not_found");
     return transaction;
+  }
+
+  private latestFallbackDecisionRef(transactionRef: string): string | undefined {
+    const event = [...this.eventLog.stream(transactionRef)]
+      .reverse()
+      .find((candidate) => candidate.eventType === "FALLBACK_AUTHORIZED");
+    const decisionRef = event?.payload.wardenDecisionRef;
+    return typeof decisionRef === "string" && decisionRef.trim() ? decisionRef : undefined;
   }
 
   private assertReservationLineage(
