@@ -21,6 +21,7 @@
     "test:warden-decision": "vitest run modules/warden/decision-service.test.ts",
     "test:warden-mcp": "vitest run modules/warden/decision-service.test.ts src/tools/registerWardenConformanceDecision.test.ts src/commands/start-server.warden.test.ts",
     "test:river-reservation": "vitest run modules/river/reservation-service.test.ts",
+    "test:warden-river-mcp": "vitest run modules/warden/decision-service.test.ts modules/river/reservation-service.test.ts src/tools/registerRiverWardenConformanceReservation.test.ts src/commands/start-server.river.test.ts",
     "test:controlled-execution": "vitest run modules/synnergyze/execution-gate.test.ts",
     "test:effect-verification": "vitest run modules/synnergyze/effect-verification.test.ts",
     "test:objective": "vitest run modules/objective/inventory-transfer.test.ts",
