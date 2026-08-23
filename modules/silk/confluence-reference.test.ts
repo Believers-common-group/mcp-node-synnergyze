@@ -94,6 +94,18 @@ function authorizedChain(capabilityRef: string, suffix: string) {
   return { decisionRequest, decision, action, reservation, checkpoint };
 }
 
+function creditReservations(): SyntheticSilkResourceReservationServiceV1 {
+  return new SyntheticSilkResourceReservationServiceV1([
+    {
+      resourceRef: "FUNDING:CORPORATE-CREDIT-001",
+      silkAccountRef: "SILK-ENT-042",
+      resourceType: "CREDIT",
+      capacity: 5000,
+      unit: "INR",
+    },
+  ]);
+}
+
 describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
   it("resolves Mastercard primary and Visa fallback without collapsing provider identity", () => {
     const registry = new SyntheticSilkCapabilityRegistryV1([
@@ -129,14 +141,7 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
   });
 
   it("prevents two journeys from over-reserving authoritative scarce financial capacity", () => {
-    const reservations = new SyntheticSilkResourceReservationServiceV1([
-      {
-        resourceRef: "FUNDING:CORPORATE-CREDIT-001",
-        resourceType: "CREDIT",
-        capacity: 5000,
-        unit: "INR",
-      },
-    ]);
+    const reservations = creditReservations();
     const first = reservations.reserve({
       journeyRef: "MJ-000001",
       silkAccountRef: "SILK-ENT-042",
@@ -182,15 +187,22 @@ describe("SILK-CONFLUENCE-REFERENCE-0.1", () => {
     expect(replay.idempotentReplay).toBe(true);
   });
 
-  it("rejects resource requests that drift from the registered resource type or unit", () => {
-    const reservations = new SyntheticSilkResourceReservationServiceV1([
-      {
+  it("rejects cross-account, resource-type, and unit drift against registered capacity", () => {
+    const reservations = creditReservations();
+
+    expect(() =>
+      reservations.reserve({
+        journeyRef: "MJ-000001",
+        silkAccountRef: "SILK-IND-001",
         resourceRef: "FUNDING:CORPORATE-CREDIT-001",
         resourceType: "CREDIT",
-        capacity: 5000,
+        quantity: 1,
         unit: "INR",
-      },
-    ]);
+        wardenDecisionRef: "WARDEN-DECISION:001",
+        correlationId: "TXN-ACCOUNT-DRIFT",
+        reservedAt: RESERVED_AT,
+      }),
+    ).toThrow("silk_resource_account_mismatch");
 
     expect(() =>
       reservations.reserve({
