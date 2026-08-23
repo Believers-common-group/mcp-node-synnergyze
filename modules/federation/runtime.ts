@@ -8,7 +8,6 @@ import {
 import type {
   WardenAllowDecisionV1,
   WardenDecisionRequestV1,
-  WardenDecisionV1,
   WardenExecutionCheckpointV1,
   WardenNonAllowDecisionV1,
 } from "../warden/contracts.ts";
@@ -62,6 +61,11 @@ export interface FederatedLicenceCompletedR1 {
   effectReceipt: VerifiedEffectV1;
 }
 
+export interface FederatedLicenceBlockedSourceR1 {
+  state: "BLOCKED_SOURCE";
+  sourceDecision: WardenNonAllowDecisionV1;
+}
+
 export interface FederatedLicenceBlockedDestinationR1 {
   state: "BLOCKED_DESTINATION";
   sourceDecision: WardenAllowDecisionV1;
@@ -70,6 +74,7 @@ export interface FederatedLicenceBlockedDestinationR1 {
 
 export type FederatedLicenceResultR1 =
   | FederatedLicenceCompletedR1
+  | FederatedLicenceBlockedSourceR1
   | FederatedLicenceBlockedDestinationR1;
 
 export interface ExecuteSyntheticFederatedLicenceInputR1 {
@@ -85,13 +90,6 @@ export interface ExecuteSyntheticFederatedLicenceInputR1 {
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
-}
-
-function requireSourceAllow(decision: WardenDecisionV1): WardenAllowDecisionV1 {
-  if (decision.decision !== "ALLOW") {
-    throw new Error("federation_source_warden_allow_required");
-  }
-  return decision;
 }
 
 class SyntheticFederatedLicenceRecognitionAdapterR1 implements SyntheticCapabilityAdapterV1 {
@@ -156,9 +154,15 @@ class SyntheticFederatedLicenceObservationSourceR1
 export function executeSyntheticFederatedLicenceR1(
   input: ExecuteSyntheticFederatedLicenceInputR1,
 ): FederatedLicenceResultR1 {
-  const sourceDecision = requireSourceAllow(evaluateSyntheticWardenDecisionV1(input.source));
-  const destinationDecision = evaluateSyntheticWardenDecisionV1(input.destination);
+  const sourceDecision = evaluateSyntheticWardenDecisionV1(input.source);
+  if (sourceDecision.decision !== "ALLOW") {
+    return {
+      state: "BLOCKED_SOURCE",
+      sourceDecision,
+    };
+  }
 
+  const destinationDecision = evaluateSyntheticWardenDecisionV1(input.destination);
   if (destinationDecision.decision !== "ALLOW") {
     return {
       state: "BLOCKED_DESTINATION",
