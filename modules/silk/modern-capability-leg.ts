@@ -19,6 +19,7 @@ export type ModernCapabilityLegStateV1 =
   | "RECOVERY_REQUIRED"
   | "BLOCKED"
   | "EXECUTED_UNVERIFIED"
+  | "EFFECT_VERIFIED"
   | "CLOSED";
 
 export interface ModernCapabilityConsumptionV1 {
@@ -167,7 +168,9 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
     fallback: boolean;
   }): ModernCapabilityLegSnapshotV1 {
     const leg = this.requireLeg(input.legRef);
-    if (input.reservation.state !== "RESERVED") throw new Error("modern_capability_leg_reserved_resource_required");
+    if (input.reservation.state !== "RESERVED") {
+      throw new Error("modern_capability_leg_reserved_resource_required");
+    }
     this.assertReservationLineage(leg, input.reservation);
     if (!input.fallback && leg.state !== "OPEN") {
       throw new Error("modern_capability_leg_primary_reservation_state_conflict");
@@ -181,7 +184,12 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
       if (authorization.decisionRef !== input.reservation.wardenDecisionRef) {
         throw new Error("modern_capability_leg_fallback_reservation_decision_mismatch");
       }
-      if (parseInstant(input.reservation.reservedAt, "modern_capability_leg_invalid_reservation_time") < authorization.authorizedAt) {
+      if (
+        parseInstant(
+          input.reservation.reservedAt,
+          "modern_capability_leg_invalid_reservation_time",
+        ) < authorization.authorizedAt
+      ) {
         throw new Error("modern_capability_leg_fallback_reservation_before_authorization");
       }
     }
@@ -266,7 +274,9 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
     if (leg.state !== "RECOVERY_REQUIRED" && leg.state !== "BLOCKED") {
       throw new Error("modern_capability_leg_release_state_conflict");
     }
-    if (input.reservation.state !== "RELEASED") throw new Error("modern_capability_leg_released_resource_required");
+    if (input.reservation.state !== "RELEASED") {
+      throw new Error("modern_capability_leg_released_resource_required");
+    }
     this.assertReservationLineage(leg, input.reservation);
     const projection = this.snapshot(leg.legRef).projection;
     if (!projection.activeResourceRefs.includes(input.reservation.resourceRef)) {
@@ -297,17 +307,34 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
     authorizedAt: string;
   }): ModernCapabilityLegSnapshotV1 {
     const leg = this.requireLeg(input.legRef);
-    if (leg.state !== "RECOVERY_REQUIRED") throw new Error("modern_capability_leg_fallback_state_conflict");
+    if (leg.state !== "RECOVERY_REQUIRED") {
+      throw new Error("modern_capability_leg_fallback_state_conflict");
+    }
     const projection = this.snapshot(leg.legRef).projection;
     if (projection.activeResourceRefs.length > 0) {
       throw new Error("modern_capability_leg_fallback_requires_release");
     }
-    if (input.decision.decision !== "ALLOW") throw new Error("modern_capability_leg_fallback_allow_required");
-    if (input.decision.action !== input.capabilityRef) throw new Error("modern_capability_leg_fallback_capability_mismatch");
-    if (!input.decision.validUntil) throw new Error("modern_capability_leg_fallback_validity_required");
-    const decided = parseInstant(input.decision.decidedAt, "modern_capability_leg_invalid_decision_time");
-    const validUntil = parseInstant(input.decision.validUntil, "modern_capability_leg_invalid_decision_validity");
-    const authorized = parseInstant(input.authorizedAt, "modern_capability_leg_invalid_authorization_time");
+    if (input.decision.decision !== "ALLOW") {
+      throw new Error("modern_capability_leg_fallback_allow_required");
+    }
+    if (input.decision.action !== input.capabilityRef) {
+      throw new Error("modern_capability_leg_fallback_capability_mismatch");
+    }
+    if (!input.decision.validUntil) {
+      throw new Error("modern_capability_leg_fallback_validity_required");
+    }
+    const decided = parseInstant(
+      input.decision.decidedAt,
+      "modern_capability_leg_invalid_decision_time",
+    );
+    const validUntil = parseInstant(
+      input.decision.validUntil,
+      "modern_capability_leg_invalid_decision_validity",
+    );
+    const authorized = parseInstant(
+      input.authorizedAt,
+      "modern_capability_leg_invalid_authorization_time",
+    );
     if (validUntil < decided) throw new Error("modern_capability_leg_invalid_decision_window");
     if (authorized < decided) throw new Error("modern_capability_leg_authorized_before_decision");
     if (authorized > validUntil) throw new Error("modern_capability_leg_decision_expired");
@@ -344,12 +371,16 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
     if (leg.state !== "OPEN" && leg.state !== "RECOVERY_REQUIRED") {
       throw new Error("modern_capability_leg_execution_state_conflict");
     }
-    if (input.consumedReservation.state !== "CONSUMED") throw new Error("modern_capability_leg_consumed_resource_required");
+    if (input.consumedReservation.state !== "CONSUMED") {
+      throw new Error("modern_capability_leg_consumed_resource_required");
+    }
     this.assertReservationLineage(leg, input.consumedReservation);
     if (input.consumedReservation.wardenDecisionRef !== input.receipt.wardenDecisionRef) {
       throw new Error("modern_capability_leg_consumed_decision_mismatch");
     }
-    if (input.receipt.programRef !== leg.journeyRef) throw new Error("modern_capability_leg_execution_journey_mismatch");
+    if (input.receipt.programRef !== leg.journeyRef) {
+      throw new Error("modern_capability_leg_execution_journey_mismatch");
+    }
     if (leg.attempts.some((attempt) => attempt.attemptRef === input.attemptRef)) {
       throw new Error("modern_capability_leg_attempt_ref_conflict");
     }
@@ -359,7 +390,10 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
       if (authorization.decisionRef !== input.receipt.wardenDecisionRef) {
         throw new Error("modern_capability_leg_fallback_execution_decision_mismatch");
       }
-      if (parseInstant(input.receipt.executedAt, "modern_capability_leg_invalid_execution_time") < authorization.authorizedAt) {
+      if (
+        parseInstant(input.receipt.executedAt, "modern_capability_leg_invalid_execution_time") <
+        authorization.authorizedAt
+      ) {
         throw new Error("modern_capability_leg_execution_before_authorization");
       }
     }
@@ -377,7 +411,12 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
     }
 
     const consumptionRef = `SILK-CAPABILITY-CONSUMPTION:${digest(
-      [leg.legRef, input.attemptRef, input.consumedReservation.reservationRef, input.receipt.receiptRef].join("|"),
+      [
+        leg.legRef,
+        input.attemptRef,
+        input.consumedReservation.reservationRef,
+        input.receipt.receiptRef,
+      ].join("|"),
     ).slice(0, 24)}`;
     const consumption: ModernCapabilityConsumptionV1 = {
       consumptionRef,
@@ -459,8 +498,12 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
     closedAt: string;
   }): ModernCapabilityLegSnapshotV1 {
     const leg = this.requireLeg(input.legRef);
-    if (leg.state !== "EXECUTED_UNVERIFIED") throw new Error("modern_capability_leg_effect_state_conflict");
-    if (!leg.successfulExecutionReceiptRef) throw new Error("modern_capability_leg_success_receipt_required");
+    if (leg.state !== "EXECUTED_UNVERIFIED") {
+      throw new Error("modern_capability_leg_effect_state_conflict");
+    }
+    if (!leg.successfulExecutionReceiptRef) {
+      throw new Error("modern_capability_leg_success_receipt_required");
+    }
     if (input.verification.effect.executionReceiptRef !== leg.successfulExecutionReceiptRef) {
       throw new Error("modern_capability_leg_effect_execution_mismatch");
     }
@@ -468,7 +511,9 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
       throw new Error("modern_capability_leg_effect_journey_mismatch");
     }
     const projection = this.snapshot(leg.legRef).projection;
-    if (projection.activeResourceRefs.length > 0) throw new Error("modern_capability_leg_close_with_active_resource");
+    if (projection.activeResourceRefs.length > 0) {
+      throw new Error("modern_capability_leg_close_with_active_resource");
+    }
 
     this.eventLog.append({
       idempotencyKey: `${leg.legRef}:${input.verification.effect.effectRef}:VERIFIED`,
@@ -517,7 +562,9 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
     return leg;
   }
 
-  private latestFallbackAuthorization(legRef: string): { decisionRef: string; authorizedAt: number } | undefined {
+  private latestFallbackAuthorization(
+    legRef: string,
+  ): { decisionRef: string; authorizedAt: number } | undefined {
     const event = [...this.eventLog.stream(legRef)]
       .reverse()
       .find((candidate) => candidate.eventType === "FALLBACK_AUTHORIZED");
@@ -525,7 +572,10 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
     if (!event || typeof decisionRef !== "string" || !decisionRef.trim()) return undefined;
     return {
       decisionRef,
-      authorizedAt: parseInstant(event.occurredAt, "modern_capability_leg_invalid_fallback_authorization_time"),
+      authorizedAt: parseInstant(
+        event.occurredAt,
+        "modern_capability_leg_invalid_fallback_authorization_time",
+      ),
     };
   }
 
@@ -533,9 +583,15 @@ export class SyntheticModernCapabilityLegRuntimeV1 {
     leg: ModernCapabilityLegV1,
     reservation: SilkResourceReservationV1,
   ): void {
-    if (reservation.journeyRef !== leg.journeyRef) throw new Error("modern_capability_leg_reservation_journey_mismatch");
-    if (reservation.silkAccountRef !== leg.silkAccountRef) throw new Error("modern_capability_leg_reservation_account_mismatch");
-    if (reservation.resourceType !== leg.resourceType) throw new Error("modern_capability_leg_reservation_resource_type_mismatch");
+    if (reservation.journeyRef !== leg.journeyRef) {
+      throw new Error("modern_capability_leg_reservation_journey_mismatch");
+    }
+    if (reservation.silkAccountRef !== leg.silkAccountRef) {
+      throw new Error("modern_capability_leg_reservation_account_mismatch");
+    }
+    if (reservation.resourceType !== leg.resourceType) {
+      throw new Error("modern_capability_leg_reservation_resource_type_mismatch");
+    }
     if (reservation.quantity !== leg.quantity || reservation.unit !== leg.unit) {
       throw new Error("modern_capability_leg_reservation_value_mismatch");
     }
