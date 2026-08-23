@@ -13,6 +13,7 @@ CREATE TABLE IF NOT EXISTS vsr_modern_journey_events (
     'FALLBACK_AUTHORIZED',
     'FALLBACK_RESOURCE_RESERVED',
     'PROVIDER_EXECUTED_UNVERIFIED',
+    'RESOURCE_CONSUMED',
     'ECONOMIC_EVENT_RECORDED',
     'OBLIGATION_CREATED',
     'EFFECT_VERIFIED',
@@ -25,7 +26,10 @@ CREATE TABLE IF NOT EXISTS vsr_modern_journey_events (
   recorded_at timestamptz NOT NULL DEFAULT now(),
   UNIQUE (transaction_ref, sequence),
   CHECK (correlation_id = transaction_ref),
-  CHECK ((sequence = 1 AND predecessor_event_ref IS NULL) OR sequence > 1)
+  CHECK (
+    (sequence = 1 AND predecessor_event_ref IS NULL)
+    OR (sequence > 1 AND predecessor_event_ref IS NOT NULL)
+  )
 );
 
 CREATE INDEX IF NOT EXISTS vsr_modern_journey_events_transaction_sequence_idx
