@@ -66,10 +66,16 @@ export interface FederatedLicenceBlockedSourceR1 {
   sourceDecision: WardenNonAllowDecisionV1;
 }
 
+export type FederatedLicenceLineageReasonR1 =
+  | "source_product_mismatch"
+  | "source_mission_mismatch"
+  | "destination_product_mismatch"
+  | "correlation_mismatch";
+
 export interface FederatedLicenceBlockedLineageR1 {
   state: "BLOCKED_LINEAGE";
   sourceDecision: WardenAllowDecisionV1;
-  reasonCode: "source_product_mismatch";
+  reasonCode: FederatedLicenceLineageReasonR1;
 }
 
 export interface FederatedLicenceBlockedDestinationR1 {
@@ -97,6 +103,13 @@ export interface ExecuteSyntheticFederatedLicenceInputR1 {
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function blockedLineage(
+  sourceDecision: WardenAllowDecisionV1,
+  reasonCode: FederatedLicenceLineageReasonR1,
+): FederatedLicenceBlockedLineageR1 {
+  return { state: "BLOCKED_LINEAGE", sourceDecision, reasonCode };
 }
 
 class SyntheticFederatedLicenceRecognitionAdapterR1 implements SyntheticCapabilityAdapterV1 {
@@ -170,11 +183,16 @@ export function executeSyntheticFederatedLicenceR1(
   }
 
   if (input.source.request.targetRef !== input.productRef) {
-    return {
-      state: "BLOCKED_LINEAGE",
-      sourceDecision,
-      reasonCode: "source_product_mismatch",
-    };
+    return blockedLineage(sourceDecision, "source_product_mismatch");
+  }
+  if (input.source.request.programRef !== input.missionRef) {
+    return blockedLineage(sourceDecision, "source_mission_mismatch");
+  }
+  if (input.destination.request.targetRef !== input.productRef) {
+    return blockedLineage(sourceDecision, "destination_product_mismatch");
+  }
+  if (input.destination.request.correlationId !== input.source.request.correlationId) {
+    return blockedLineage(sourceDecision, "correlation_mismatch");
   }
 
   const destinationDecision = evaluateSyntheticWardenDecisionV1(input.destination);
