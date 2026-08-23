@@ -1,3 +1,12 @@
+import type {
+  BnrAuthorityStateV1,
+  BnrCommercialStateV1,
+  BnrEvidenceStateV1,
+  BnrPartnerLifecycleV1,
+  BnrPartnerReadinessStateV1,
+  BnrRuntimeReadinessV1,
+} from "../../bnr/contracts.ts";
+import { resolveBnrReadinessV1 } from "../../bnr/readiness.ts";
 import type { ActionEnvelopeV1, EvidenceReservationV1 } from "../../river/contracts.ts";
 import type { WardenAllowDecisionV1, WardenExecutionCheckpointV1 } from "../../warden/contracts.ts";
 
@@ -13,6 +22,29 @@ export interface AmazonLiveProofPrerequisitesV1 {
   authority: AmazonLiveAuthorityBundleV1;
   includedData: readonly string[];
 }
+
+export interface AmazonLiveBnrEvidenceStateV1 {
+  partnerLifecycle: BnrPartnerLifecycleV1;
+  runtimeReadiness: BnrRuntimeReadinessV1;
+  authorityState: BnrAuthorityStateV1;
+  evidenceState: BnrEvidenceStateV1;
+  commercialState: BnrCommercialStateV1;
+  requiredServicesResolved: boolean;
+  wardenPolicyActive: boolean;
+  riverOperational: boolean;
+  registryDurable: boolean;
+  activationEvidenceValid: boolean;
+  suspended: boolean;
+  amazonCredentialsPresent: boolean;
+  engagementContextPresent: boolean;
+  readinessCheckedAt: string;
+}
+
+export type AmazonLiveBnrReadinessResultV1 = BnrPartnerReadinessStateV1 & {
+  bnrNodeRef: "BNR-001";
+  amazonCredentialsPresent: boolean;
+  engagementContextPresent: boolean;
+};
 
 const RESTRICTED_DATA = new Set(["BUYER", "RECIPIENT", "TAX", "PAYMENT"]);
 const SYNTHETIC_REF = /(?:^|[:._-])(TEST|SYNTHETIC|CONFORMANCE)(?:[:._-]|$)/i;
@@ -93,4 +125,33 @@ export function assertAmazonLiveProofPrerequisitesV1(
   requireConstraint(decision, "READ_ONLY_PROVIDER_EFFECT");
   requireConstraint(decision, "NO_RESTRICTED_DATA");
   requireConstraint(decision, "NO_SETTLEMENT_FINALITY");
+}
+
+export function evaluateAmazonLiveProofBnrReadinessV1(
+  input: AmazonLiveProofPrerequisitesV1 & { bnrEvidence: AmazonLiveBnrEvidenceStateV1 },
+): AmazonLiveBnrReadinessResultV1 {
+  assertAmazonLiveProofPrerequisitesV1(input);
+
+  const readiness = resolveBnrReadinessV1({
+    nodeRef: "BNR-001",
+    partnerLifecycle: input.bnrEvidence.partnerLifecycle,
+    runtimeReadiness: input.bnrEvidence.runtimeReadiness,
+    authorityState: input.bnrEvidence.authorityState,
+    evidenceState: input.bnrEvidence.evidenceState,
+    commercialState: input.bnrEvidence.commercialState,
+    requiredServicesResolved: input.bnrEvidence.requiredServicesResolved,
+    wardenPolicyActive: input.bnrEvidence.wardenPolicyActive,
+    riverOperational: input.bnrEvidence.riverOperational,
+    registryDurable: input.bnrEvidence.registryDurable,
+    activationEvidenceValid: input.bnrEvidence.activationEvidenceValid,
+    suspended: input.bnrEvidence.suspended,
+    readinessCheckedAt: input.bnrEvidence.readinessCheckedAt,
+  });
+
+  return {
+    ...readiness,
+    bnrNodeRef: "BNR-001",
+    amazonCredentialsPresent: input.bnrEvidence.amazonCredentialsPresent,
+    engagementContextPresent: input.bnrEvidence.engagementContextPresent,
+  };
 }
