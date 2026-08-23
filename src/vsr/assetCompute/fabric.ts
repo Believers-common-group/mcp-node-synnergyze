@@ -1,5 +1,5 @@
-import { InMemoryEventLog } from "./eventLog.ts";
-import { InMemoryFundingLedger } from "./fundingLedger.ts";
+import type { InMemoryEventLog } from "./eventLog.ts";
+import type { InMemoryFundingLedger } from "./fundingLedger.ts";
 import { assertTransition } from "./stateMachine.ts";
 import type {
   AssetComputeExecutionInput,
