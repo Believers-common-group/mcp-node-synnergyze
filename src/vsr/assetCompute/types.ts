@@ -41,3 +41,41 @@ export interface FundingSettlement {
   amountReleased: number;
   currency: string;
 }
+
+export type WardenOutcome = "ALLOW" | "DENY" | "REQUIRE_APPROVAL" | "REQUIRE_EVIDENCE";
+
+export interface WardenDecision {
+  decisionId: string;
+  executionId: string;
+  principalId: string;
+  outcome: WardenOutcome;
+  maxCost: number;
+  currency: string;
+  expiresAt: string;
+}
+
+export interface IssueExecutionCapabilityInput {
+  executionId: string;
+  principalId: string;
+  assetId: string;
+  operations: readonly string[];
+  selectedRoute: string;
+  requestedCostCeiling: number;
+  fundingReserved: number;
+  currency: string;
+  decision: WardenDecision;
+  now: Date;
+}
+
+export interface CapabilityGrant {
+  capabilityId: string;
+  decisionId: string;
+  executionId: string;
+  principalId: string;
+  assetId: string;
+  operations: readonly string[];
+  selectedRoute: string;
+  maxCost: number;
+  currency: string;
+  expiresAt: string;
+}
