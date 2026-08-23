@@ -89,6 +89,7 @@ function receipt(): RemedyExecutionReceiptV1 {
     remedyCorrelationId: "CORR:CHILD",
     originalWardenDecisionRef: "WARDEN-DECISION:ORIGINAL",
     remedyWardenDecisionRef: "WARDEN-DECISION:REMEDY",
+    remedyCheckpointRef: "WARDEN-REMEDY-CHECKPOINT:001",
     capabilityRef: "reconciliation.recover",
     targetRef: "TARGET:001",
     adapterRef: "ADAPTER:001",
