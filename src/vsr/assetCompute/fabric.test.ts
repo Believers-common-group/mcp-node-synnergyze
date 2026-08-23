@@ -89,4 +89,64 @@ describe("AssetComputeFabric", () => {
       "effect.verified",
     );
   });
+
+  it("releases reserved funding and records an exception when provider execution fails", async () => {
+    const fundingLedger = new InMemoryFundingLedger([source]);
+    const eventLog = new InMemoryEventLog();
+    const provider = new DeterministicProviderAdapter({ mode: "PROVIDER_FAILURE" });
+
+    const fabric = new AssetComputeFabric({
+      fundingLedger,
+      eventLog,
+      provider,
+      verifyEffect: async () => {
+        throw new Error("EFFECT_VERIFIER_SHOULD_NOT_RUN");
+      },
+    });
+
+    await expect(
+      fabric.execute({
+        executionId: "EXEC-FABRIC-FAIL-001",
+        principalId: "DM-ALPHA-001",
+        assetId: "AST-ALPHA-001",
+        inputRef: "asset://AST-ALPHA-001",
+        resolutionRefs: {
+          principal: "GENESIS:DM-ALPHA-001",
+          asset: "GENESIS:AST-ALPHA-001",
+          entitlement: "GENESIS:RIGHT-ALPHA-001",
+          routeQuote: "SYNNERGYZE:RQ-ALPHA-FAIL-001",
+        },
+        reservationId: "RES-FABRIC-FAIL-001",
+        reserveAmount: 40,
+        fundingPriority: ["ASSET_ALLOWANCE"],
+        selectedRoute: "SIMULATED-PROVIDER-001",
+        operations: ["EXECUTE", "DERIVE"],
+        currency: "INR",
+        requestedCostCeiling: 40,
+        now: new Date("2026-08-23T05:20:00.000Z"),
+        decision: {
+          decisionId: "WD-FABRIC-FAIL-001",
+          executionId: "EXEC-FABRIC-FAIL-001",
+          principalId: "DM-ALPHA-001",
+          outcome: "ALLOW",
+          maxCost: 40,
+          currency: "INR",
+          expiresAt: "2026-08-23T06:00:00.000Z",
+        },
+      }),
+    ).rejects.toThrowError("PROVIDER_EXECUTION_FAILED");
+
+    expect(fundingLedger.balance("FS-ASSET-ALLOWANCE")).toEqual({
+      available: 100,
+      reserved: 0,
+      settled: 0,
+      currency: "INR",
+    });
+
+    const eventTypes = eventLog
+      .eventsFor("EXEC-FABRIC-FAIL-001")
+      .map((event) => event.eventType);
+    expect(eventTypes).toContain("execution.exception");
+    expect(eventTypes).not.toContain("asset.candidate_created");
+  });
 });
