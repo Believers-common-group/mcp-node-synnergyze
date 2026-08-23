@@ -25,7 +25,7 @@ import {
 
 export const operationId = "reconcileWardenRiverSynnergyzeConformanceEffect";
 export const description =
-  "Bind the expected effect before execution, run the governed conformance chain through River effect sealing, and reconcile expected versus observed reality. Remedies remain unauthorized and require a fresh Warden decision.";
+  "Bind the expected effect before execution, run the governed conformance chain through River effect sealing, and reconcile expected versus observed reality. This conformance tool accepts service_request.create only with requestedEffect=service_request.created. Remedies remain unauthorized and require a fresh Warden decision.";
 export const enableEnvironmentVariable = "VSR_RECONCILIATION_MCP_CONFORMANCE";
 
 export type ReconciliationConformanceClock = () => string;
@@ -47,6 +47,15 @@ function requestFingerprint(request: WardenDecisionRequestV1): string {
     deviceSecuritySourceRefs: canonicalRefs(request.deviceSecuritySourceRefs ?? []),
   }));
 }
+
+const reconciliationRequestJsonSchema = {
+  ...wardenConformanceRequestJsonSchema,
+  required: [...wardenConformanceRequestJsonSchema.required, "requestedEffect"],
+  properties: {
+    ...wardenConformanceRequestJsonSchema.properties,
+    requestedEffect: { const: "service_request.created" },
+  },
+};
 
 export interface ReconciliationClosureReceiptV1 {
   version: "RECONCILIATION-CLOSURE-001";
@@ -100,6 +109,19 @@ export class WardenReconciliationConformanceServiceV1 {
         throw new Error("reconciliation_conformance_request_replay_conflict");
       }
       return { ...structuredClone(existing.response), idempotentReplay: true };
+    }
+
+    if (
+      request.action === "service_request.create" ||
+      request.capabilityRef === "service_request.create"
+    ) {
+      if (
+        request.action !== "service_request.create" ||
+        request.capabilityRef !== "service_request.create" ||
+        request.requestedEffect !== "service_request.created"
+      ) {
+        throw new Error("reconciliation_conformance_requested_effect_invalid");
+      }
     }
 
     // Preflight is deliberately completed before the effect path. It uses the
@@ -207,7 +229,7 @@ export function registerWardenReconciliationConformance(
       type: "object",
       additionalProperties: false,
       required: ["request"],
-      properties: { request: wardenConformanceRequestJsonSchema },
+      properties: { request: reconciliationRequestJsonSchema },
     },
     cb: async (args) => JSON.stringify(service.execute(args, clock())),
   });
