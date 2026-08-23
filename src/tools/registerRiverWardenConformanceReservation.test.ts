@@ -37,10 +37,10 @@ function request(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisi
   };
 }
 
-async function connectedPair() {
+async function connectedPair(clock: () => string = () => FIXED_TIME) {
   const server = new CustomMcpServer({ name: "river-warden-test", version: "0.7.0" });
   const client = new Client({ name: "river-warden-test-client", version: "0.7.0" });
-  registerRiverWardenConformanceReservation(server, () => FIXED_TIME);
+  registerRiverWardenConformanceReservation(server, clock);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
   await Promise.all([client.connect(clientTransport), server.connect(serverTransport)]);
   return { client, server };
@@ -138,14 +138,36 @@ describe("WARDEN-RIVER-MCP-CONFORMANCE-0.7", () => {
     }
   });
 
-  it("returns the same reservation for exact replay", async () => {
-    const { client, server } = await connectedPair();
+  it("returns the original reservation for exact replay even when the clock advances", async () => {
+    const times = ["2026-08-23T01:00:30.000Z", "2026-08-23T01:05:00.000Z"];
+    let index = 0;
+    const { client, server } = await connectedPair(() => times[Math.min(index++, times.length - 1)]);
     try {
       const first = await callReservation(client, request());
       const second = await callReservation(client, request());
       expect(first.isError).not.toBe(true);
       expect(second.isError).not.toBe(true);
       expect(JSON.parse(textResult(second))).toEqual(JSON.parse(textResult(first)));
+      expect(JSON.parse(textResult(second)).decision.decidedAt).toBe(times[0]);
+    } finally {
+      await Promise.all([client.close(), server.close()]);
+    }
+  });
+
+  it("rejects mutated reuse of an existing requestRef before a new reservation", async () => {
+    const { client, server } = await connectedPair();
+    try {
+      const first = await callReservation(client, request());
+      expect(first.isError).not.toBe(true);
+
+      const conflict = await callReservation(
+        client,
+        request({
+          targetRef: "LAB-SERVICE-DESK-MUTATED",
+        }),
+      );
+      expect(conflict.isError).toBe(true);
+      expect(textResult(conflict)).toContain("warden_river_request_replay_conflict");
     } finally {
       await Promise.all([client.close(), server.close()]);
     }
