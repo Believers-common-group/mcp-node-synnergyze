@@ -103,7 +103,24 @@ export function validateModernWorkReceiptV1(receipt: ModernWorkReceiptV1): void 
     }
   }
 
-  const { receiptRef: _receiptRef, ...body } = receipt;
+  const body: Omit<ModernWorkReceiptV1, "receiptRef"> = {
+    journeyRef: receipt.journeyRef,
+    objectiveRef: receipt.objectiveRef,
+    digitalMeRef: receipt.digitalMeRef,
+    silkAccountRef: receipt.silkAccountRef,
+    economicOwnerRef: receipt.economicOwnerRef,
+    requiredLegTypes: [...receipt.requiredLegTypes],
+    legRefs: [...receipt.legRefs],
+    providerRefs: [...receipt.providerRefs],
+    failureCount: receipt.failureCount,
+    monetaryTotals: receipt.monetaryTotals.map((value) => ({ ...value })),
+    nativeConsumptions: receipt.nativeConsumptions.map((value) => ({ ...value })),
+    outstandingObligationCount: receipt.outstandingObligationCount,
+    finalEffectRef: receipt.finalEffectRef,
+    finalEffectObservedStateRef: receipt.finalEffectObservedStateRef,
+    completedAt: receipt.completedAt,
+    synthetic: receipt.synthetic,
+  };
   const expected = modernWorkReceiptRefV1(body);
   if (receipt.receiptRef !== expected) throw new Error("modern_work_receipt_ref_mismatch");
 }
