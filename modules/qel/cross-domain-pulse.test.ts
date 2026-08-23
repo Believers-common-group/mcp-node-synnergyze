@@ -1,6 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { SyntheticCpuComputeRunner } from "../../compute/runtime.ts";
+import {
+  bindCalibrationAuthorityThroughRootTrustV01,
+  makeSyntheticAccreditationRootSignatureBundleV01,
+  mapAccreditationRootSignatureToQelFrameV01,
+} from "./accreditation-root-signature-fixture.ts";
 import { mapAlphaComputeRunnerToQelFrameV01 } from "./alpha-compute-adapter.ts";
 import {
   bindConditionEvidenceThroughAccreditedCalibrationV01,
@@ -42,7 +47,7 @@ import {
 } from "./recovery-value-policy-fixture.ts";
 
 describe("QEL cross-domain Pod Pulse", () => {
-  it("reduces compute, factory, passport, recovery, calibration authority, device trust, evidence, condition, value, and settlement through one grammar", () => {
+  it("reduces compute through cryptographic root trust, calibration, evidence, value, and settlement with one grammar", () => {
     const observedAt = "2026-08-23T08:30:00.000Z";
     const compute = mapAlphaComputeRunnerToQelFrameV01({
       registration: new SyntheticCpuComputeRunner().registration,
@@ -90,6 +95,20 @@ describe("QEL cross-domain Pod Pulse", () => {
     const authorityBundle = makeSyntheticCalibrationAuthorityBundleV01(
       trustBundle.calibrationCertificates,
     );
+    const rootBundle = makeSyntheticAccreditationRootSignatureBundleV01({
+      accreditationGrants: authorityBundle.accreditationGrants,
+      calibrators: authorityBundle.calibrators,
+      calibrationCertificates: trustBundle.calibrationCertificates,
+      issuanceAttestations: authorityBundle.issuanceAttestations,
+    });
+
+    const rootedAuthority = bindCalibrationAuthorityThroughRootTrustV01({
+      ...rootBundle,
+      calibrationCertificates: trustBundle.calibrationCertificates,
+      ...authorityBundle,
+    });
+    expect(rootedAuthority.ok).toBe(true);
+
     const accreditedTrust = bindConditionEvidenceThroughAccreditedCalibrationV01({
       capture: captureSnapshot,
       recovery: recoverySnapshot,
@@ -99,6 +118,16 @@ describe("QEL cross-domain Pod Pulse", () => {
     });
     expect(accreditedTrust.ok).toBe(true);
 
+    const accreditationRoot = mapAccreditationRootSignatureToQelFrameV01({
+      ...rootBundle,
+      accreditationGrants: authorityBundle.accreditationGrants,
+      calibrators: authorityBundle.calibrators,
+      calibrationCertificates: trustBundle.calibrationCertificates,
+      issuanceAttestations: authorityBundle.issuanceAttestations,
+      observedAt,
+      correlationId: "QEL-CROSS-DOMAIN-ROOT-TRUST-001",
+      locationRef: recoverySnapshot.locationRef,
+    });
     const calibrationAuthority = mapCalibrationAuthorityToQelFrameV01({
       calibrationCertificates: trustBundle.calibrationCertificates,
       ...authorityBundle,
@@ -178,6 +207,7 @@ describe("QEL cross-domain Pod Pulse", () => {
         factory,
         passport,
         recovery,
+        accreditationRoot,
         calibrationAuthority,
         deviceTrust,
         evidenceCapture,
@@ -191,13 +221,14 @@ describe("QEL cross-domain Pod Pulse", () => {
     expect(factory.object.type).toBe("PRODUCTION_LINE");
     expect(passport.object.type).toBe("PRODUCT_PASSPORT");
     expect(recovery.object.type).toBe("RECOVERY_NODE");
+    expect(accreditationRoot.object.type).toBe("ACCREDITATION_ROOT_TRUST");
     expect(calibrationAuthority.object.type).toBe("CALIBRATION_AUTHORITY_TRUST");
     expect(deviceTrust.object.type).toBe("INSPECTION_DEVICE_TRUST");
     expect(evidenceCapture.object.type).toBe("CONDITION_EVIDENCE_CAPTURE");
     expect(condition.object.type).toBe("CONDITION_ASSESSMENT");
     expect(valueQuote.object.type).toBe("RECOVERY_VALUE_QUOTE");
     expect(settlement.object.type).toBe("RECOVERY_SETTLEMENT");
-    expect(pulse.now.objectCount).toBe(10);
+    expect(pulse.now.objectCount).toBe(11);
     expect(pulse.now.health).toBe("WATCH");
     expect(pulse.needs).toEqual([
       {
@@ -223,6 +254,12 @@ describe("QEL cross-domain Pod Pulse", () => {
         type: "APPROVAL",
         priority: "MODERATE",
         target: "select_next_lifecycle_route",
+      },
+      {
+        objectRef: "ACCREDITATION-ROOT:QEL-CROSS-DOMAIN-ROOT-TRUST-001",
+        type: "APPROVAL",
+        priority: "MODERATE",
+        target: "accept_accreditation_root_trust",
       },
       {
         objectRef: "CALIBRATION-AUTHORITY:QEL-CROSS-DOMAIN-CAL-AUTH-001",
@@ -254,54 +291,38 @@ describe("QEL cross-domain Pod Pulse", () => {
       type: "MATERIAL_STARVATION",
       severity: "HIGH",
     });
+    expect(pulse.moves.some((move) => move.objectRef === compute.object.id && move.action === "RUN_COMPUTE")).toBe(true);
+    expect(pulse.moves.some((move) => move.objectRef === factory.object.id && move.action === "REROUTE")).toBe(true);
     expect(
-      pulse.moves.some((move) => move.objectRef === compute.object.id && move.action === "RUN_COMPUTE"),
+      pulse.moves.some((move) => move.objectRef === passport.object.id && move.action === "ROUTE_NEXT_CYCLE"),
     ).toBe(true);
+    expect(pulse.moves.some((move) => move.objectRef === recovery.object.id && move.action === "ROUTE")).toBe(true);
     expect(
-      pulse.moves.some((move) => move.objectRef === factory.object.id && move.action === "REROUTE"),
-    ).toBe(true);
-    expect(
-      pulse.moves.some(
-        (move) => move.objectRef === passport.object.id && move.action === "ROUTE_NEXT_CYCLE",
-      ),
-    ).toBe(true);
-    expect(
-      pulse.moves.some((move) => move.objectRef === recovery.object.id && move.action === "ROUTE"),
+      pulse.moves.some((move) => move.objectRef === accreditationRoot.object.id && move.action === "ACCEPT_ROOT_TRUST"),
     ).toBe(true);
     expect(
       pulse.moves.some(
-        (move) =>
-          move.objectRef === calibrationAuthority.object.id && move.action === "ACCEPT_CALIBRATION_CHAIN",
+        (move) => move.objectRef === calibrationAuthority.object.id && move.action === "ACCEPT_CALIBRATION_CHAIN",
       ),
     ).toBe(true);
     expect(
-      pulse.moves.some(
-        (move) =>
-          move.objectRef === deviceTrust.object.id && move.action === "ACCEPT_TRUSTED_CAPTURE",
-      ),
+      pulse.moves.some((move) => move.objectRef === deviceTrust.object.id && move.action === "ACCEPT_TRUSTED_CAPTURE"),
     ).toBe(true);
     expect(
       pulse.moves.some(
-        (move) =>
-          move.objectRef === evidenceCapture.object.id && move.action === "CREATE_CONDITION_ASSESSMENT",
+        (move) => move.objectRef === evidenceCapture.object.id && move.action === "CREATE_CONDITION_ASSESSMENT",
       ),
     ).toBe(true);
-    expect(
-      pulse.moves.some(
-        (move) => move.objectRef === condition.object.id && move.action === "CREATE_VALUE_QUOTE",
-      ),
-    ).toBe(true);
+    expect(pulse.moves.some((move) => move.objectRef === condition.object.id && move.action === "CREATE_VALUE_QUOTE")).toBe(true);
     expect(
       pulse.moves.some(
         (move) => valueQuote.object.id === move.objectRef && move.action === "CREATE_SETTLEMENT_OBLIGATION",
       ),
     ).toBe(true);
     expect(
-      pulse.moves.some(
-        (move) => move.objectRef === settlement.object.id && move.action === "SUBMIT_SETTLEMENT",
-      ),
+      pulse.moves.some((move) => move.objectRef === settlement.object.id && move.action === "SUBMIT_SETTLEMENT"),
     ).toBe(true);
     expect(pulse.proof.verifiedOutcomes).toBe(0);
-    expect(pulse.proof.unresolvedOutcomes).toBe(10);
+    expect(pulse.proof.unresolvedOutcomes).toBe(11);
   });
 });
