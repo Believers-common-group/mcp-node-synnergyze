@@ -102,6 +102,33 @@ describe("PostgresModernJourneyEventStoreV1", () => {
     ).resolves.toEqual({ state: "CONFLICT" });
   });
 
+  it("fails closed when persisted JSON mutates actor or occurrence identity", async () => {
+    const event = record();
+    const actorMutated = {
+      ...rowFor(event),
+      event_json: JSON.stringify({ ...event, actorRef: "DIGITALME-TAMPERED" }),
+    };
+    const db = new ScriptedDb([
+      { match: /^INSERT INTO vsr_modern_journey_events/, rowCount: 0 },
+      { match: /^SELECT event_ref, transaction_ref, journey_ref/, rows: [actorMutated] },
+    ]);
+
+    await expect(
+      new PostgresModernJourneyEventStoreV1(db).put(event, "2026-08-24T00:00:02.000Z"),
+    ).resolves.toEqual({ state: "CONFLICT" });
+
+    const timeMutated = {
+      ...rowFor(event),
+      event_json: JSON.stringify({ ...event, occurredAt: "2026-08-24T00:00:09.000Z" }),
+    };
+    const reloadDb = new ScriptedDb([
+      { match: /^SELECT event_ref, transaction_ref, journey_ref/, rows: [timeMutated] },
+    ]);
+    await expect(new PostgresModernJourneyEventStoreV1(reloadDb).load("TXN-00088")).rejects.toThrow(
+      "modern_event_store_persisted_identity_mismatch",
+    );
+  });
+
   it("reconstructs a persisted transaction event stream in sequence order", async () => {
     const log = new ModernJourneyEventLogV1();
     const opened = log.append({
@@ -134,7 +161,7 @@ describe("PostgresModernJourneyEventStoreV1", () => {
     expect(reloaded[1]?.predecessorEventRef).toBe(opened.eventRef);
   });
 
-  it("defines append-only identity, sequence, correlation, and event-type constraints in SQL", () => {
+  it("defines append-only identity, sequence, correlation, consumption, and predecessor constraints in SQL", () => {
     const migrationPath = fileURLToPath(
       new URL("../synnergyze/sql/005_modern_journey_event_store.sql", import.meta.url),
     );
@@ -145,6 +172,8 @@ describe("PostgresModernJourneyEventStoreV1", () => {
     expect(migration).toContain("UNIQUE (transaction_ref, sequence)");
     expect(migration).toContain("CHECK (correlation_id = transaction_ref)");
     expect(migration).toContain("predecessor_event_ref text REFERENCES vsr_modern_journey_events(event_ref)");
+    expect(migration).toContain("'RESOURCE_CONSUMED'");
+    expect(migration).toContain("sequence > 1 AND predecessor_event_ref IS NOT NULL");
     expect(migration).toContain("'TRANSACTION_CLOSED'");
   });
 });
