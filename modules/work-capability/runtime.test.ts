@@ -3,11 +3,13 @@ import { describe, expect, it } from "vitest";
 import type { CandidateCompositionV1 } from "./contracts.ts";
 import {
   invalidWardenWaistbandFixtureV1,
+  mutatedWaistbandFixtureV1,
   runVerifiedWaistbandFixtureV1,
   validWaistbandFixtureV1,
 } from "./fixtures/garment.ts";
 import {
   compileSyntheticGarmentWorkflowV1,
+  createWorkCapabilityRuntimeV1,
   executeAssignedWorkUnitV1,
   resolveCapabilityDemandV1,
   selectCandidateCompositionV1,
@@ -154,5 +156,33 @@ describe("WORK-CAPABILITY-RUNTIME-001 effect and capability evidence", () => {
     expect(result.outcome.firstPassQuality).toBeGreaterThanOrEqual(0.97);
     expect(result.remainingWork?.remainingQuantity).toBe(7);
     expect(result.remainingWork?.automaticExecutionAllowed).toBe(false);
+  });
+});
+
+describe("WORK-CAPABILITY-RUNTIME-001 replay safety", () => {
+  it("returns stable exact replay without second execution", () => {
+    const runtime = createWorkCapabilityRuntimeV1();
+    const firstInput = validWaistbandFixtureV1();
+    const replayInput = validWaistbandFixtureV1();
+
+    const first = runtime.run(firstInput);
+    const second = runtime.run(replayInput);
+
+    expect(second.execution.receiptRef).toBe(first.execution.receiptRef);
+    expect(second.execution.idempotentReplay).toBe(true);
+    expect(firstInput.adapter.invocationCount()).toBe(1);
+    expect(replayInput.adapter.invocationCount()).toBe(0);
+  });
+
+  it("fails closed when an existing work/composition identity is reused with changed material input", () => {
+    const runtime = createWorkCapabilityRuntimeV1();
+    const firstInput = validWaistbandFixtureV1();
+    const changedInput = mutatedWaistbandFixtureV1();
+
+    runtime.run(firstInput);
+
+    expect(() => runtime.run(changedInput)).toThrow("work_capability_idempotency_conflict");
+    expect(firstInput.adapter.invocationCount()).toBe(1);
+    expect(changedInput.adapter.invocationCount()).toBe(0);
   });
 });
