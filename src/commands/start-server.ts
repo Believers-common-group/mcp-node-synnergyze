@@ -11,6 +11,7 @@ import {
   operationId as GetApplicationsOperationId,
   registerGetApplications,
 } from "../tools/registerGetApplications.ts";
+import { maybeRegisterWardenConformanceDecision } from "../tools/registerWardenConformanceDecision.ts";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type {
   ProcessCallbackArguments,
@@ -84,6 +85,11 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
       tools: {},
     },
   });
+
+  // The Warden conformance tool is deliberately outside the normal Algolia
+  // allow-list. It requires both VSR_WARDEN_MCP_CONFORMANCE=1 and an explicit
+  // --allow-tools wardenEvaluateConformanceDecision opt-in.
+  maybeRegisterWardenConformanceDecision(server, toolFilter);
 
   const regionHotFixMiddlewares: RequestMiddleware[] = [];
   let processCallbackArguments: ProcessCallbackArguments;
