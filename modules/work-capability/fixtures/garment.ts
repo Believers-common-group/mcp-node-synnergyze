@@ -1,5 +1,11 @@
 import { createHash } from "node:crypto";
 
+import type { SynnergyzeExecutionReceiptV1 } from "../../synnergyze/contracts.ts";
+import {
+  EffectVerificationServiceV1,
+  type EffectVerificationSuccessV1,
+  type PostExecutionObservationV1,
+} from "../../synnergyze/effect-verification.ts";
 import type {
   SyntheticCapabilityAdapterInputV1,
   SyntheticCapabilityAdapterResultV1,
@@ -10,9 +16,17 @@ import type { SyntheticWardenDecisionPolicyV1 } from "../../warden/decision-serv
 import type {
   ActorCapabilityProfileV1,
   CandidateCompositionV1,
+  CapabilityEvidenceV1,
+  CapabilityOutcomeV1,
+  RemainingWorkProposalV1,
   WorkUnitV1,
 } from "../contracts.ts";
-import type { AssignedWorkExecutionInputV1 } from "../runtime.ts";
+import {
+  executeAssignedWorkUnitV1,
+  projectCapabilityEvidenceV1,
+  reconcileWorkUnitOutcomeV1,
+  type AssignedWorkExecutionInputV1,
+} from "../runtime.ts";
 
 const CAPABILITY_REF = "garment.waistband.attach";
 const TARGET_REF = "GARMENT-BATCH:B124:waistband";
@@ -26,6 +40,8 @@ const DECIDED_AT = "2026-08-24T00:30:10.000Z";
 const RESERVED_AT = "2026-08-24T00:30:20.000Z";
 const CHECKED_AT = "2026-08-24T00:30:25.000Z";
 const EXECUTED_AT = "2026-08-24T00:30:30.000Z";
+const OBSERVED_AT = "2026-08-24T00:30:40.000Z";
+const VERIFIED_AT = "2026-08-24T00:30:50.000Z";
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -36,6 +52,21 @@ export interface SyntheticGarmentBatchStateV1 {
   inputQuantity: number;
   processedQuantity: number;
   stateRef: string;
+}
+
+export interface SyntheticGarmentPerformanceInputV1 {
+  inputQuantity: number;
+  acceptedQuantity: number;
+  reworkQuantity: number;
+}
+
+export interface VerifiedWaistbandFixtureResultV1 {
+  execution: SynnergyzeExecutionReceiptV1;
+  observation: PostExecutionObservationV1;
+  verification: EffectVerificationSuccessV1;
+  capabilityEvidence: readonly CapabilityEvidenceV1[];
+  outcome: CapabilityOutcomeV1;
+  remainingWork?: RemainingWorkProposalV1;
 }
 
 export class SyntheticGarmentWorkAdapterV1 implements SyntheticCapabilityAdapterV1 {
@@ -186,10 +217,13 @@ function policy(
   };
 }
 
-function fixture(decisionMode: "ALLOW" | "DENY" | "ESCALATE"): AssignedWorkExecutionInputV1 {
+function fixture(
+  decisionMode: "ALLOW" | "DENY" | "ESCALATE",
+  inputQuantity = 500,
+): AssignedWorkExecutionInputV1 {
   const batch: SyntheticGarmentBatchStateV1 = {
     batchRef: "GARMENT-BATCH:B124",
-    inputQuantity: 500,
+    inputQuantity,
     processedQuantity: 0,
     stateRef: "GARMENT-STATE:back_assembled",
   };
@@ -209,6 +243,56 @@ function fixture(decisionMode: "ALLOW" | "DENY" | "ESCALATE"): AssignedWorkExecu
   };
 }
 
+export function observeSyntheticGarmentWorkV1(input: {
+  execution: SynnergyzeExecutionReceiptV1;
+  performance: SyntheticGarmentPerformanceInputV1;
+  observedAt: string;
+}): PostExecutionObservationV1 {
+  const { execution, performance, observedAt } = input;
+  const outputQuantity = performance.acceptedQuantity + performance.reworkQuantity;
+  if (
+    !Number.isInteger(performance.inputQuantity) ||
+    !Number.isInteger(performance.acceptedQuantity) ||
+    !Number.isInteger(performance.reworkQuantity) ||
+    performance.inputQuantity < 0 ||
+    performance.acceptedQuantity < 0 ||
+    performance.reworkQuantity < 0 ||
+    outputQuantity > performance.inputQuantity
+  ) {
+    throw new Error("garment_observation_quantity_invalid");
+  }
+
+  const observedStateRef = `GARMENT-WAISTBAND-OBSERVED:${digest(
+    JSON.stringify({
+      executionReceiptRef: execution.receiptRef,
+      inputQuantity: performance.inputQuantity,
+      outputQuantity,
+      acceptedQuantity: performance.acceptedQuantity,
+      reworkQuantity: performance.reworkQuantity,
+    }),
+  ).slice(0, 24)}`;
+  const sourceEvidenceRef = `SYNTHETIC-GARMENT-EVIDENCE:${digest(
+    `${execution.receiptRef}|${observedStateRef}|${observedAt}`,
+  ).slice(0, 24)}`;
+
+  return {
+    observationRef: `POST-EXECUTION-OBSERVATION:${digest(
+      `${execution.receiptRef}|${sourceEvidenceRef}`,
+    ).slice(0, 24)}`,
+    executionReceiptRef: execution.receiptRef,
+    actionRef: execution.actionRef,
+    programRef: execution.programRef,
+    eventRef: execution.eventRef,
+    targetRef: execution.targetRef,
+    correlationId: execution.correlationId,
+    observerRef: "SYNTHETIC-GARMENT-WAISTBAND-OBSERVER-001",
+    observedStateRef,
+    observedAt,
+    sourceEvidenceRef,
+    synthetic: true,
+  };
+}
+
 export function validWaistbandFixtureV1(): AssignedWorkExecutionInputV1 {
   return fixture("ALLOW");
 }
@@ -217,4 +301,65 @@ export function invalidWardenWaistbandFixtureV1(
   decision: "DENY" | "ESCALATE",
 ): AssignedWorkExecutionInputV1 {
   return fixture(decision);
+}
+
+export function runVerifiedWaistbandFixtureV1(
+  performance: SyntheticGarmentPerformanceInputV1,
+): VerifiedWaistbandFixtureResultV1 {
+  const executionInput = fixture("ALLOW", performance.inputQuantity);
+  const proof = executeAssignedWorkUnitV1(executionInput);
+  const observation = observeSyntheticGarmentWorkV1({
+    execution: proof.execution,
+    performance,
+    observedAt: OBSERVED_AT,
+  });
+  const verificationResult = new EffectVerificationServiceV1().verify({
+    receipt: proof.execution,
+    observation,
+    verifiedAt: VERIFIED_AT,
+  });
+  if (verificationResult.state !== "VERIFIED_EFFECT") {
+    throw new Error(`garment_effect_verification_failed:${verificationResult.reasonCode}`);
+  }
+
+  const outputQuantity = performance.acceptedQuantity + performance.reworkQuantity;
+  const firstPassQuality =
+    outputQuantity === 0 ? 0 : performance.acceptedQuantity / outputQuantity;
+  const observedPerformance = {
+    inputQuantity: performance.inputQuantity,
+    outputQuantity,
+    acceptedQuantity: performance.acceptedQuantity,
+    reworkQuantity: performance.reworkQuantity,
+    firstPassQuality,
+    cycleSeconds: executionInput.composition.expectedCycleSeconds,
+  };
+  const capabilityEvidence = projectCapabilityEvidenceV1({
+    workUnit: executionInput.workUnit,
+    assignment: proof.assignment,
+    capabilityRef: CAPABILITY_REF,
+    execution: proof.execution,
+    verifiedEffect: verificationResult.effect,
+    observedPerformance,
+    evidenceRefs: [observation.sourceEvidenceRef, verificationResult.effect.verificationRef],
+    observedAt: observation.observedAt,
+  });
+  const reconciled = reconcileWorkUnitOutcomeV1({
+    workUnit: executionInput.workUnit,
+    requiredQuantity: performance.inputQuantity,
+    observedPerformance: {
+      inputQuantity: performance.inputQuantity,
+      outputQuantity,
+      acceptedQuantity: performance.acceptedQuantity,
+      reworkQuantity: performance.reworkQuantity,
+    },
+  });
+
+  return {
+    execution: proof.execution,
+    observation,
+    verification: verificationResult,
+    capabilityEvidence,
+    outcome: reconciled.outcome,
+    remainingWork: reconciled.remainingWork,
+  };
 }
