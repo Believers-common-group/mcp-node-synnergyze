@@ -5,6 +5,7 @@ import {
   SyntheticRiverReservationServiceV1,
 } from "../river/reservation-service.ts";
 import type { SynnergyzeExecutionReceiptV1 } from "../synnergyze/contracts.ts";
+import type { VerifiedEffectV1 } from "../synnergyze/effect-verification.ts";
 import {
   ControlledExecutionGateV1,
   type SyntheticCapabilityAdapterV1,
@@ -22,8 +23,12 @@ import type {
   ActorCapabilityProfileV1,
   CandidateCompositionV1,
   CapabilityDemandV1,
+  CapabilityEvidenceV1,
+  CapabilityObservedPerformanceV1,
+  CapabilityOutcomeV1,
   CapabilityV1,
   ObjectiveWorkRefV1,
+  RemainingWorkProposalV1,
   WorkflowInstanceV1,
   WorkAssignmentV1,
   WorkUnitV1,
@@ -244,7 +249,11 @@ function assertAssignedWorkInput(input: AssignedWorkExecutionInputV1): void {
   if (request.correlationId !== workUnit.correlationId) {
     throw new Error("work_capability_request_correlation_mismatch");
   }
-  if (!request.representationSourceRefs.includes(`COMPOSITE-CAPABILITY:${composition.compositionRef}`)) {
+  if (
+    !request.representationSourceRefs.includes(
+      `COMPOSITE-CAPABILITY:${composition.compositionRef}`,
+    )
+  ) {
     throw new Error("work_capability_request_composition_binding_required");
   }
 }
@@ -453,4 +462,148 @@ export function executeAssignedWorkUnitV1(
     execution,
     adapterInvocationCount: input.adapter.invocationCount(),
   };
+}
+
+export function projectCapabilityEvidenceV1(input: {
+  workUnit: WorkUnitV1;
+  assignment: WorkAssignmentV1;
+  capabilityRef: string;
+  execution: SynnergyzeExecutionReceiptV1;
+  verifiedEffect: VerifiedEffectV1;
+  observedPerformance: CapabilityObservedPerformanceV1;
+  evidenceRefs: readonly string[];
+  observedAt: string;
+}): readonly CapabilityEvidenceV1[] {
+  if (input.assignment.workUnitRef !== input.workUnit.workUnitRef) {
+    throw new Error("work_capability_evidence_assignment_mismatch");
+  }
+  if (!input.workUnit.requiredCapabilityRefs.includes(input.capabilityRef)) {
+    throw new Error("work_capability_evidence_capability_mismatch");
+  }
+  if (input.execution.capabilityRef !== input.capabilityRef) {
+    throw new Error("work_capability_evidence_execution_capability_mismatch");
+  }
+  if (input.verifiedEffect.executionReceiptRef !== input.execution.receiptRef) {
+    throw new Error("work_capability_evidence_effect_execution_mismatch");
+  }
+  if (
+    input.verifiedEffect.programRef !== input.workUnit.workflowRef ||
+    input.verifiedEffect.eventRef !== input.workUnit.workUnitRef ||
+    input.verifiedEffect.targetRef !== input.workUnit.targetRef ||
+    input.verifiedEffect.correlationId !== input.workUnit.correlationId
+  ) {
+    throw new Error("work_capability_evidence_effect_lineage_mismatch");
+  }
+  if (input.evidenceRefs.length === 0) {
+    throw new Error("work_capability_evidence_reference_required");
+  }
+  assertInstant(input.observedAt, "work_capability_observed_at_invalid");
+
+  const participants = [...input.assignment.actorRefs, input.assignment.compositionRef];
+  return participants.map((actorOrCompositionRef) => {
+    const identity = JSON.stringify({
+      capabilityRef: input.capabilityRef,
+      actorOrCompositionRef,
+      workUnitRef: input.workUnit.workUnitRef,
+      executionReceiptRef: input.execution.receiptRef,
+      verifiedEffectRef: input.verifiedEffect.effectRef,
+      evidenceRefs: [...input.evidenceRefs].sort(),
+      observedPerformance: input.observedPerformance,
+      observedAt: input.observedAt,
+    });
+    return {
+      capabilityEvidenceRef: `CAPABILITY-EVIDENCE:${digest(identity).slice(0, 24)}`,
+      capabilityRef: input.capabilityRef,
+      actorOrCompositionRef,
+      workUnitRef: input.workUnit.workUnitRef,
+      executionReceiptRef: input.execution.receiptRef,
+      verifiedEffectRef: input.verifiedEffect.effectRef,
+      observedPerformance: { ...input.observedPerformance },
+      evidenceRefs: [...input.evidenceRefs],
+      observedAt: input.observedAt,
+      synthetic: true,
+    };
+  });
+}
+
+export function reconcileWorkUnitOutcomeV1(input: {
+  workUnit: WorkUnitV1;
+  requiredQuantity: number;
+  observedPerformance: Required<
+    Pick<
+      CapabilityObservedPerformanceV1,
+      "inputQuantity" | "outputQuantity" | "acceptedQuantity" | "reworkQuantity"
+    >
+  >;
+}): { outcome: CapabilityOutcomeV1; remainingWork?: RemainingWorkProposalV1 } {
+  const { workUnit, requiredQuantity, observedPerformance } = input;
+  const quantities = [
+    requiredQuantity,
+    observedPerformance.inputQuantity,
+    observedPerformance.outputQuantity,
+    observedPerformance.acceptedQuantity,
+    observedPerformance.reworkQuantity,
+  ];
+  if (quantities.some((value) => !Number.isInteger(value) || value < 0)) {
+    throw new Error("work_capability_outcome_quantity_invalid");
+  }
+  if (observedPerformance.outputQuantity > observedPerformance.inputQuantity) {
+    throw new Error("work_capability_output_exceeds_input");
+  }
+  if (
+    observedPerformance.acceptedQuantity + observedPerformance.reworkQuantity !==
+    observedPerformance.outputQuantity
+  ) {
+    throw new Error("work_capability_output_accounting_mismatch");
+  }
+
+  const requiredFirstPassQuality = workUnit.qualityThresholds.firstPassQuality ?? 0;
+  const firstPassQuality =
+    observedPerformance.outputQuantity === 0
+      ? 0
+      : observedPerformance.acceptedQuantity / observedPerformance.outputQuantity;
+  const qualityMet = firstPassQuality >= requiredFirstPassQuality;
+  const quantityMet = observedPerformance.outputQuantity >= requiredQuantity;
+  const state: CapabilityOutcomeV1["state"] =
+    quantityMet && qualityMet
+      ? "FULL_EFFECT"
+      : observedPerformance.outputQuantity > 0 && qualityMet
+        ? "PARTIAL_EFFECT"
+        : "FAILED_EFFECT";
+
+  const outcomeIdentity = JSON.stringify({
+    workUnitRef: workUnit.workUnitRef,
+    requiredQuantity,
+    observedPerformance,
+    firstPassQuality,
+    requiredFirstPassQuality,
+    state,
+  });
+  const outcome: CapabilityOutcomeV1 = {
+    outcomeRef: `CAPABILITY-OUTCOME:${digest(outcomeIdentity).slice(0, 24)}`,
+    workUnitRef: workUnit.workUnitRef,
+    state,
+    requiredQuantity,
+    outputQuantity: observedPerformance.outputQuantity,
+    acceptedQuantity: observedPerformance.acceptedQuantity,
+    reworkQuantity: observedPerformance.reworkQuantity,
+    firstPassQuality,
+    requiredFirstPassQuality,
+  };
+
+  if (state !== "PARTIAL_EFFECT" || observedPerformance.outputQuantity >= requiredQuantity) {
+    return { outcome };
+  }
+
+  const remainingQuantity = requiredQuantity - observedPerformance.outputQuantity;
+  const proposal: RemainingWorkProposalV1 = {
+    proposalRef: `REMAINING-WORK:${digest(
+      `${workUnit.workUnitRef}|${outcome.outcomeRef}|${remainingQuantity}`,
+    ).slice(0, 24)}`,
+    workUnitRef: workUnit.workUnitRef,
+    remainingQuantity,
+    reasonCode: "QUANTITY_SHORTFALL",
+    automaticExecutionAllowed: false,
+  };
+  return { outcome, remainingWork: proposal };
 }
