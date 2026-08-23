@@ -2,7 +2,12 @@ import { describe, expect, it } from "vitest";
 
 import type { CandidateCompositionV1 } from "./contracts.ts";
 import {
+  invalidWardenWaistbandFixtureV1,
+  validWaistbandFixtureV1,
+} from "./fixtures/garment.ts";
+import {
   compileSyntheticGarmentWorkflowV1,
+  executeAssignedWorkUnitV1,
   resolveCapabilityDemandV1,
   selectCandidateCompositionV1,
 } from "./runtime.ts";
@@ -85,4 +90,28 @@ describe("WORK-CAPABILITY-RUNTIME-001 capability resolution", () => {
 
     expect(selected?.compositionRef).toBe(candidateB.compositionRef);
   });
+});
+
+describe("WORK-CAPABILITY-RUNTIME-001 governed execution", () => {
+  it("executes P17 + M04 + A2 only through the existing controlled execution gate", () => {
+    const proof = executeAssignedWorkUnitV1(validWaistbandFixtureV1());
+
+    expect(proof.assignment.actorRefs).toEqual([
+      "HUMAN:OPERATOR-P17",
+      "AGENT:WORK-INSTRUCTION-A2",
+      "MACHINE:LOCKSTITCH-M04",
+    ]);
+    expect(proof.execution.state).toBe("EXECUTED_UNVERIFIED");
+    expect(proof.execution.capabilityRef).toBe("garment.waistband.attach");
+    expect(proof.adapterInvocationCount).toBe(1);
+  });
+
+  it.each(["DENY", "ESCALATE"] as const)(
+    "does not assign or execute when Warden returns %s",
+    (decision) => {
+      expect(() => executeAssignedWorkUnitV1(invalidWardenWaistbandFixtureV1(decision))).toThrow(
+        `work_capability_warden_${decision.toLowerCase()}`,
+      );
+    },
+  );
 });
