@@ -168,6 +168,11 @@ export function evaluateSyntheticWardenDecisionV1(
     return escalate(request, policy, decidedAt, "material_trust_conflict");
   }
 
+  if (request.trustResolution?.result === "HOLD") {
+    const reason = request.trustResolution.reasonCodes?.[0] ?? "unspecified";
+    return escalate(request, policy, decidedAt, `trust_hold:${reason}`);
+  }
+
   if (policy.manualReviewCapabilityRefs.includes(request.capabilityRef)) {
     return escalate(request, policy, decidedAt, "manual_review_required");
   }
