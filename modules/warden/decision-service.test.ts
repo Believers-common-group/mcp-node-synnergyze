@@ -123,6 +123,18 @@ describe("VSR-NETWORK-WARDEN-DECISION-SERVICE-001", () => {
     expect(expired.reasonCodes).toEqual(["authority_expired"]);
   });
 
+  it("denies a decision timestamp that precedes the request", () => {
+    const decision = decide(
+      request({ requestedAt: "2026-08-14T07:01:00.000Z" }),
+      policy(),
+      "2026-08-14T07:00:30.000Z",
+    );
+
+    expect(decision.decision).toBe("DENY");
+    expect(decision.reasonCodes).toEqual(["decision_before_request"]);
+    expect("actionToken" in decision).toBe(false);
+  });
+
   it("fails closed on malformed or inverted time context", () => {
     const malformed = decide(request({ requestedAt: "not-a-time" }));
     expect(malformed.decision).toBe("DENY");
