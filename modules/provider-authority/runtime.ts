@@ -2,9 +2,14 @@ import { createHash } from "node:crypto";
 
 import type {
   AuthorizedProviderExecutionV1,
+  ProviderAttemptEvidenceV1,
   ProviderAttemptResultV1,
   ProviderAuthorityGateInputV1,
+  ProviderCompensationLineageV1,
   ProviderExceptionV1,
+  ProviderExecutionIntentV1,
+  ProviderExecutionRecordV1,
+  ProviderExecutionResolutionV1,
   ProviderFailureKindV1,
   ProviderRecoveryActionV1,
 } from "./contracts.ts";
@@ -253,4 +258,120 @@ export function determineProviderRecoveryV1(
   if (exception.retryability === "NEVER") return "ABORT";
   if (exception.retryability === "SAFE") return "RETRY";
   return "POLICY_DECISION_REQUIRED";
+}
+
+export class ProviderExecutionRegistryV1 {
+  private readonly byEffectKey = new Map<string, ProviderExecutionRecordV1>();
+
+  resolve(
+    authorization: AuthorizedProviderExecutionV1,
+    intent: ProviderExecutionIntentV1,
+  ): ProviderExecutionResolutionV1 {
+    if (!intent.effectKey.trim()) throw new Error("provider_execution_effect_key_required");
+    if (!intent.requestDigest.trim()) throw new Error("provider_execution_request_digest_required");
+
+    const governedIntentDigest = `sha256:${digest(
+      JSON.stringify({
+        agentRef: authorization.agentRef,
+        providerRef: authorization.providerRef,
+        providerPrincipalRef: authorization.providerPrincipalRef,
+        capabilityRef: authorization.capabilityRef,
+        purposeRef: authorization.purposeRef,
+        resourceRefs: stableRefs(authorization.resourceRefs),
+        correlationId: authorization.correlationId,
+        requestDigest: intent.requestDigest,
+      }),
+    )}`;
+
+    const existing = this.byEffectKey.get(intent.effectKey);
+    if (existing) {
+      if (existing.governedIntentDigest !== governedIntentDigest) {
+        throw new Error("provider_execution_idempotency_conflict");
+      }
+      return {
+        execution: { ...existing, resourceRefs: [...existing.resourceRefs] },
+        idempotentReplay: true,
+      };
+    }
+
+    const execution: ProviderExecutionRecordV1 = {
+      version: "WARDEN-PROVIDER-AUTHORITY-BRIDGE-001",
+      executionRef: `PROVIDER-EXECUTION:${digest(
+        `${intent.effectKey}|${governedIntentDigest}`,
+      ).slice(0, 24)}`,
+      effectKey: intent.effectKey,
+      governedIntentDigest,
+      firstAuthorizationRef: authorization.authorizationRef,
+      requestDigest: intent.requestDigest,
+      agentRef: authorization.agentRef,
+      providerRef: authorization.providerRef,
+      providerPrincipalRef: authorization.providerPrincipalRef,
+      capabilityRef: authorization.capabilityRef,
+      purposeRef: authorization.purposeRef,
+      resourceRefs: stableRefs(authorization.resourceRefs),
+      correlationId: authorization.correlationId,
+    };
+    this.byEffectKey.set(intent.effectKey, execution);
+
+    return {
+      execution: { ...execution, resourceRefs: [...execution.resourceRefs] },
+      idempotentReplay: false,
+    };
+  }
+}
+
+export function hashProviderPayloadV1(payload: string): string {
+  return `sha256:${digest(payload)}`;
+}
+
+export function verifyProviderAttemptEvidenceV1(
+  evidence: ProviderAttemptEvidenceV1,
+  requestPayload: string,
+  responsePayload?: string,
+): true {
+  if (evidence.requestHash !== hashProviderPayloadV1(requestPayload)) {
+    throw new Error("evidence_integrity_failure");
+  }
+  if (evidence.responseHash !== undefined) {
+    if (
+      responsePayload === undefined ||
+      evidence.responseHash !== hashProviderPayloadV1(responsePayload)
+    ) {
+      throw new Error("evidence_integrity_failure");
+    }
+  } else if (responsePayload !== undefined) {
+    throw new Error("evidence_integrity_failure");
+  }
+  return true;
+}
+
+export function createCompensationLineageV1(
+  input: ProviderCompensationLineageV1,
+): ProviderCompensationLineageV1 {
+  if (input.originalExecutionRef === input.compensationExecutionRef) {
+    throw new Error("provider_compensation_distinct_execution_required");
+  }
+  return { ...input };
+}
+
+export function classifyCompensationFailureV1(input: {
+  authorizationRef: string;
+  compensationExecutionRef: string;
+  originalException: ProviderExceptionV1;
+  failure: ProviderFailureErrorV1;
+}): ProviderExceptionV1 {
+  if (input.failure.kind !== "COMPENSATION_FAILURE") {
+    throw new Error("provider_compensation_failure_kind_required");
+  }
+  if (!input.originalException.executionRef) {
+    throw new Error("provider_compensation_originating_execution_required");
+  }
+
+  const exception = classifyProviderFailureV1(input.authorizationRef, input.failure);
+  return {
+    ...exception,
+    executionRef: input.compensationExecutionRef,
+    parentExceptionRef: input.originalException.exceptionRef,
+    originatingExecutionRef: input.originalException.executionRef,
+  };
 }
