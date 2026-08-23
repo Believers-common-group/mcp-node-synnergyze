@@ -142,4 +142,20 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-001 R1.0", () => {
     expect("riverEventReceipt" in result).toBe(false);
     expect("effectReceipt" in result).toBe(false);
   });
+
+  it("routes the destination effect through the existing River reservation, controlled execution and effect-verification lineage", () => {
+    const result = execute();
+
+    expect(result.state).toBe("COMPLETED");
+    if (result.state !== "COMPLETED") throw new Error("expected_completed");
+
+    expect(result.reservation.wardenDecisionRef).toBe(result.destinationDecision.decisionRef);
+    expect(result.executionReceipt.state).toBe("EXECUTED_UNVERIFIED");
+    expect(result.executionReceipt.wardenDecisionRef).toBe(result.destinationDecision.decisionRef);
+    expect(result.executionReceipt.reservationRef).toBe(result.reservation.reservationRef);
+    expect(result.observation.executionReceiptRef).toBe(result.executionReceipt.receiptRef);
+    expect(result.effectReceipt.executionReceiptRef).toBe(result.executionReceipt.receiptRef);
+    expect(result.effectReceipt.reservationRef).toBe(result.reservation.reservationRef);
+    expect(result.effectReceipt.wardenDecisionRef).toBe(result.destinationDecision.decisionRef);
+  });
 });
