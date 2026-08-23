@@ -152,6 +152,12 @@ export class AssetComputeFabric {
         providerReceipt: providerResult.receipt,
       });
       if (!effect.verified || effect.outputRef !== providerResult.observation.outputRef) {
+        record("effect.rejected", "RIVER-ALPHA", {
+          effectReceiptId: effect.effectReceiptId,
+          observedOutputRef: providerResult.observation.outputRef,
+          verifierOutputRef: effect.outputRef,
+          reason: effect.verified ? "OUTPUT_REFERENCE_MISMATCH" : "VERIFIER_REJECTED",
+        });
         throw new Error("EFFECT_NOT_VERIFIED");
       }
 
