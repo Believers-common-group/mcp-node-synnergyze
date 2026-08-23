@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+
 import type { CustomMcpServer } from "../CustomMcpServer.ts";
 import { isToolAllowed, type ToolFilter } from "../toolFilters.ts";
 import type { WardenDecisionRequestV1, WardenDecisionV1 } from "../../modules/warden/contracts.ts";
@@ -8,7 +10,7 @@ import {
 import {
   enableEnvironmentVariable as wardenEnableEnvironmentVariable,
   evaluateWardenConformanceDecision,
-  type WardenConformanceDecisionToolInput,
+  parseWardenConformanceDecisionInput,
   wardenConformanceRequestJsonSchema,
 } from "./registerWardenConformanceDecision.ts";
 
@@ -18,6 +20,10 @@ export const description =
 export const enableEnvironmentVariable = "VSR_RIVER_MCP_CONFORMANCE";
 
 export type RiverWardenConformanceClock = () => string;
+
+function digest(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
 
 function publicDecision(decision: WardenDecisionV1) {
   return {
@@ -35,44 +41,84 @@ function publicDecision(decision: WardenDecisionV1) {
   } as const;
 }
 
-export function reserveWardenConformanceAction(
-  input: unknown,
-  river: SyntheticRiverReservationServiceV1,
-  decidedAndReservedAt: string,
-) {
-  const decision = evaluateWardenConformanceDecision(input, decidedAndReservedAt);
-  const safeDecision = publicDecision(decision);
+function requestFingerprint(request: WardenDecisionRequestV1): string {
+  return digest(
+    JSON.stringify({
+      ...request,
+      authorityRefs: [...request.authorityRefs].sort(),
+      policyRefs: [...request.policyRefs].sort(),
+      representationSourceRefs: [...request.representationSourceRefs].sort(),
+      deviceSecuritySourceRefs: [...(request.deviceSecuritySourceRefs ?? [])].sort(),
+    }),
+  );
+}
 
-  if (decision.decision !== "ALLOW") {
-    return {
-      decision: safeDecision,
-      actionRef: null,
-      reservation: null,
-    } as const;
+type BindingResponse = {
+  decision: ReturnType<typeof publicDecision>;
+  actionRef: string | null;
+  reservation: ReturnType<SyntheticRiverReservationServiceV1["reserve"]> | null;
+};
+
+type StoredBindingResponse = {
+  fingerprint: string;
+  response: BindingResponse;
+};
+
+export class RiverWardenConformanceBindingServiceV1 {
+  private readonly river = new SyntheticRiverReservationServiceV1();
+  private readonly byRequestRef = new Map<string, StoredBindingResponse>();
+
+  execute(input: unknown, decidedAndReservedAt: string): BindingResponse {
+    const parsed = parseWardenConformanceDecisionInput(input);
+    const request = parsed.request as WardenDecisionRequestV1;
+    const fingerprint = requestFingerprint(request);
+    const existing = this.byRequestRef.get(request.requestRef);
+
+    if (existing) {
+      if (existing.fingerprint !== fingerprint) {
+        throw new Error("warden_river_request_replay_conflict");
+      }
+      return structuredClone(existing.response);
+    }
+
+    const decision = evaluateWardenConformanceDecision(parsed, decidedAndReservedAt);
+    const safeDecision = publicDecision(decision);
+    let response: BindingResponse;
+
+    if (decision.decision !== "ALLOW") {
+      response = {
+        decision: safeDecision,
+        actionRef: null,
+        reservation: null,
+      };
+    } else {
+      const action = buildAuthorizedActionEnvelopeV1(request, decision);
+      const reservation = this.river.reserve({
+        request,
+        decision,
+        action,
+        reservedAt: decidedAndReservedAt,
+      });
+      response = {
+        decision: safeDecision,
+        actionRef: action.actionRef,
+        reservation,
+      };
+    }
+
+    this.byRequestRef.set(request.requestRef, {
+      fingerprint,
+      response: structuredClone(response),
+    });
+    return structuredClone(response);
   }
-
-  // evaluateWardenConformanceDecision has already validated this shape.
-  const request = (input as WardenConformanceDecisionToolInput).request as WardenDecisionRequestV1;
-  const action = buildAuthorizedActionEnvelopeV1(request, decision);
-  const reservation = river.reserve({
-    request,
-    decision,
-    action,
-    reservedAt: decidedAndReservedAt,
-  });
-
-  return {
-    decision: safeDecision,
-    actionRef: action.actionRef,
-    reservation,
-  } as const;
 }
 
 export function registerRiverWardenConformanceReservation(
   server: CustomMcpServer,
   clock: RiverWardenConformanceClock = () => new Date().toISOString(),
 ): void {
-  const river = new SyntheticRiverReservationServiceV1();
+  const binding = new RiverWardenConformanceBindingServiceV1();
 
   server.tool({
     name: operationId,
@@ -86,7 +132,7 @@ export function registerRiverWardenConformanceReservation(
         request: wardenConformanceRequestJsonSchema,
       },
     },
-    cb: async (args) => JSON.stringify(reserveWardenConformanceAction(args, river, clock())),
+    cb: async (args) => JSON.stringify(binding.execute(args, clock())),
   });
 }
 
