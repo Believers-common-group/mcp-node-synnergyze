@@ -2,7 +2,11 @@ import { createHash } from "node:crypto";
 
 import type {
   AuthorizedProviderExecutionV1,
+  ProviderAttemptResultV1,
   ProviderAuthorityGateInputV1,
+  ProviderExceptionV1,
+  ProviderFailureKindV1,
+  ProviderRecoveryActionV1,
 } from "./contracts.ts";
 
 function digest(value: string): string {
@@ -145,4 +149,108 @@ export function executeWithProviderAuthorityV1<T>(
 ): T {
   const authorization = authorizeProviderExecutionV1(input);
   return execute(authorization);
+}
+
+export class ProviderFailureErrorV1 extends Error {
+  readonly kind: ProviderFailureKindV1;
+
+  constructor(kind: ProviderFailureKindV1, message: string) {
+    super(message);
+    this.name = "ProviderFailureErrorV1";
+    this.kind = kind;
+  }
+}
+
+export function classifyProviderFailureV1(
+  authorizationRef: string,
+  failure: ProviderFailureErrorV1,
+): ProviderExceptionV1 {
+  const common = {
+    version: "WARDEN-PROVIDER-AUTHORITY-BRIDGE-001" as const,
+    exceptionRef: `PROVIDER-EXCEPTION:${digest(
+      `${authorizationRef}|${failure.kind}|${failure.message}`,
+    ).slice(0, 24)}`,
+    authorizationRef,
+    failureKind: failure.kind,
+    message: failure.message,
+  };
+
+  switch (failure.kind) {
+    case "HTTP_TIMEOUT_AFTER_SEND":
+      return {
+        ...common,
+        exceptionClass: "NETWORK_EXCEPTION",
+        effectState: "UNKNOWN",
+        retryability: "AFTER_RECONCILIATION",
+        severity: "E2",
+      };
+    case "CREDENTIAL_TRANSIENT":
+      return {
+        ...common,
+        exceptionClass: "CREDENTIAL_EXCEPTION",
+        effectState: "NONE",
+        retryability: "SAFE",
+        severity: "E1",
+      };
+    case "PROVIDER_AUTH_DENIED":
+      return {
+        ...common,
+        exceptionClass: "PROVIDER_AUTH_EXCEPTION",
+        effectState: "NONE",
+        retryability: "NEVER",
+        severity: "E2",
+      };
+    case "AGENT_IDENTITY_CONTEXT_MISMATCH":
+      return {
+        ...common,
+        exceptionClass: "IDENTITY_EXCEPTION",
+        effectState: "NONE",
+        retryability: "NEVER",
+        severity: "E3",
+      };
+    case "PARTIAL_EFFECT":
+      return {
+        ...common,
+        exceptionClass: "PARTIAL_EFFECT_EXCEPTION",
+        effectState: "PARTIAL",
+        retryability: "POLICY_DECISION_REQUIRED",
+        severity: "E4",
+      };
+    case "COMPENSATION_FAILURE":
+      return {
+        ...common,
+        exceptionClass: "COMPENSATION_EXCEPTION",
+        effectState: "UNKNOWN",
+        retryability: "AFTER_RECONCILIATION",
+        severity: "E4",
+      };
+  }
+}
+
+export async function executeProviderAttemptV1<T>(
+  authorizationRef: string,
+  execute: () => Promise<T> | T,
+): Promise<ProviderAttemptResultV1<T>> {
+  try {
+    return { state: "SUCCEEDED", authorizationRef, value: await execute() };
+  } catch (error) {
+    if (!(error instanceof ProviderFailureErrorV1)) throw error;
+    return {
+      state: "EXCEPTION",
+      authorizationRef,
+      exception: classifyProviderFailureV1(authorizationRef, error),
+    };
+  }
+}
+
+export function determineProviderRecoveryV1(
+  exception: ProviderExceptionV1,
+): ProviderRecoveryActionV1 {
+  if (exception.exceptionClass === "IDENTITY_EXCEPTION" && exception.severity === "E3") {
+    return "CONTAIN";
+  }
+  if (exception.effectState === "UNKNOWN") return "RECONCILE_FIRST";
+  if (exception.retryability === "NEVER") return "ABORT";
+  if (exception.retryability === "SAFE") return "RETRY";
+  return "POLICY_DECISION_REQUIRED";
 }
