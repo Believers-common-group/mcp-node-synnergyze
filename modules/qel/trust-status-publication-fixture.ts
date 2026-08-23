@@ -275,26 +275,24 @@ export function validateTrustStatusPublicationV01(input: TrustSourceInputsV01 & 
     ) {
       issues.push("predecessor_unexpected");
     }
+  } else if (
+    !input.publication.predecessorPublicationRef?.trim() ||
+    !input.publication.predecessorDigest?.trim() ||
+    !input.predecessorPublication
+  ) {
+    issues.push("predecessor_missing");
   } else {
+    if (input.publication.predecessorPublicationRef !== input.predecessorPublication.publicationRef) {
+      issues.push("predecessor_ref_mismatch");
+    }
+    if (input.publication.sequence !== input.predecessorPublication.sequence + 1) {
+      issues.push("predecessor_sequence_mismatch");
+    }
     if (
-      !input.publication.predecessorPublicationRef?.trim() ||
-      !input.publication.predecessorDigest?.trim() ||
-      !input.predecessorPublication
+      input.publication.predecessorDigest !==
+      digestTrustStatusPublicationV01(input.predecessorPublication)
     ) {
-      issues.push("predecessor_missing");
-    } else {
-      if (input.publication.predecessorPublicationRef !== input.predecessorPublication.publicationRef) {
-        issues.push("predecessor_ref_mismatch");
-      }
-      if (input.publication.sequence !== input.predecessorPublication.sequence + 1) {
-        issues.push("predecessor_sequence_mismatch");
-      }
-      if (
-        input.publication.predecessorDigest !==
-        digestTrustStatusPublicationV01(input.predecessorPublication)
-      ) {
-        issues.push("predecessor_digest_mismatch");
-      }
+      issues.push("predecessor_digest_mismatch");
     }
   }
 
@@ -410,6 +408,15 @@ export function mapTrustStatusPublicationToQelFrameV01(
     isIsoDate(input.publication.publishedAt) && isIsoDate(input.observedAt)
       ? Math.max(0, Date.parse(input.observedAt) - Date.parse(input.publication.publishedAt))
       : 0;
+  const evidenceSources = input.publication.riverEvidenceRef
+    ? [
+        {
+          sourceRef: input.publication.riverEvidenceRef,
+          kind: "SYSTEM" as const,
+          nativeRef: input.riverReceipt?.receiptRef,
+        },
+      ]
+    : [];
 
   return {
     contractVersion: VSR_QEL_CORE_CONTRACT_VERSION,
@@ -462,13 +469,7 @@ export function mapTrustStatusPublicationToQelFrameV01(
         status: evidenceStatus,
         maximumValidAgeMs: input.publication.maximumStatusAgeMs,
       },
-      sources: [
-        {
-          sourceRef: input.publication.riverEvidenceRef,
-          kind: "SYSTEM",
-          nativeRef: input.riverReceipt?.receiptRef,
-        },
-      ].filter((source) => Boolean(source.sourceRef)),
+      sources: evidenceSources,
       riverReceiptRef: input.riverReceipt?.receiptRef,
     },
     outcome: result.trustReady ? { state: "OBSERVED" } : { state: "FAILED" },
