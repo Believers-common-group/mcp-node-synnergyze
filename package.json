@@ -28,7 +28,7 @@
     "test:controlled-execution": "vitest run modules/synnergyze/execution-gate.test.ts",
     "test:effect-verification": "vitest run modules/synnergyze/effect-verification.test.ts",
     "test:objective": "vitest run modules/objective/inventory-transfer.test.ts",
-    "test:work-capability": "vitest run modules/work-capability/runtime.test.ts",
+    "test:work-capability": "vitest run modules/work-capability/runtime.test.ts modules/work-capability/reconciliation.test.ts",
     "test:bag-lock-runtime": "vitest run modules/synnergyze/warden-request-bridge.test.ts modules/synnergyze/execution-gate.test.ts",
     "test:sites": "vitest run api/sites.test.ts",
     "test:site-handoff": "vitest run site-handoff",

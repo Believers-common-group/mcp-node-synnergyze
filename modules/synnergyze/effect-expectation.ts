@@ -79,9 +79,27 @@ export class SyntheticServiceRequestExpectationCompilerV1 implements EffectExpec
   }
 }
 
+/** Synthetic Work/Capability compiler used only by the garment conformance proof. */
+export class SyntheticGarmentWaistbandExpectationCompilerV1
+  implements EffectExpectationCompilerV1
+{
+  readonly compilerRef = "SYNTHETIC-GARMENT-WAISTBAND-EXPECTATION-COMPILER-001";
+  readonly capabilityRef = "garment.waistband.attach";
+
+  compile(requestedEffect: string): EffectMatcherV1 {
+    if (requestedEffect !== "GARMENT-STATE:waistband_attached") {
+      throw new Error("effect_expectation_unsupported_requested_effect");
+    }
+    return { kind: "EXACT", value: "GARMENT-STATE:waistband_attached" };
+  }
+}
+
 function trustedCompilerFor(capabilityRef: string): EffectExpectationCompilerV1 | undefined {
   if (capabilityRef === "service_request.create") {
     return new SyntheticServiceRequestExpectationCompilerV1();
+  }
+  if (capabilityRef === "garment.waistband.attach") {
+    return new SyntheticGarmentWaistbandExpectationCompilerV1();
   }
   return undefined;
 }
