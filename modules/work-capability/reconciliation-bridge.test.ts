@@ -14,7 +14,11 @@ import {
   runVerifiedWaistbandFixtureV1,
   validWaistbandFixtureV1,
 } from "./fixtures/garment.ts";
-import { SyntheticWorkCapabilityEvidenceFinalizerV1 } from "./reconciliation-bridge.ts";
+import {
+  compileWorkReconciliationExpectationV1,
+  SyntheticWorkCapabilityEvidenceFinalizerV1,
+  validateWorkReconciliationExpectationV1,
+} from "./reconciliation-bridge.ts";
 
 function compileWaistbandExpectationV1() {
   const fixture = validWaistbandFixtureV1();
@@ -113,5 +117,39 @@ describe("WORK-CAPABILITY-RECONCILIATION-BRIDGE-001", () => {
       ...input,
       sealedAt: "2026-08-24T00:31:01.000Z",
     })).toThrow("work_capability_finalizer_idempotency_conflict");
+  });
+
+  it("binds Work quantity and quality semantics to the generic expectation before execution", () => {
+    const fixture = validWaistbandFixtureV1();
+    const expectedEffect = compileWaistbandExpectationV1();
+    const workExpectation = compileWorkReconciliationExpectationV1({
+      workUnit: fixture.workUnit,
+      expectedEffectContract: expectedEffect,
+      requiredQuantity: 500,
+      compiledAt: "2026-08-24T00:30:23.000Z",
+    });
+
+    expect(workExpectation.state).toBe("BOUND_PRE_EXECUTION");
+    expect(workExpectation.workUnitRef).toBe(fixture.workUnit.workUnitRef);
+    expect(workExpectation.expectedEffectContractRef).toBe(expectedEffect.expectationRef);
+    expect(workExpectation.requiredQuantity).toBe(500);
+    expect(workExpectation.requiredFirstPassQuality).toBe(0.97);
+    expect(validateWorkReconciliationExpectationV1(workExpectation)).toBe(true);
+  });
+
+  it("fails validation when Work expectation material is mutated", () => {
+    const fixture = validWaistbandFixtureV1();
+    const expectedEffect = compileWaistbandExpectationV1();
+    const compiled = compileWorkReconciliationExpectationV1({
+      workUnit: fixture.workUnit,
+      expectedEffectContract: expectedEffect,
+      requiredQuantity: 500,
+      compiledAt: "2026-08-24T00:30:23.000Z",
+    });
+
+    expect(validateWorkReconciliationExpectationV1({
+      ...compiled,
+      requiredQuantity: 499,
+    })).toBe(false);
   });
 });
