@@ -13,6 +13,7 @@ import {
 import type { ExpectedEffectContractV1 } from "../synnergyze/effect-expectation.ts";
 import {
   runVerifiedWaistbandFixtureV1,
+  validWaistbandFixtureV1,
   type VerifiedWaistbandFixtureResultV1,
 } from "./fixtures/garment.ts";
 import {
@@ -96,6 +97,7 @@ function inputFor(
   return {
     workUnit: fixture.workUnit,
     assignment: fixture.assignment,
+    actorProfiles: validWaistbandFixtureV1().actorProfiles,
     execution: fixture.execution,
     observation: fixture.observation,
     verification: fixture.verification,
@@ -125,7 +127,7 @@ describe("WorkCapabilityReconciliationBridgeV1", () => {
     expect(result.guard.state).toBe("WORK_CLOSED");
     expect(result.guard.closureEligible).toBe(true);
     expect(result.guard.candidateRemedies).toEqual([]);
-    expect(result.guard.capabilityEvidenceRefs).toHaveLength(4);
+    expect(result.guard.capabilityEvidenceRefs).toHaveLength(3);
   });
 
   it("keeps partial quantity open even when the semantic state matches", () => {
