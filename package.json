@@ -1,6 +1,7 @@
 {
   "name": "synnergyze-genesis-mcp",
   "version": "0.1.0",
+  "private": true,
   "main": "src/app.ts",
   "scripts": {
     "start": "node --experimental-strip-types --no-warnings=ExperimentalWarnings src/app.ts",
@@ -13,12 +14,13 @@
     "test:compute-proof": "vitest run compute/runtime.test.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
+    "verify:rights": "node scripts/verify-release-rights.mjs",
     "debug": "mcp-inspector npm start"
   },
   "type": "module",
   "keywords": ["mcp", "synnergyze", "genesis", "vsr"],
   "author": "Believers Common Group",
-  "license": "ISC",
+  "license": "UNLICENSED",
   "description": "Synnergyze Genesis MCP service for governed VSR/Genesis integrations.",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.11.0",
