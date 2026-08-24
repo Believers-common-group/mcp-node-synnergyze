@@ -42,7 +42,7 @@ function headersFromIncoming(headers: IncomingHttpHeaders): Headers {
   return result;
 }
 
-async function readIncomingBody(request: IncomingMessage): Promise<Uint8Array | undefined> {
+async function readIncomingBody(request: IncomingMessage): Promise<string | undefined> {
   if (request.method === "GET" || request.method === "HEAD") return undefined;
 
   const chunks: Buffer[] = [];
@@ -50,7 +50,7 @@ async function readIncomingBody(request: IncomingMessage): Promise<Uint8Array | 
     chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk));
   }
   if (chunks.length === 0) return undefined;
-  return Buffer.concat(chunks);
+  return Buffer.concat(chunks).toString("utf8");
 }
 
 function certificationRoute(url: URL): AuthzenCertificationRouteV1 | undefined {
@@ -88,7 +88,7 @@ export async function handleHostedAuthzenCertificationV1(
     body:
       request.method === "GET" || request.method === "HEAD"
         ? undefined
-        : await request.arrayBuffer(),
+        : await request.text(),
   });
 
   const pdp = new SyntheticAuthzenAuthorizationApi10CertificationPdpV1(origin);
