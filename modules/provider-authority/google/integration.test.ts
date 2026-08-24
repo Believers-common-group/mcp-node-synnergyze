@@ -57,6 +57,7 @@ function fixture(): {
     reasonCodes: ["bounded_policy_allow"],
     constraints: [
       "provider:GOOGLE_CLOUD",
+      "provider_identity_mode:ADC",
       `provider_request:${googleProviderRequestHashV1(config, PROMPT)}`,
     ],
     decidedAt: "2026-08-24T06:00:00.000Z",
