@@ -49,6 +49,22 @@ function assertCompletedAt(completedAt: string, authorizedAt: string): void {
   if (completed < authorized) throw new Error("google_completed_before_authorization");
 }
 
+export function googleProviderRequestHashV1(
+  config: GoogleProviderConfigV1,
+  prompt: string,
+): string {
+  return hashProviderPayloadV1(
+    JSON.stringify({
+      providerRef: config.providerRef,
+      project: config.project,
+      location: config.location,
+      model: config.model,
+      prompt,
+      maxOutputTokens: config.maxOutputTokens,
+    }),
+  );
+}
+
 export class GoogleReferenceAdapterV1 {
   constructor(
     private readonly config: GoogleProviderConfigV1,
@@ -65,6 +81,10 @@ export class GoogleReferenceAdapterV1 {
     assertGoogleIdentityBindingV1(input.identity, input.authority.binding);
     assertConfig(this.config);
     assertPrompt(input.prompt, this.config);
+    const requestHash = googleProviderRequestHashV1(this.config, input.prompt);
+    if (!input.authority.decision.constraints.includes(`provider_request:${requestHash}`)) {
+      throw new Error("google_provider_request_constraint_required");
+    }
     assertCompletedAt(input.completedAt, authorization.authorizedAt);
 
     try {
@@ -75,13 +95,6 @@ export class GoogleReferenceAdapterV1 {
       });
       requireNonEmpty(response.text, "google_empty_response");
 
-      const requestHash = hashProviderPayloadV1(
-        JSON.stringify({
-          model: this.config.model,
-          prompt: input.prompt,
-          maxOutputTokens: this.config.maxOutputTokens,
-        }),
-      );
       const responseHash = hashProviderPayloadV1(
         JSON.stringify({
           text: response.text,
