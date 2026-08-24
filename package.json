@@ -8,7 +8,7 @@
     "lint": "eslint --ext .ts src api rc1 compute agent-fabric site-handoff modules",
     "test": "vitest",
     "test:provider-authority": "vitest run modules/provider-authority/*.test.ts",
-    "test:google-provider": "vitest run modules/provider-authority/google/identity.test.ts modules/provider-authority/google/adapter.test.ts modules/provider-authority/google/genai-client.test.ts modules/provider-authority/google/integration.test.ts",
+    "test:google-provider": "vitest run modules/provider-authority/google/identity.test.ts modules/provider-authority/google/identity-mode-binding.test.ts modules/provider-authority/google/adapter.test.ts modules/provider-authority/google/genai-client.test.ts modules/provider-authority/google/integration.test.ts",
     "test:google-live": "vitest run modules/provider-authority/google/live.google.test.ts",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
     "test:rc1": "vitest run rc1/runtime.test.ts",
