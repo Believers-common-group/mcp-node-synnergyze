@@ -1,0 +1,47 @@
+name: Runtime Effect Resolution Export
+
+on:
+  push:
+    branches:
+      - gcs002-runtime-resolution-export
+    paths:
+      - 'modules/synnergyze/runtime-effect-resolution-export.ts'
+      - 'modules/synnergyze/runtime-effect-resolution-export.test.ts'
+      - 'modules/synnergyze/runtime-effect-resolution-hosted-fixture.test.ts'
+      - 'modules/synnergyze/warden-resolution-projection-bridge.ts'
+      - '.github/workflows/runtime-effect-resolution-export.yml'
+  pull_request:
+    branches:
+      - feat/warden-resolution-projection-bridge-1.3
+    paths:
+      - 'modules/synnergyze/runtime-effect-resolution-export.ts'
+      - 'modules/synnergyze/runtime-effect-resolution-export.test.ts'
+      - 'modules/synnergyze/runtime-effect-resolution-hosted-fixture.test.ts'
+      - 'modules/synnergyze/warden-resolution-projection-bridge.ts'
+      - '.github/workflows/runtime-effect-resolution-export.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  runtime-effect-resolution-export:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - name: Type check
+        run: npm run type-check
+      - name: Resolution bridge and export tests
+        env:
+          RUNTIME_EFFECT_RESOLUTION_FIXTURE_DIR: runtime-effect-resolution-fixture
+        run: npx vitest run modules/synnergyze/warden-resolution-projection-bridge.test.ts modules/synnergyze/runtime-effect-resolution-export.test.ts modules/synnergyze/runtime-effect-resolution-hosted-fixture.test.ts
+      - name: Upload signed Runtime resolution fixture
+        uses: actions/upload-artifact@v4
+        with:
+          name: warden-runtime-effect-resolution-fixture
+          path: runtime-effect-resolution-fixture
+          if-no-files-found: error
