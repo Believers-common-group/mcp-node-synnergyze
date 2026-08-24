@@ -153,7 +153,8 @@ function lineageMatches(input: {
   });
 
   return Boolean(
-    governed.state === "VERIFIED_LOCAL_EFFECT" &&
+    destinationDecision.decision === "ALLOW" &&
+      governed.state === "VERIFIED_LOCAL_EFFECT" &&
       governed.federationId === federationObject.federationId &&
       governed.trustPathProofRef === trustPathProof.proofRef &&
       governed.contractResolutionRef === contractResolution.resolutionRef &&
