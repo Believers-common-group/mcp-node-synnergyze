@@ -1,0 +1,22 @@
+name: r05-lockfile
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  lockfile:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Generate package lock
+        run: npm install --package-lock-only --ignore-scripts
+      - name: Upload package lock
+        uses: actions/upload-artifact@v4
+        with:
+          name: r05-package-lock
+          path: package-lock.json
+          if-no-files-found: error
