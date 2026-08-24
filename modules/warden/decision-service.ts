@@ -168,6 +168,11 @@ export function evaluateSyntheticWardenDecisionV1(
     return escalate(request, policy, decidedAt, "material_trust_conflict");
   }
 
+  if (request.trustResolution?.result === "DENIED") {
+    const reason = request.trustResolution.reasonCodes?.[0] ?? "unspecified";
+    return deny(request, policy, decidedAt, `trust_denied:${reason}`);
+  }
+
   if (request.trustResolution?.result === "HOLD") {
     const reason = request.trustResolution.reasonCodes?.[0] ?? "unspecified";
     return escalate(request, policy, decidedAt, `trust_hold:${reason}`);
@@ -176,6 +181,11 @@ export function evaluateSyntheticWardenDecisionV1(
   if (request.trustResolution?.result === "REQUIRES_STEP_UP") {
     const reason = request.trustResolution.reasonCodes?.[0] ?? "unspecified";
     return escalate(request, policy, decidedAt, `trust_step_up:${reason}`);
+  }
+
+  if (request.trustResolution?.result === "REQUIRES_ADJUDICATION") {
+    const reason = request.trustResolution.reasonCodes?.[0] ?? "unspecified";
+    return escalate(request, policy, decidedAt, `trust_adjudication:${reason}`);
   }
 
   if (policy.manualReviewCapabilityRefs.includes(request.capabilityRef)) {
