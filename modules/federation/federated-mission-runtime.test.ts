@@ -63,6 +63,7 @@ function fixture() {
       requestRef: "WARDEN-REQUEST:MY-001",
       wardenRef: "WARDEN-MY",
       action: "federation.licence.recognise",
+      decidedAt: "2026-08-24T00:00:30.000Z",
       correlationId: "CORR-MY-LICENCE-001",
       actionToken: "WARDEN-ACTION-TOKEN:MY-001",
     }),
