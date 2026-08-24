@@ -1,4 +1,8 @@
-import type { ProviderAttemptResultV1, ProviderAuthorityGateInputV1 } from "../contracts.ts";
+import type {
+  AuthorizedProviderExecutionV1,
+  ProviderAttemptResultV1,
+  ProviderAuthorityGateInputV1,
+} from "../contracts.ts";
 import {
   authorizeProviderExecutionV1,
   classifyProviderFailureV1,
@@ -65,18 +69,23 @@ export function googleProviderRequestHashV1(
   );
 }
 
+export interface GoogleProviderPreflightV1 {
+  authorization: AuthorizedProviderExecutionV1;
+  requestHash: string;
+}
+
 export class GoogleReferenceAdapterV1 {
   constructor(
     private readonly config: GoogleProviderConfigV1,
     private readonly client: GoogleGenerateContentClientV1,
   ) {}
 
-  async execute(input: {
+  preflight(input: {
     authority: ProviderAuthorityGateInputV1;
     identity: GoogleRuntimeIdentityContextV1;
     prompt: string;
     completedAt: string;
-  }): Promise<ProviderAttemptResultV1<GoogleProviderCallReceiptV1>> {
+  }): GoogleProviderPreflightV1 {
     const authorization = authorizeProviderExecutionV1(input.authority);
     assertGoogleIdentityBindingV1(input.identity, input.authority.binding);
     assertConfig(this.config);
@@ -86,6 +95,16 @@ export class GoogleReferenceAdapterV1 {
       throw new Error("google_provider_request_constraint_required");
     }
     assertCompletedAt(input.completedAt, authorization.authorizedAt);
+    return { authorization, requestHash };
+  }
+
+  async execute(input: {
+    authority: ProviderAuthorityGateInputV1;
+    identity: GoogleRuntimeIdentityContextV1;
+    prompt: string;
+    completedAt: string;
+  }): Promise<ProviderAttemptResultV1<GoogleProviderCallReceiptV1>> {
+    const { authorization, requestHash } = this.preflight(input);
 
     try {
       const response = await this.client.generateContent({
