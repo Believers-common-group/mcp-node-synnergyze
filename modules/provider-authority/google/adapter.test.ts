@@ -11,7 +11,10 @@ import type {
   ProviderPrincipalBindingV1,
 } from "../contracts.ts";
 import { ProviderFailureErrorV1 } from "../runtime.ts";
-import { GoogleReferenceAdapterV1 } from "./adapter.ts";
+import {
+  GoogleReferenceAdapterV1,
+  googleProviderRequestHashV1,
+} from "./adapter.ts";
 import type {
   GoogleGenerateContentClientV1,
   GoogleProviderConfigV1,
@@ -34,7 +37,15 @@ const config: GoogleProviderConfigV1 = {
 function authorityFixture(options: {
   bindingPrincipalRef?: string;
   providerConstraint?: boolean;
+  requestConstraint?: boolean;
+  prompt?: string;
 } = {}): ProviderAuthorityGateInputV1 {
+  const prompt = options.prompt ?? "analyse thermal state";
+  const constraints: string[] = [];
+  if (options.providerConstraint !== false) constraints.push("provider:GOOGLE_CLOUD");
+  if (options.requestConstraint !== false) {
+    constraints.push(`provider_request:${googleProviderRequestHashV1(config, prompt)}`);
+  }
   const decision: WardenAllowDecisionV1 = {
     decisionRef: "WARDEN-DECISION:GOOGLE-R05-001",
     requestRef: "WARDEN-REQUEST:GOOGLE-R05-001",
@@ -42,7 +53,7 @@ function authorityFixture(options: {
     action: "provider.execute",
     targetRef: "PROJECT:GYROCELL",
     reasonCodes: ["bounded_policy_allow"],
-    constraints: options.providerConstraint === false ? [] : ["provider:GOOGLE_CLOUD"],
+    constraints,
     decidedAt: "2026-08-24T05:30:00.000Z",
     validUntil: "2026-08-24T05:55:00.000Z",
     correlationId: "CORR:GOOGLE-R05-001",
@@ -212,6 +223,22 @@ describe("Google reference adapter R0.5", () => {
     expect(google.generateContent).not.toHaveBeenCalled();
   });
 
+  it("requires the exact Google provider request hash to be Warden-bound", async () => {
+    const google = client();
+    const adapter = new GoogleReferenceAdapterV1(config, google);
+    const identity = resolveGoogleRuntimeIdentityV1({ mode: "ADC", config });
+
+    await expect(
+      adapter.execute({
+        authority: authorityFixture({ prompt: "authorized prompt" }),
+        identity,
+        prompt: "mutated prompt",
+        completedAt: "2026-08-24T05:43:00.000Z",
+      }),
+    ).rejects.toThrow("google_provider_request_constraint_required");
+    expect(google.generateContent).not.toHaveBeenCalled();
+  });
+
   it("returns only bounded metadata and payload hashes on success", async () => {
     const google = client();
     const adapter = new GoogleReferenceAdapterV1(config, google);
@@ -246,7 +273,9 @@ describe("Google reference adapter R0.5", () => {
       modelVersion: "gemini-2.5-flash-001",
       completedAt: "2026-08-24T05:43:00.000Z",
     });
-    expect(result.value.requestHash).toMatch(/^sha256:[a-f0-9]{64}$/);
+    expect(result.value.requestHash).toBe(
+      googleProviderRequestHashV1(config, "analyse thermal state"),
+    );
     expect(result.value.responseHash).toMatch(/^sha256:[a-f0-9]{64}$/);
     expect(JSON.stringify(result.value)).not.toContain("token");
     expect(JSON.stringify(result.value)).not.toContain("credential");
