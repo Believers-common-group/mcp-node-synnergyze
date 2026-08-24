@@ -27,22 +27,25 @@ jobs:
   verify:
     runs-on: ubuntu-24.04
     steps:
-      - name: Checkout exact revision
+      - name: Checkout exact candidate revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
 
       - name: Use governed Node toolchain
         uses: actions/setup-node@v4
         with:
           node-version-file: '.nvmrc'
 
-      - name: Verify root licence, rights state and lock metadata
+      - name: Prepare evidence directory
+        run: mkdir -p evidence
+
+      - name: Verify root licence shape and lock metadata
         run: |
           node - <<'NODE'
           const fs = require('fs');
-          const crypto = require('crypto');
           const pkg = require('./package.json');
           const lock = require('./package-lock.json');
-          const rights = require('./rights/release-rights.json');
 
           if (pkg.license !== 'MIT') throw new Error(`package.json license is ${pkg.license}`);
           if (lock.packages?.['']?.license !== 'MIT') throw new Error(`package-lock root license is ${lock.packages?.['']?.license}`);
@@ -56,47 +59,41 @@ jobs:
             }
           }
 
-          const licence = fs.readFileSync('LICENSE');
-          const licenceSha256 = crypto.createHash('sha256').update(licence).digest('hex');
-          if (!licence.toString('utf8').startsWith('MIT License\n')) {
+          const licence = fs.readFileSync('LICENSE', 'utf8');
+          if (!licence.startsWith('MIT License\n')) {
             throw new Error('root LICENSE is not MIT text');
           }
-
-          if (rights.status !== 'CLEARED') {
-            throw new Error(`release rights status is ${rights.status}; Warden/Launchpad admission remains blocked`);
-          }
-          if (rights.governance?.status !== 'CLEARED') {
-            throw new Error(`governance rights decision is ${rights.governance?.status ?? 'missing'}`);
-          }
-          if (!rights.clearance?.decision_reference || !rights.clearance?.deciding_principal || !rights.clearance?.authority_basis || !rights.clearance?.cleared_at) {
-            throw new Error('rights clearance evidence is incomplete');
-          }
-          if (rights.license_text_sha256 && rights.license_text_sha256 !== licenceSha256) {
-            throw new Error('root LICENSE digest differs from governed licence-text digest');
-          }
-          if (!['NOT_REQUIRED', 'EVIDENCED'].includes(rights.platform?.status)) {
-            throw new Error(`Launchpad platform permission is ${rights.platform?.status ?? 'missing'}`);
-          }
-
-          console.log(`root LICENSE sha256: ${licenceSha256}`);
-          console.log(`rights decision: ${rights.clearance.decision_reference}`);
           NODE
+          sha256sum package.json package-lock.json LICENSE rights/release-rights.json > evidence/source-metadata.sha256
 
       - name: Install exact locked dependency graph
         run: npm ci --ignore-scripts
 
-      - name: Generate CycloneDX SBOM
+      - name: Generate npm CycloneDX SBOM
         run: |
-          npm sbom --sbom-format cyclonedx > /tmp/npm-sbom.cdx.json
+          npm sbom --sbom-format cyclonedx > evidence/npm-sbom.cdx.json
           node - <<'NODE'
           const fs = require('fs');
-          const sbom = JSON.parse(fs.readFileSync('/tmp/npm-sbom.cdx.json', 'utf8'));
+          const sbom = JSON.parse(fs.readFileSync('evidence/npm-sbom.cdx.json', 'utf8'));
           if (!Array.isArray(sbom.components) || sbom.components.length === 0) {
             throw new Error('CycloneDX SBOM contains no dependency components');
           }
           console.log(`CycloneDX components: ${sbom.components.length}`);
           NODE
-          sha256sum /tmp/npm-sbom.cdx.json
+          sha256sum evidence/npm-sbom.cdx.json > evidence/npm-sbom.cdx.sha256
+
+      - name: Download governed Syft
+        id: syft
+        uses: anchore/sbom-action/download-syft@6b92ff5b2cce1787a99198f282dd8a26d1991449
+        with:
+          syft-version: v1.42.3
+
+      - name: Generate Syft and SPDX evidence
+        run: |
+          "${{ steps.syft.outputs.cmd }}" dir:. \
+            -o syft-json=evidence/sbom.syft.json \
+            -o spdx-json=evidence/sbom.spdx.json
+          sha256sum evidence/sbom.syft.json evidence/sbom.spdx.json > evidence/sbom.sha256
 
       - name: Emit dependency licence inventory
         run: |
@@ -116,10 +113,59 @@ jobs:
             });
           }
           inventory.sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`));
+          fs.writeFileSync('evidence/dependency-licenses.json', JSON.stringify(inventory, null, 2));
           const undeclared = inventory.filter(item => item.license === 'UNDECLARED');
           console.log(`Dependency packages inventoried: ${inventory.length}`);
           if (undeclared.length) {
             console.error('Undeclared dependency licences:', undeclared);
             process.exit(1);
           }
+          NODE
+          sha256sum evidence/dependency-licenses.json > evidence/dependency-licenses.sha256
+
+      - name: Capture exact source identity
+        run: |
+          git rev-parse HEAD | tee evidence/source-commit.txt
+          printf '%s\n' "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" > evidence/source-branch.txt
+          cp rights/release-rights.json evidence/release-rights.json
+
+      - name: Upload rights evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rights-evidence-${{ github.event.pull_request.head.sha || github.sha }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce governed release admission
+        run: |
+          node - <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
+          const rights = require('./rights/release-rights.json');
+          const licence = fs.readFileSync('LICENSE');
+          const licenceSha256 = crypto.createHash('sha256').update(licence).digest('hex');
+
+          if (rights.status !== 'CLEARED') {
+            throw new Error(`release rights status is ${rights.status}; Warden/Launchpad admission remains blocked`);
+          }
+          if (rights.governance?.status !== 'CLEARED') {
+            throw new Error(`governance rights decision is ${rights.governance?.status ?? 'missing'}`);
+          }
+          if (!rights.clearance?.decision_reference || !rights.clearance?.deciding_principal || !rights.clearance?.authority_basis || !rights.clearance?.cleared_at) {
+            throw new Error('rights clearance evidence is incomplete');
+          }
+          if (!rights.license_text_sha256) {
+            throw new Error('governed licence-text digest is missing');
+          }
+          if (rights.license_text_sha256 !== licenceSha256) {
+            throw new Error('root LICENSE digest differs from governed licence-text digest');
+          }
+          if (!['NOT_REQUIRED', 'EVIDENCED'].includes(rights.platform?.status)) {
+            throw new Error(`Launchpad platform permission is ${rights.platform?.status ?? 'missing'}`);
+          }
+
+          console.log(`root LICENSE sha256: ${licenceSha256}`);
+          console.log(`rights decision: ${rights.clearance.decision_reference}`);
           NODE
