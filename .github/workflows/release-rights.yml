@@ -1,0 +1,25 @@
+name: Release rights gate
+
+on:
+  pull_request:
+  push:
+    branches:
+      - genesis
+      - main
+      - 'codex/rights-*'
+
+permissions:
+  contents: read
+
+jobs:
+  verify-rights:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - name: Verify release rights
+        run: node scripts/verify-release-rights.mjs
