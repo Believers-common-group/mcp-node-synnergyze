@@ -12,6 +12,7 @@ import {
   type ReconciliationResultV1,
 } from "../synnergyze/reconciliation-fabric.ts";
 import type {
+  ActorCapabilityProfileV1,
   CapabilityEvidenceV1,
   CapabilityOutcomeV1,
   RemainingWorkProposalV1,
@@ -64,6 +65,7 @@ export type WorkCapabilityReconciliationResultV1 =
 export interface WorkCapabilityReconciliationInputV1 {
   workUnit: WorkUnitV1;
   assignment: WorkAssignmentV1;
+  actorProfiles: readonly ActorCapabilityProfileV1[];
   execution: SynnergyzeExecutionReceiptV1;
   observation: PostExecutionObservationV1;
   verification: EffectVerificationSuccessV1;
@@ -175,8 +177,22 @@ function assertCapabilityEvidence(input: WorkCapabilityReconciliationInputV1): r
   if (input.capabilityEvidence.length === 0) {
     throw new Error("work_capability_reconciliation_capability_evidence_required");
   }
+
+  const profiles = new Map(input.actorProfiles.map((profile) => [profile.actorRef, profile]));
+  for (const actorRef of input.assignment.actorRefs) {
+    if (!profiles.has(actorRef)) {
+      throw new Error(`work_capability_reconciliation_actor_profile_missing:${actorRef}`);
+    }
+  }
+  const directCapabilityActors = input.assignment.actorRefs.filter((actorRef) =>
+    profiles.get(actorRef)?.capabilityRefs.includes(input.execution.capabilityRef),
+  );
+  if (directCapabilityActors.length === 0) {
+    throw new Error("work_capability_reconciliation_direct_provider_required");
+  }
+
   const expectedSubjects = stableUnique([
-    ...input.assignment.actorRefs,
+    ...directCapabilityActors,
     input.assignment.compositionRef,
   ]);
   const actualSubjects = stableUnique(input.capabilityEvidence.map((item) => item.actorOrCompositionRef));
