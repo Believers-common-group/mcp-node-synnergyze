@@ -32,6 +32,34 @@ describe("WARDEN-TRUST-FABRIC-001 resolver", () => {
     expect(result.reasonCodes).toEqual(["insufficient_compute_assurance"]);
   });
 
+  it("requires step-up when observed identity assurance is below the action requirement", () => {
+    const result = resolveTrustV1({
+      resolutionRef: "TRUST-RESOLUTION:IDENTITY-001",
+      actionRef: "contract.commit",
+      intendedEffect: {
+        type: "contract.committed",
+        irreversible: true,
+      },
+      requiredAssurance: {
+        identity: 4,
+        authority: 4,
+        compute: 3,
+        evidence: 3,
+      },
+      observedAssurance: {
+        identity: 2,
+        authority: 4,
+        compute: 4,
+        evidence: 4,
+      },
+      materialConflict: false,
+    });
+
+    expect(result.result).toBe("REQUIRES_STEP_UP");
+    expect(result.material).toBe(true);
+    expect(result.reasonCodes).toEqual(["insufficient_identity_assurance"]);
+  });
+
   it("returns conflicted when a material authority conflict affects the requested effect", () => {
     const result = resolveTrustV1({
       resolutionRef: "TRUST-RESOLUTION:CONFLICT-001",
