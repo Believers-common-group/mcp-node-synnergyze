@@ -176,10 +176,10 @@ describe("buildSignedRuntimeEffectResolutionV1", () => {
 
     const bridge = eligibleBridge(sourceSeal);
     if (bridge.state !== "ELIGIBLE_REGISTRY_REVISION") throw new Error("expected eligible bridge");
-    const syntheticBridge: ResolutionProjectionBridgeResultV1 = {
+    const syntheticBridge = {
       ...bridge,
       revision: { ...bridge.revision, synthetic: true, registryWriteEligible: false },
-    };
+    } as unknown as ResolutionProjectionBridgeResultV1;
     expect(buildSignedRuntimeEffectResolutionV1({
       bridgeResult: syntheticBridge,
       seal: sourceSeal,
