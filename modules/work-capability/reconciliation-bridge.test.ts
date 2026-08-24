@@ -5,6 +5,7 @@ import {
   SyntheticGarmentWaistbandExpectationCompilerV1,
   validateExpectedEffectContractV1,
 } from "../synnergyze/effect-expectation.ts";
+import { ReconciliationFabricV1 } from "../synnergyze/reconciliation-fabric.ts";
 import {
   buildAuthorizedActionEnvelopeV1,
   SyntheticRiverReservationServiceV1,
@@ -13,11 +14,13 @@ import { evaluateSyntheticWardenDecisionV1 } from "../warden/decision-service.ts
 import {
   runVerifiedWaistbandFixtureV1,
   validWaistbandFixtureV1,
+  type SyntheticGarmentPerformanceInputV1,
 } from "./fixtures/garment.ts";
 import {
   compileWorkReconciliationExpectationV1,
   SyntheticWorkCapabilityEvidenceFinalizerV1,
   validateWorkReconciliationExpectationV1,
+  WorkCapabilityReconciliationBridgeV1,
 } from "./reconciliation-bridge.ts";
 
 function compileWaistbandExpectationV1() {
@@ -44,6 +47,45 @@ function compileWaistbandExpectationV1() {
     reservation,
     compiledAt: "2026-08-24T00:30:22.000Z",
   });
+}
+
+function reconciliationSetupV1(performance: SyntheticGarmentPerformanceInputV1) {
+  const verified = runVerifiedWaistbandFixtureV1(performance);
+  const expectedEffect = compileWaistbandExpectationV1();
+  const workExpectation = compileWorkReconciliationExpectationV1({
+    workUnit: verified.workUnit,
+    expectedEffectContract: expectedEffect,
+    requiredQuantity: performance.inputQuantity,
+    compiledAt: "2026-08-24T00:30:23.000Z",
+  });
+  const finalized = new SyntheticWorkCapabilityEvidenceFinalizerV1().finalize({
+    reservationRef: verified.execution.reservationRef,
+    correlationId: verified.execution.correlationId,
+    effect: verified.verification.effect,
+    sealedAt: "2026-08-24T00:31:00.000Z",
+  });
+  return { verified, expectedEffect, workExpectation, finalized };
+}
+
+function bridgeInputV1(performance: SyntheticGarmentPerformanceInputV1) {
+  const setup = reconciliationSetupV1(performance);
+  return {
+    setup,
+    input: {
+      workExpectation: setup.workExpectation,
+      expectedEffectContract: setup.expectedEffect,
+      workUnit: setup.verified.workUnit,
+      assignment: setup.verified.assignment,
+      execution: setup.verified.execution,
+      observation: setup.verified.observation,
+      verification: setup.verified.verification,
+      seal: setup.finalized.seal,
+      causalTrace: setup.finalized.causalTrace,
+      outcome: setup.verified.outcome,
+      remainingWork: setup.verified.remainingWork,
+      determinedAt: "2026-08-24T00:31:10.000Z",
+    },
+  };
 }
 
 describe("WORK-CAPABILITY-RECONCILIATION-BRIDGE-001", () => {
@@ -151,5 +193,177 @@ describe("WORK-CAPABILITY-RECONCILIATION-BRIDGE-001", () => {
       ...compiled,
       requiredQuantity: 499,
     })).toBe(false);
+  });
+
+  it("turns generic MATCH into a Work PARTIAL_EFFECT exception with an exact unauthorized 7-unit recovery request", () => {
+    const { input } = bridgeInputV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+    const bridge = new WorkCapabilityReconciliationBridgeV1(new ReconciliationFabricV1());
+    const result = bridge.reconcile(input);
+
+    expect(result.state).toBe("DETERMINED");
+    if (result.state !== "DETERMINED") throw new Error("expected_determined");
+    expect(result.determination.genericClassification).toBe("MATCH");
+    expect(result.determination.state).toBe("EXCEPTION");
+    expect(result.determination.classification).toBe("PARTIAL_EFFECT");
+    expect(result.recoveryRequest?.remainingQuantity).toBe(7);
+    expect(result.recoveryRequest?.requiresFreshWardenDecision).toBe(true);
+    expect(result.recoveryRequest?.authorized).toBe(false);
+    expect(result.recoveryRequest && "actionToken" in result.recoveryRequest).toBe(false);
+    expect(result.recoveryRequest && "executionReceiptRef" in result.recoveryRequest).toBe(false);
+    expect(result.recoveryRequest && "assignmentRef" in result.recoveryRequest).toBe(false);
+  });
+
+  it("closes Work when generic reconciliation matches and the Work outcome is FULL_EFFECT", () => {
+    const { setup, input } = bridgeInputV1({
+      inputQuantity: 500,
+      acceptedQuantity: 490,
+      reworkQuantity: 10,
+    });
+    expect(setup.verified.outcome.state).toBe("FULL_EFFECT");
+
+    const result = new WorkCapabilityReconciliationBridgeV1(
+      new ReconciliationFabricV1(),
+    ).reconcile(input);
+    expect(result.state).toBe("DETERMINED");
+    if (result.state !== "DETERMINED") throw new Error("expected_determined");
+    expect(result.determination.state).toBe("CLOSED");
+    expect(result.determination.classification).toBe("FULL_EFFECT");
+    expect(result.recoveryRequest).toBeUndefined();
+  });
+
+  it("rejects PARTIAL_EFFECT without remaining work", () => {
+    const { input } = bridgeInputV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+    const result = new WorkCapabilityReconciliationBridgeV1(
+      new ReconciliationFabricV1(),
+    ).reconcile({ ...input, remainingWork: undefined });
+    expect(result).toEqual({
+      state: "REJECTED_INPUT",
+      reasonCode: "work_reconciliation_remaining_work_required",
+    });
+  });
+
+  it("rejects remaining-work quantity that differs from the exact shortfall", () => {
+    const { input } = bridgeInputV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+    if (!input.remainingWork) throw new Error("expected_remaining_work");
+    const result = new WorkCapabilityReconciliationBridgeV1(
+      new ReconciliationFabricV1(),
+    ).reconcile({
+      ...input,
+      remainingWork: { ...input.remainingWork, remainingQuantity: 8 },
+    });
+    expect(result).toEqual({
+      state: "REJECTED_INPUT",
+      reasonCode: "work_reconciliation_remaining_work_invalid",
+    });
+  });
+
+  it("rejects a Work expectation compiled after execution", () => {
+    const { setup, input } = bridgeInputV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+    const lateExpectation = compileWorkReconciliationExpectationV1({
+      workUnit: setup.verified.workUnit,
+      expectedEffectContract: setup.expectedEffect,
+      requiredQuantity: 500,
+      compiledAt: "2026-08-24T00:30:31.000Z",
+    });
+    const result = new WorkCapabilityReconciliationBridgeV1(
+      new ReconciliationFabricV1(),
+    ).reconcile({ ...input, workExpectation: lateExpectation });
+    expect(result).toEqual({
+      state: "REJECTED_INPUT",
+      reasonCode: "work_reconciliation_expectation_after_execution",
+    });
+  });
+
+  it("propagates missing seal as a generic reconciliation rejection", () => {
+    const { input } = bridgeInputV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+    const result = new WorkCapabilityReconciliationBridgeV1(
+      new ReconciliationFabricV1(),
+    ).reconcile({ ...input, seal: undefined });
+    expect(result).toEqual({
+      state: "REJECTED_INPUT",
+      reasonCode: "generic_reconciliation:RECONCILIATION_SEAL_REQUIRED",
+    });
+  });
+
+  it("propagates invalid seal trace digest as a generic reconciliation rejection", () => {
+    const { input } = bridgeInputV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+    if (!input.seal) throw new Error("expected_seal");
+    const result = new WorkCapabilityReconciliationBridgeV1(
+      new ReconciliationFabricV1(),
+    ).reconcile({ ...input, seal: { ...input.seal, traceDigest: "INVALID" } });
+    expect(result).toEqual({
+      state: "REJECTED_INPUT",
+      reasonCode: "generic_reconciliation:RECONCILIATION_SEAL_LINEAGE_MISMATCH",
+    });
+  });
+
+  it("propagates causal-trace mismatch as a generic reconciliation rejection", () => {
+    const { input } = bridgeInputV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+    if (!input.causalTrace) throw new Error("expected_causal_trace");
+    const result = new WorkCapabilityReconciliationBridgeV1(
+      new ReconciliationFabricV1(),
+    ).reconcile({
+      ...input,
+      causalTrace: { ...input.causalTrace, effectRef: "EFFECT:OTHER" },
+    });
+    expect(result).toEqual({
+      state: "REJECTED_INPUT",
+      reasonCode: "generic_reconciliation:RECONCILIATION_CAUSAL_TRACE_MISMATCH",
+    });
+  });
+
+  it("preserves a generic reconciliation exception without minting recovery Work", () => {
+    const { input } = bridgeInputV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+    const result = new WorkCapabilityReconciliationBridgeV1(
+      new ReconciliationFabricV1(),
+    ).reconcile({
+      ...input,
+      verification: {
+        state: "EXCEPTION",
+        executionReceiptRef: input.execution.receiptRef,
+        observationRef: input.observation.observationRef,
+        reasonCode: "MISSING_SOURCE_EVIDENCE",
+        reason: "synthetic evidence unavailable",
+      },
+      seal: undefined,
+      causalTrace: undefined,
+    });
+    expect(result.state).toBe("DETERMINED");
+    if (result.state !== "DETERMINED") throw new Error("expected_determined");
+    expect(result.determination.state).toBe("EXCEPTION");
+    expect(result.determination.classification).toBe("GENERIC_RECONCILIATION_EXCEPTION");
+    expect(result.recoveryRequest).toBeUndefined();
   });
 });
