@@ -89,7 +89,7 @@ export class SyntheticGarmentWaistbandExpectationCompilerV1
     if (requestedEffect !== "GARMENT-STATE:waistband_attached") {
       throw new Error("effect_expectation_unsupported_requested_effect");
     }
-    return { kind: "PREFIX", value: "GARMENT-WAISTBAND-OBSERVED:" };
+    return { kind: "EXACT", value: "GARMENT-STATE:waistband_attached" };
   }
 }
 
