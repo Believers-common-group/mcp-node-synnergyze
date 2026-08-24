@@ -9,6 +9,9 @@ export interface AssuranceVectorV1 {
   evidence: AssuranceLevelV1;
 }
 
+export type AssuranceDomainV1 = keyof AssuranceVectorV1;
+export type AssuranceAgeVectorV1 = Partial<Record<AssuranceDomainV1, number>>;
+
 export interface TrustResolutionRequestV1 {
   resolutionRef: string;
   actionRef: string;
@@ -18,7 +21,22 @@ export interface TrustResolutionRequestV1 {
   };
   requiredAssurance: AssuranceVectorV1;
   observedAssurance: AssuranceVectorV1;
+  requiredMaxAgeSeconds?: AssuranceAgeVectorV1;
+  observedAgeSeconds?: AssuranceAgeVectorV1;
   materialConflict: boolean;
+}
+
+function stepUp(
+  request: TrustResolutionRequestV1,
+  reasonCode: string,
+): WardenTrustResolutionV1 {
+  return {
+    resolutionRef: request.resolutionRef,
+    result: "REQUIRES_STEP_UP",
+    material: true,
+    irreversibleEffect: request.intendedEffect.irreversible,
+    reasonCodes: [reasonCode],
+  };
 }
 
 export function resolveTrustV1(request: TrustResolutionRequestV1): WardenTrustResolutionV1 {
@@ -33,23 +51,11 @@ export function resolveTrustV1(request: TrustResolutionRequestV1): WardenTrustRe
   }
 
   if (request.observedAssurance.identity < request.requiredAssurance.identity) {
-    return {
-      resolutionRef: request.resolutionRef,
-      result: "REQUIRES_STEP_UP",
-      material: true,
-      irreversibleEffect: request.intendedEffect.irreversible,
-      reasonCodes: ["insufficient_identity_assurance"],
-    };
+    return stepUp(request, "insufficient_identity_assurance");
   }
 
   if (request.observedAssurance.authority < request.requiredAssurance.authority) {
-    return {
-      resolutionRef: request.resolutionRef,
-      result: "REQUIRES_STEP_UP",
-      material: true,
-      irreversibleEffect: request.intendedEffect.irreversible,
-      reasonCodes: ["insufficient_authority_assurance"],
-    };
+    return stepUp(request, "insufficient_authority_assurance");
   }
 
   if (request.observedAssurance.compute < request.requiredAssurance.compute) {
@@ -63,13 +69,22 @@ export function resolveTrustV1(request: TrustResolutionRequestV1): WardenTrustRe
   }
 
   if (request.observedAssurance.evidence < request.requiredAssurance.evidence) {
-    return {
-      resolutionRef: request.resolutionRef,
-      result: "REQUIRES_STEP_UP",
-      material: true,
-      irreversibleEffect: request.intendedEffect.irreversible,
-      reasonCodes: ["insufficient_evidence_assurance"],
-    };
+    return stepUp(request, "insufficient_evidence_assurance");
+  }
+
+  const assuranceDomains: readonly AssuranceDomainV1[] = [
+    "identity",
+    "authority",
+    "compute",
+    "evidence",
+  ];
+  for (const domain of assuranceDomains) {
+    const maximumAge = request.requiredMaxAgeSeconds?.[domain];
+    if (maximumAge === undefined) continue;
+    const observedAge = request.observedAgeSeconds?.[domain];
+    if (observedAge === undefined || observedAge > maximumAge) {
+      return stepUp(request, `stale_${domain}_assurance`);
+    }
   }
 
   return {
