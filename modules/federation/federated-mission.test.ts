@@ -1,8 +1,10 @@
 import { describe, expect, it } from "vitest";
 import type { WardenDecisionV1 } from "../warden/contracts.ts";
 import {
+  LicenceFederationRuntimeV1,
   applyDestinationLicenceDecisionV1,
   createLicenceFederationObjectV1,
+  type DestinationFederationAuthorityBindingV1,
 } from "./federated-mission.ts";
 
 function allow(overrides: Partial<WardenDecisionV1> = {}): WardenDecisionV1 {
@@ -56,6 +58,33 @@ function sourceInput(sourceDecision: WardenDecisionV1) {
   } as const;
 }
 
+function destinationAllow(overrides: Partial<WardenDecisionV1> = {}): WardenDecisionV1 {
+  return allow({
+    decisionRef: "WARDEN-DECISION:MY-001",
+    requestRef: "WARDEN-REQUEST:MY-001",
+    wardenRef: "WARDEN-MY",
+    action: "federation.licence.recognise",
+    correlationId: "CORR-MY-LICENCE-001",
+    actionToken: "WARDEN-ACTION-TOKEN:MY-001",
+    ...overrides,
+  });
+}
+
+function destinationBinding(
+  overrides: Partial<DestinationFederationAuthorityBindingV1> = {},
+): DestinationFederationAuthorityBindingV1 {
+  return {
+    bindingRef: "FED-AUTH-BINDING:MY-001",
+    wardenRef: "WARDEN-MY",
+    domainRef: "DOMAIN-MY",
+    contractRef: "FED-CONTRACT-IN-MY-CREATOR-001",
+    status: "ACTIVE",
+    validFrom: "2026-08-23T23:00:00.000Z",
+    validUntil: "2026-08-24T01:00:00.000Z",
+    ...overrides,
+  };
+}
+
 describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
   it("source ALLOW creates only a destination-ready object, never Malaysian local effect", () => {
     const result = createLicenceFederationObjectV1(sourceInput(allow()));
@@ -79,18 +108,9 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
     const source = createLicenceFederationObjectV1(sourceInput(allow()));
     if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
 
-    const destinationDecision = allow({
-      decisionRef: "WARDEN-DECISION:MY-001",
-      requestRef: "WARDEN-REQUEST:MY-001",
-      wardenRef: "WARDEN-MY",
-      action: "federation.licence.recognise",
-      correlationId: "CORR-MY-LICENCE-001",
-      actionToken: "WARDEN-ACTION-TOKEN:MY-001",
-    });
-
     const result = applyDestinationLicenceDecisionV1({
       federationObject: source.federationObject,
-      destinationDecision,
+      destinationDecision: destinationAllow(),
       recognisedAt: "2026-08-24T00:00:40.000Z",
     });
 
@@ -127,11 +147,7 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
 
     const result = applyDestinationLicenceDecisionV1({
       federationObject: source.federationObject,
-      destinationDecision: allow({
-        decisionRef: "WARDEN-DECISION:MY-001",
-        action: "federation.licence.recognise",
-        correlationId: "CORR-MY-LICENCE-001",
-      }),
+      destinationDecision: destinationAllow({ wardenRef: "WARDEN-IN" }),
       recognisedAt: "2026-08-24T00:00:40.000Z",
     });
 
@@ -147,19 +163,173 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
 
     const result = applyDestinationLicenceDecisionV1({
       federationObject: source.federationObject,
-      destinationDecision: allow({
-        decisionRef: "WARDEN-DECISION:MY-001",
-        wardenRef: "WARDEN-MY",
-        action: "federation.licence.recognise",
-        targetRef: "PRODUCT-Y-001",
-        correlationId: "CORR-MY-LICENCE-001",
-      }),
+      destinationDecision: destinationAllow({ targetRef: "PRODUCT-Y-001" }),
       recognisedAt: "2026-08-24T00:00:40.000Z",
     });
 
     expect(result).toMatchObject({
       state: "DESTINATION_EXCEPTION",
       reasonCode: "DESTINATION_DECISION_LINEAGE_MISMATCH",
+    });
+  });
+
+  it("binds destination Warden to destination domain and Federation Contract before effect", () => {
+    const source = createLicenceFederationObjectV1(sourceInput(allow()));
+    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+    const runtime = new LicenceFederationRuntimeV1();
+
+    const result = runtime.applyDestinationDecision({
+      federationObject: source.federationObject,
+      destinationDecision: destinationAllow(),
+      destinationAuthorityBinding: destinationBinding(),
+      recognisedAt: "2026-08-24T00:00:40.000Z",
+    });
+
+    expect(result.state).toBe("LOCAL_EFFECT_CREATED");
+    if (result.state !== "LOCAL_EFFECT_CREATED") throw new Error("expected_local_effect");
+    expect(result.effect.domainRef).toBe("DOMAIN-MY");
+    expect(result.idempotentReplay).toBe(false);
+  });
+
+  it("rejects mismatched destination domain and contract bindings", () => {
+    const source = createLicenceFederationObjectV1(sourceInput(allow()));
+    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+
+    const wrongDomain = new LicenceFederationRuntimeV1().applyDestinationDecision({
+      federationObject: source.federationObject,
+      destinationDecision: destinationAllow(),
+      destinationAuthorityBinding: destinationBinding({ domainRef: "DOMAIN-SG" }),
+      recognisedAt: "2026-08-24T00:00:40.000Z",
+    });
+    expect(wrongDomain).toMatchObject({
+      state: "DESTINATION_EXCEPTION",
+      reasonCode: "DESTINATION_DOMAIN_BINDING_MISMATCH",
+    });
+
+    const wrongContract = new LicenceFederationRuntimeV1().applyDestinationDecision({
+      federationObject: source.federationObject,
+      destinationDecision: destinationAllow(),
+      destinationAuthorityBinding: destinationBinding({
+        contractRef: "FED-CONTRACT-IN-MY-CREATOR-999",
+      }),
+      recognisedAt: "2026-08-24T00:00:40.000Z",
+    });
+    expect(wrongContract).toMatchObject({
+      state: "DESTINATION_EXCEPTION",
+      reasonCode: "DESTINATION_CONTRACT_BINDING_MISMATCH",
+    });
+  });
+
+  it("rejects inactive destination authority binding", () => {
+    const source = createLicenceFederationObjectV1(sourceInput(allow()));
+    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+
+    const result = new LicenceFederationRuntimeV1().applyDestinationDecision({
+      federationObject: source.federationObject,
+      destinationDecision: destinationAllow(),
+      destinationAuthorityBinding: destinationBinding({ status: "REVOKED" }),
+      recognisedAt: "2026-08-24T00:00:40.000Z",
+    });
+
+    expect(result).toMatchObject({
+      state: "DESTINATION_EXCEPTION",
+      reasonCode: "DESTINATION_AUTHORITY_NOT_ACTIVE",
+    });
+  });
+
+  it("rejects expired federation objects and expired destination decisions", () => {
+    const source = createLicenceFederationObjectV1(sourceInput(allow()));
+    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+
+    const expiredObject = new LicenceFederationRuntimeV1().applyDestinationDecision({
+      federationObject: { ...source.federationObject, expiresAt: "2026-08-24T00:00:30.000Z" },
+      destinationDecision: destinationAllow(),
+      destinationAuthorityBinding: destinationBinding(),
+      recognisedAt: "2026-08-24T00:00:40.000Z",
+    });
+    expect(expiredObject).toMatchObject({
+      state: "DESTINATION_EXCEPTION",
+      reasonCode: "FEDERATION_OBJECT_EXPIRED",
+    });
+
+    const expiredDecision = new LicenceFederationRuntimeV1().applyDestinationDecision({
+      federationObject: source.federationObject,
+      destinationDecision: destinationAllow({ validUntil: "2026-08-24T00:00:30.000Z" }),
+      destinationAuthorityBinding: destinationBinding(),
+      recognisedAt: "2026-08-24T00:00:40.000Z",
+    });
+    expect(expiredDecision).toMatchObject({
+      state: "DESTINATION_EXCEPTION",
+      reasonCode: "DESTINATION_DECISION_EXPIRED",
+    });
+  });
+
+  it("replays exact destination recognition idempotently and rejects mutated replay", () => {
+    const source = createLicenceFederationObjectV1(sourceInput(allow()));
+    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+    const runtime = new LicenceFederationRuntimeV1();
+    const input = {
+      federationObject: source.federationObject,
+      destinationDecision: destinationAllow(),
+      destinationAuthorityBinding: destinationBinding(),
+      recognisedAt: "2026-08-24T00:00:40.000Z",
+    } as const;
+
+    const first = runtime.applyDestinationDecision(input);
+    const replay = runtime.applyDestinationDecision(input);
+    expect(first.state).toBe("LOCAL_EFFECT_CREATED");
+    expect(replay.state).toBe("LOCAL_EFFECT_CREATED");
+    if (first.state !== "LOCAL_EFFECT_CREATED" || replay.state !== "LOCAL_EFFECT_CREATED") {
+      throw new Error("expected_local_effect");
+    }
+    expect(first.idempotentReplay).toBe(false);
+    expect(replay.idempotentReplay).toBe(true);
+    expect(replay.effect.effectRef).toBe(first.effect.effectRef);
+    expect(runtime.effectCount()).toBe(1);
+
+    const conflict = runtime.applyDestinationDecision({
+      ...input,
+      federationObject: {
+        ...input.federationObject,
+        contractRef: "FED-CONTRACT-IN-MY-CREATOR-002",
+      },
+      destinationAuthorityBinding: destinationBinding({
+        contractRef: "FED-CONTRACT-IN-MY-CREATOR-002",
+      }),
+    });
+    expect(conflict).toMatchObject({
+      state: "DESTINATION_EXCEPTION",
+      reasonCode: "FEDERATION_REPLAY_CONFLICT",
+    });
+  });
+
+  it("emits causally linked synthetic non-persisted River transition and effect receipts", () => {
+    const source = createLicenceFederationObjectV1(sourceInput(allow()));
+    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+    const runtime = new LicenceFederationRuntimeV1();
+
+    const result = runtime.applyDestinationDecision({
+      federationObject: source.federationObject,
+      destinationDecision: destinationAllow(),
+      destinationAuthorityBinding: destinationBinding(),
+      recognisedAt: "2026-08-24T00:00:40.000Z",
+    });
+
+    expect(result.state).toBe("LOCAL_EFFECT_CREATED");
+    if (result.state !== "LOCAL_EFFECT_CREATED") throw new Error("expected_local_effect");
+    expect(result.river.destinationAcceptedEvent.eventType).toBe("FEDERATION_DESTINATION_ACCEPTED");
+    expect(result.river.destinationAcceptedReceipt).toMatchObject({
+      synthetic: true,
+      persisted: false,
+    });
+    expect(result.river.localEffectEvent.predecessorEventRef).toBe(
+      result.river.destinationAcceptedEvent.eventRef,
+    );
+    expect(result.river.localEffectReceipt).toMatchObject({ synthetic: true, persisted: false });
+    expect(result.river.effectReceipt).toMatchObject({
+      targetRef: "PRODUCT-X-001",
+      synthetic: true,
+      persisted: false,
     });
   });
 });
