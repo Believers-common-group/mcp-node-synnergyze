@@ -37,6 +37,11 @@ export interface TrustPathProofV1 {
   purpose: string;
   principalRef: string;
   productRef: string;
+  graphVersion?: string;
+  resolverRef?: string;
+  authoritativeSourceRefs?: readonly string[];
+  evidenceRefs?: readonly string[];
+  resolutionDigest?: string;
   resolvedAt: string;
   validUntil: string;
 }
@@ -52,11 +57,19 @@ export interface FederationContractResolutionV1 {
   validUntil: string;
 }
 
+export interface FederationAuthorizationBindingV1 {
+  requestRef: string;
+  trustPathDigestRef: string;
+  contractResolutionDigestRef: string;
+  destinationAuthorityDigestRef: string;
+}
+
 export type FederatedLicenceEvidenceReasonCodeV1 =
   | "TRUST_PATH_NOT_VALID"
   | "TRUST_PATH_MISMATCH"
   | "TRUST_PATH_TIME_INVALID"
   | "TRUST_PATH_EXPIRED"
+  | "TRUST_PATH_PROVENANCE_INVALID"
   | "CONTRACT_RESOLUTION_NOT_ACTIVE"
   | "CONTRACT_RESOLUTION_MISMATCH"
   | "CONTRACT_RESOLUTION_TIME_INVALID"
@@ -67,6 +80,7 @@ export type FederatedLicenceEvidenceReasonCodeV1 =
   | "FEDERATION_OBJECT_TIME_INVALID"
   | "FEDERATION_OBJECT_EXPIRED"
   | "DESTINATION_REQUEST_LINEAGE_MISMATCH"
+  | "DESTINATION_REQUEST_PROVENANCE_MISMATCH"
   | "DESTINATION_DECISION_LINEAGE_MISMATCH"
   | "FEDERATION_REPLAY_CONFLICT"
   | "GOVERNED_EXECUTION_REJECTED"
@@ -85,6 +99,7 @@ export interface FederatedLicenceEvidenceSuccessV1 {
   trustPathProofRef: string;
   contractResolutionRef: string;
   destinationAuthorityBindingRef: string;
+  authorizationRequestRef: string;
   reservation: EvidenceReservationV1;
   execution: SynnergyzeExecutionReceiptV1;
   observation: PostExecutionObservationV1;
@@ -103,6 +118,14 @@ interface StoredGovernedExecutionV1 {
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function digestRef(value: unknown): string {
+  return `sha256:${digest(JSON.stringify(value))}`;
+}
+
+function stableUnique(values: readonly string[] | undefined): readonly string[] {
+  return [...new Set(values ?? [])].sort();
 }
 
 function parseInstant(value: string): number | null {
@@ -125,6 +148,145 @@ function failure(
 
 function includes(values: readonly string[], value: string): boolean {
   return values.includes(value);
+}
+
+function canonicalTrustPathProof(
+  trustPathProof: Omit<TrustPathProofV1, "resolutionDigest">,
+) {
+  return {
+    proofRef: trustPathProof.proofRef,
+    status: trustPathProof.status,
+    sourceDomainRef: trustPathProof.sourceDomainRef,
+    destinationDomainRef: trustPathProof.destinationDomainRef,
+    contractRef: trustPathProof.contractRef,
+    purpose: trustPathProof.purpose,
+    principalRef: trustPathProof.principalRef,
+    productRef: trustPathProof.productRef,
+    graphVersion: trustPathProof.graphVersion ?? null,
+    resolverRef: trustPathProof.resolverRef ?? null,
+    authoritativeSourceRefs: stableUnique(trustPathProof.authoritativeSourceRefs),
+    evidenceRefs: stableUnique(trustPathProof.evidenceRefs),
+    resolvedAt: trustPathProof.resolvedAt,
+    validUntil: trustPathProof.validUntil,
+  } as const;
+}
+
+export function computeTrustPathProofDigestV1(
+  trustPathProof: Omit<TrustPathProofV1, "resolutionDigest">,
+): string {
+  return digestRef(canonicalTrustPathProof(trustPathProof));
+}
+
+function computeContractResolutionDigestV1(
+  contractResolution: FederationContractResolutionV1,
+): string {
+  return digestRef({
+    resolutionRef: contractResolution.resolutionRef,
+    status: contractResolution.status,
+    contractRef: contractResolution.contractRef,
+    sourceDomainRef: contractResolution.sourceDomainRef,
+    destinationDomainRef: contractResolution.destinationDomainRef,
+    purpose: contractResolution.purpose,
+    validFrom: contractResolution.validFrom,
+    validUntil: contractResolution.validUntil,
+  });
+}
+
+function computeDestinationAuthorityDigestV1(
+  binding: DestinationFederationAuthorityBindingV1,
+): string {
+  return digestRef({
+    bindingRef: binding.bindingRef,
+    wardenRef: binding.wardenRef,
+    domainRef: binding.domainRef,
+    contractRef: binding.contractRef,
+    status: binding.status,
+    validFrom: binding.validFrom,
+    validUntil: binding.validUntil,
+  });
+}
+
+function computeFederationObjectDigestV1(
+  federationObject: LicenceFederationObjectV1,
+): string {
+  return digestRef({
+    federationId: federationObject.federationId,
+    missionRef: federationObject.missionRef,
+    sourceDomainRef: federationObject.sourceDomainRef,
+    destinationDomainRef: federationObject.destinationDomainRef,
+    principalRef: federationObject.principalRef,
+    productRef: federationObject.productRef,
+    contractRef: federationObject.contractRef,
+    purpose: federationObject.purpose,
+    sourceWardenDecisionRef: federationObject.sourceWardenDecisionRef,
+    sourceWardenRef: federationObject.sourceWardenRef,
+    sourceCorrelationId: federationObject.sourceCorrelationId,
+    createdAt: federationObject.createdAt,
+    expiresAt: federationObject.expiresAt,
+  });
+}
+
+export function buildFederationAuthorizationBindingV1(input: {
+  federationObject: LicenceFederationObjectV1;
+  trustPathProof: TrustPathProofV1;
+  contractResolution: FederationContractResolutionV1;
+  destinationAuthorityBinding: DestinationFederationAuthorityBindingV1;
+}): FederationAuthorizationBindingV1 {
+  const trustPathDigest =
+    input.trustPathProof.resolutionDigest ??
+    computeTrustPathProofDigestV1(input.trustPathProof);
+  const contractResolutionDigest = computeContractResolutionDigestV1(
+    input.contractResolution,
+  );
+  const destinationAuthorityDigest = computeDestinationAuthorityDigestV1(
+    input.destinationAuthorityBinding,
+  );
+  const federationObjectDigest = computeFederationObjectDigestV1(input.federationObject);
+  const requestIdentity = digestRef({
+    federationObjectDigest,
+    trustPathDigest,
+    contractResolutionDigest,
+    destinationAuthorityDigest,
+  });
+
+  return {
+    requestRef: `WARDEN-REQUEST:FED:${requestIdentity.slice("sha256:".length, "sha256:".length + 24)}`,
+    trustPathDigestRef: `TRUST-PATH-DIGEST:${trustPathDigest}`,
+    contractResolutionDigestRef: `FED-CONTRACT-RESOLUTION-DIGEST:${contractResolutionDigest}`,
+    destinationAuthorityDigestRef: `FED-AUTHORITY-DIGEST:${destinationAuthorityDigest}`,
+  };
+}
+
+function hasTrustPathProvenance(trustPathProof: TrustPathProofV1): boolean {
+  return Boolean(
+    trustPathProof.graphVersion ||
+      trustPathProof.resolverRef ||
+      trustPathProof.resolutionDigest ||
+      trustPathProof.authoritativeSourceRefs?.length ||
+      trustPathProof.evidenceRefs?.length,
+  );
+}
+
+function validateTrustPathProvenance(
+  federationObject: LicenceFederationObjectV1,
+  trustPathProof: TrustPathProofV1,
+): FederatedLicenceEvidenceExceptionV1 | undefined {
+  if (!hasTrustPathProvenance(trustPathProof)) return undefined;
+  if (
+    !trustPathProof.graphVersion?.trim() ||
+    !trustPathProof.resolverRef?.trim() ||
+    !trustPathProof.authoritativeSourceRefs?.length ||
+    !trustPathProof.evidenceRefs?.length ||
+    !trustPathProof.resolutionDigest
+  ) {
+    return failure(federationObject.federationId, "TRUST_PATH_PROVENANCE_INVALID");
+  }
+  const { resolutionDigest: _claimedDigest, ...digestInput } = trustPathProof;
+  const expected = computeTrustPathProofDigestV1(digestInput);
+  if (trustPathProof.resolutionDigest !== expected) {
+    return failure(federationObject.federationId, "TRUST_PATH_PROVENANCE_INVALID");
+  }
+  return undefined;
 }
 
 function validateFederationObject(
@@ -296,6 +458,35 @@ function validateDestinationLineage(input: {
   return undefined;
 }
 
+function validateDestinationProvenanceBinding(input: {
+  federationObject: LicenceFederationObjectV1;
+  trustPathProof: TrustPathProofV1;
+  contractResolution: FederationContractResolutionV1;
+  destinationAuthorityBinding: DestinationFederationAuthorityBindingV1;
+  destinationRequest: WardenDecisionRequestV1;
+}): FederatedLicenceEvidenceExceptionV1 | undefined {
+  if (!hasTrustPathProvenance(input.trustPathProof)) return undefined;
+  const expected = buildFederationAuthorizationBindingV1(input);
+  if (
+    input.destinationRequest.requestRef !== expected.requestRef ||
+    !includes(input.destinationRequest.representationSourceRefs, expected.trustPathDigestRef) ||
+    !includes(
+      input.destinationRequest.representationSourceRefs,
+      expected.contractResolutionDigestRef,
+    ) ||
+    !includes(
+      input.destinationRequest.representationSourceRefs,
+      expected.destinationAuthorityDigestRef,
+    )
+  ) {
+    return failure(
+      input.federationObject.federationId,
+      "DESTINATION_REQUEST_PROVENANCE_MISMATCH",
+    );
+  }
+  return undefined;
+}
+
 function cloneSuccess(
   result: FederatedLicenceEvidenceSuccessV1,
   idempotentReplay: boolean,
@@ -428,6 +619,7 @@ export class FederatedLicenceEvidenceRuntimeV1 {
     const validations = [
       validateFederationObject(input.federationObject, input.reservedAt),
       validateTrustPath(input.federationObject, input.trustPathProof, input.reservedAt),
+      validateTrustPathProvenance(input.federationObject, input.trustPathProof),
       validateContractResolution(
         input.federationObject,
         input.contractResolution,
@@ -453,6 +645,7 @@ export class FederatedLicenceEvidenceRuntimeV1 {
         input.executedAt,
       ),
       validateDestinationLineage(input),
+      validateDestinationProvenanceBinding(input),
     ];
     const validationFailure = validations.find(
       (candidate): candidate is FederatedLicenceEvidenceExceptionV1 => candidate !== undefined,
@@ -497,6 +690,7 @@ export class FederatedLicenceEvidenceRuntimeV1 {
         trustPathProofRef: input.trustPathProof.proofRef,
         contractResolutionRef: input.contractResolution.resolutionRef,
         destinationAuthorityBindingRef: input.destinationAuthorityBinding.bindingRef,
+        authorizationRequestRef: input.destinationRequest.requestRef,
         reservation,
         execution,
         observation,
