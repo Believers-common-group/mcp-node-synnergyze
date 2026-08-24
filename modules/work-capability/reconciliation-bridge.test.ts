@@ -50,4 +50,11 @@ describe("WORK-CAPABILITY-RECONCILIATION-BRIDGE-001", () => {
     });
     expect(validateExpectedEffectContractV1(expectation)).toBe(true);
   });
+
+  it("rejects an unsupported requested effect for the trusted garment compiler", () => {
+    const compiler = new SyntheticGarmentWaistbandExpectationCompilerV1();
+    expect(() => compiler.compile("GARMENT-STATE:anything-else")).toThrow(
+      "effect_expectation_unsupported_requested_effect",
+    );
+  });
 });
