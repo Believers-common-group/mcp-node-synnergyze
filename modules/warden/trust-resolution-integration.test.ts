@@ -67,4 +67,40 @@ describe("WARDEN-TRUST-FABRIC-001 integration", () => {
     expect(decision.reasonCodes).toEqual(["trust_hold:insufficient_compute_assurance"]);
     expect("actionToken" in decision).toBe(false);
   });
+
+  it("denies a denied trust resolution and never issues an action token", () => {
+    const decision = evaluateSyntheticWardenDecisionV1({
+      request: request({
+        resolutionRef: "TRUST-RESOLUTION:DENIED-001",
+        result: "DENIED",
+        material: true,
+        irreversibleEffect: true,
+        reasonCodes: ["authority_revoked"],
+      }),
+      policy,
+      decidedAt: "2026-08-24T00:10:30.000Z",
+    });
+
+    expect(decision.decision).toBe("DENY");
+    expect(decision.reasonCodes).toEqual(["trust_denied:authority_revoked"]);
+    expect("actionToken" in decision).toBe(false);
+  });
+
+  it("escalates a trust adjudication requirement and never issues an action token", () => {
+    const decision = evaluateSyntheticWardenDecisionV1({
+      request: request({
+        resolutionRef: "TRUST-RESOLUTION:ADJUDICATION-001",
+        result: "REQUIRES_ADJUDICATION",
+        material: true,
+        irreversibleEffect: true,
+        reasonCodes: ["jurisdiction_conflict"],
+      }),
+      policy,
+      decidedAt: "2026-08-24T00:10:30.000Z",
+    });
+
+    expect(decision.decision).toBe("ESCALATE");
+    expect(decision.reasonCodes).toEqual(["trust_adjudication:jurisdiction_conflict"]);
+    expect("actionToken" in decision).toBe(false);
+  });
 });
