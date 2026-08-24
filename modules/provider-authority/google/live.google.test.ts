@@ -28,6 +28,8 @@ const liveEnabled =
 const liveIt = liveEnabled ? it : it.skip;
 
 liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
+  const now = Date.now();
+  const at = (offsetMs: number) => new Date(now + offsetMs).toISOString();
   const project = process.env.GOOGLE_CLOUD_PROJECT!.trim();
   const config: GoogleProviderConfigV1 = {
     providerRef: "GOOGLE_CLOUD",
@@ -47,9 +49,13 @@ liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
     action: "provider.execute",
     targetRef: "PROJECT:GOOGLE-LIVE-SMOKE",
     reasonCodes: ["bounded_live_smoke_allow"],
-    constraints: ["provider:GOOGLE_CLOUD", `provider_request:${requestHash}`],
-    decidedAt: "2026-08-24T06:00:00.000Z",
-    validUntil: "2099-01-01T00:00:00.000Z",
+    constraints: [
+      "provider:GOOGLE_CLOUD",
+      "provider_identity_mode:ADC",
+      `provider_request:${requestHash}`,
+    ],
+    decidedAt: at(-60_000),
+    validUntil: at(5 * 60_000),
     correlationId: "CORR:GOOGLE-LIVE-R05",
     decision: "ALLOW",
     actionToken,
@@ -69,7 +75,7 @@ liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
     requestedEffect: "google.response.generated",
     wardenDecisionRef: decision.decisionRef,
     actionToken,
-    requestedAt: "2026-08-24T06:00:01.000Z",
+    requestedAt: at(-50_000),
     correlationId: decision.correlationId,
   };
   const reservation: EvidenceReservationV1 = {
@@ -79,7 +85,7 @@ liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
     correlationId: decision.correlationId,
     authorizationDigest: tokenDigest(actionToken),
     state: "RESERVED",
-    reservedAt: "2026-08-24T06:00:02.000Z",
+    reservedAt: at(-40_000),
   };
   const checkpoint: WardenExecutionCheckpointV1 = {
     checkpointRef: "WARDEN-CHECKPOINT:GOOGLE-LIVE-R05",
@@ -87,7 +93,7 @@ liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
     wardenRef: decision.wardenRef,
     correlationId: decision.correlationId,
     state: "VALID",
-    checkedAt: "2026-08-24T06:00:03.000Z",
+    checkedAt: at(-30_000),
     reasonCodes: ["live_smoke_current"],
   };
   const grant: ProviderAuthorityGrantV1 = {
@@ -103,7 +109,7 @@ liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
     purposeRef: action.requestedEffect!,
     resourceRefs: [action.targetRef],
     correlationId: decision.correlationId,
-    issuedAt: "2026-08-24T06:00:04.000Z",
+    issuedAt: at(-20_000),
   };
   const binding: ProviderPrincipalBindingV1 = {
     version: "WARDEN-PROVIDER-AUTHORITY-BRIDGE-001",
@@ -112,7 +118,7 @@ liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
     providerRef: "GOOGLE_CLOUD",
     providerPrincipalRef: `adc://projects/${project}`,
     state: "ACTIVE",
-    boundAt: "2026-08-24T06:00:00.000Z",
+    boundAt: at(-70_000),
   };
   const request: ProviderExecutionRequestV1 = {
     agentRef: action.actorRef,
@@ -120,7 +126,7 @@ liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
     capabilityRef: action.capabilityRef,
     purposeRef: action.requestedEffect!,
     resourceRefs: [action.targetRef],
-    requestedAt: "2026-08-24T06:00:05.000Z",
+    requestedAt: at(-10_000),
     correlationId: decision.correlationId,
   };
   const authority: ProviderAuthorityGateInputV1 = {
@@ -131,7 +137,7 @@ liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
     reservation,
     decision,
     checkpoint,
-    authorizedAt: "2026-08-24T06:00:06.000Z",
+    authorizedAt: at(0),
   };
   const identity = resolveGoogleRuntimeIdentityV1({ mode: "ADC", config });
   const adapter = new GoogleReferenceAdapterV1(config, createGoogleGenAIClientV1(config));
@@ -140,7 +146,7 @@ liveIt("executes one bounded Vertex AI Gemini request using ADC", async () => {
     authority,
     identity,
     prompt,
-    completedAt: "2026-08-24T06:00:07.000Z",
+    completedAt: at(1),
   });
 
   expect(result.state).toBe("SUCCEEDED");
