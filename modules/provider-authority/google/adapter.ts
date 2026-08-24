@@ -11,6 +11,7 @@ import {
 } from "../runtime.ts";
 import type {
   GoogleGenerateContentClientV1,
+  GoogleIdentityModeV1,
   GoogleProviderCallReceiptV1,
   GoogleProviderConfigV1,
   GoogleRuntimeIdentityContextV1,
@@ -69,6 +70,16 @@ export function googleProviderRequestHashV1(
   );
 }
 
+export function assertGoogleIdentityModeConstraintV1(
+  mode: GoogleIdentityModeV1,
+  constraints: readonly string[],
+): true {
+  if (!constraints.includes(`provider_identity_mode:${mode}`)) {
+    throw new Error("google_identity_mode_constraint_required");
+  }
+  return true;
+}
+
 export interface GoogleProviderPreflightV1 {
   authorization: AuthorizedProviderExecutionV1;
   requestHash: string;
@@ -88,6 +99,10 @@ export class GoogleReferenceAdapterV1 {
   }): GoogleProviderPreflightV1 {
     const authorization = authorizeProviderExecutionV1(input.authority);
     assertGoogleIdentityBindingV1(input.identity, input.authority.binding);
+    assertGoogleIdentityModeConstraintV1(
+      input.identity.mode,
+      input.authority.decision.constraints,
+    );
     assertConfig(this.config);
     assertPrompt(input.prompt, this.config);
     const requestHash = googleProviderRequestHashV1(this.config, input.prompt);
