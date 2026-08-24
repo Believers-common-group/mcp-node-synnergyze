@@ -8,6 +8,7 @@ on:
       - package-lock.json
       - LICENSE
       - README.md
+      - rights/release-rights.json
       - .github/workflows/license-sbom.yml
   push:
     branches: [genesis]
@@ -16,6 +17,7 @@ on:
       - package-lock.json
       - LICENSE
       - README.md
+      - rights/release-rights.json
       - .github/workflows/license-sbom.yml
 
 permissions:
@@ -33,13 +35,18 @@ jobs:
         with:
           node-version-file: '.nvmrc'
 
-      - name: Verify root licence and lock metadata
+      - name: Verify root licence, rights state and lock metadata
         run: |
           node - <<'NODE'
+          const fs = require('fs');
+          const crypto = require('crypto');
           const pkg = require('./package.json');
           const lock = require('./package-lock.json');
+          const rights = require('./rights/release-rights.json');
+
           if (pkg.license !== 'MIT') throw new Error(`package.json license is ${pkg.license}`);
           if (lock.packages?.['']?.license !== 'MIT') throw new Error(`package-lock root license is ${lock.packages?.['']?.license}`);
+
           const root = lock.packages?.[''];
           for (const section of ['dependencies', 'devDependencies']) {
             const manifestDeps = pkg[section] || {};
@@ -48,8 +55,32 @@ jobs:
               throw new Error(`${section} drift between package.json and package-lock.json`);
             }
           }
+
+          const licence = fs.readFileSync('LICENSE');
+          const licenceSha256 = crypto.createHash('sha256').update(licence).digest('hex');
+          if (!licence.toString('utf8').startsWith('MIT License\n')) {
+            throw new Error('root LICENSE is not MIT text');
+          }
+
+          if (rights.status !== 'CLEARED') {
+            throw new Error(`release rights status is ${rights.status}; Warden/Launchpad admission remains blocked`);
+          }
+          if (rights.governance?.status !== 'CLEARED') {
+            throw new Error(`governance rights decision is ${rights.governance?.status ?? 'missing'}`);
+          }
+          if (!rights.clearance?.decision_reference || !rights.clearance?.deciding_principal || !rights.clearance?.authority_basis || !rights.clearance?.cleared_at) {
+            throw new Error('rights clearance evidence is incomplete');
+          }
+          if (rights.license_text_sha256 && rights.license_text_sha256 !== licenceSha256) {
+            throw new Error('root LICENSE digest differs from governed licence-text digest');
+          }
+          if (!['NOT_REQUIRED', 'EVIDENCED'].includes(rights.platform?.status)) {
+            throw new Error(`Launchpad platform permission is ${rights.platform?.status ?? 'missing'}`);
+          }
+
+          console.log(`root LICENSE sha256: ${licenceSha256}`);
+          console.log(`rights decision: ${rights.clearance.decision_reference}`);
           NODE
-          grep -q '^MIT License$' LICENSE
 
       - name: Install exact locked dependency graph
         run: npm ci --ignore-scripts
