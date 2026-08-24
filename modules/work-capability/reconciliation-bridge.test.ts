@@ -7,11 +7,6 @@ import {
 } from "../synnergyze/effect-expectation.ts";
 import { ReconciliationFabricV1 } from "../synnergyze/reconciliation-fabric.ts";
 import {
-  buildAuthorizedActionEnvelopeV1,
-  SyntheticRiverReservationServiceV1,
-} from "../river/reservation-service.ts";
-import { evaluateSyntheticWardenDecisionV1 } from "../warden/decision-service.ts";
-import {
   runVerifiedWaistbandFixtureV1,
   validWaistbandFixtureV1,
   type SyntheticGarmentPerformanceInputV1,
@@ -22,36 +17,23 @@ import {
   validateWorkReconciliationExpectationV1,
   WorkCapabilityReconciliationBridgeV1,
 } from "./reconciliation-bridge.ts";
+import { prepareAssignedWorkPreflightV1 } from "./runtime.ts";
 
 function compileWaistbandExpectationV1() {
-  const fixture = validWaistbandFixtureV1();
-  const decision = evaluateSyntheticWardenDecisionV1({
-    request: fixture.request,
-    policy: fixture.policy,
-    decidedAt: fixture.decidedAt,
-  });
-  if (decision.decision !== "ALLOW") throw new Error("expected_allow");
-
-  const action = buildAuthorizedActionEnvelopeV1(fixture.request, decision);
-  const reservation = new SyntheticRiverReservationServiceV1().reserve({
-    request: fixture.request,
-    decision,
-    action,
-    reservedAt: fixture.reservedAt,
-  });
+  const preflight = prepareAssignedWorkPreflightV1(validWaistbandFixtureV1());
   const service = new EffectExpectationServiceV1([
     new SyntheticGarmentWaistbandExpectationCompilerV1(),
   ]);
   return service.compile({
-    action,
-    reservation,
+    action: preflight.action,
+    reservation: preflight.reservation,
     compiledAt: "2026-08-24T00:30:22.000Z",
   });
 }
 
 function reconciliationSetupV1(performance: SyntheticGarmentPerformanceInputV1) {
-  const verified = runVerifiedWaistbandFixtureV1(performance);
   const expectedEffect = compileWaistbandExpectationV1();
+  const verified = runVerifiedWaistbandFixtureV1(performance);
   const workExpectation = compileWorkReconciliationExpectationV1({
     workUnit: verified.workUnit,
     expectedEffectContract: expectedEffect,
@@ -95,10 +77,24 @@ describe("WORK-CAPABILITY-RECONCILIATION-BRIDGE-001", () => {
     expect(expectation.capabilityRef).toBe("garment.waistband.attach");
     expect(expectation.requestedEffect).toBe("GARMENT-STATE:waistband_attached");
     expect(expectation.matcher).toEqual({
-      kind: "PREFIX",
-      value: "GARMENT-WAISTBAND-OBSERVED:",
+      kind: "EXACT",
+      value: "GARMENT-STATE:waistband_attached",
     });
     expect(validateExpectedEffectContractV1(expectation)).toBe(true);
+  });
+
+  it("uses the same assignment-bound preflight lineage as eventual execution", () => {
+    const preflight = prepareAssignedWorkPreflightV1(validWaistbandFixtureV1());
+    const verified = runVerifiedWaistbandFixtureV1({
+      inputQuantity: 500,
+      acceptedQuantity: 487,
+      reworkQuantity: 6,
+    });
+
+    expect(preflight.action.actionRef).toBe(verified.execution.actionRef);
+    expect(preflight.reservation.reservationRef).toBe(verified.execution.reservationRef);
+    expect(preflight.decision.decisionRef).toBe(verified.execution.wardenDecisionRef);
+    expect(preflight.assignment.assignmentRef).toBe(verified.assignment.assignmentRef);
   });
 
   it("rejects an unsupported requested effect for the trusted garment compiler", () => {
@@ -201,8 +197,9 @@ describe("WORK-CAPABILITY-RECONCILIATION-BRIDGE-001", () => {
       acceptedQuantity: 487,
       reworkQuantity: 6,
     });
-    const bridge = new WorkCapabilityReconciliationBridgeV1(new ReconciliationFabricV1());
-    const result = bridge.reconcile(input);
+    const result = new WorkCapabilityReconciliationBridgeV1(
+      new ReconciliationFabricV1(),
+    ).reconcile(input);
 
     expect(result.state).toBe("DETERMINED");
     if (result.state !== "DETERMINED") throw new Error("expected_determined");
