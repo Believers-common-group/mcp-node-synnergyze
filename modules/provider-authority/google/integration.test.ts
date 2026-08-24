@@ -15,7 +15,10 @@ import type {
   ProviderPrincipalBindingV1,
 } from "../contracts.ts";
 import { ProviderFailureErrorV1 } from "../runtime.ts";
-import { GoogleReferenceAdapterV1 } from "./adapter.ts";
+import {
+  GoogleReferenceAdapterV1,
+  googleProviderRequestHashV1,
+} from "./adapter.ts";
 import type {
   GoogleGenerateContentClientV1,
   GoogleProviderConfigV1,
@@ -29,6 +32,8 @@ import {
 function tokenDigest(value: string): string {
   return `sha256:${createHash("sha256").update(value, "utf8").digest("hex")}`;
 }
+
+const PROMPT = "analyse thermal state";
 
 const config: GoogleProviderConfigV1 = {
   providerRef: "GOOGLE_CLOUD",
@@ -50,7 +55,10 @@ function fixture(): {
     action: "provider.execute",
     targetRef: "PROJECT:GYROCELL",
     reasonCodes: ["bounded_policy_allow"],
-    constraints: ["provider:GOOGLE_CLOUD"],
+    constraints: [
+      "provider:GOOGLE_CLOUD",
+      `provider_request:${googleProviderRequestHashV1(config, PROMPT)}`,
+    ],
     decidedAt: "2026-08-24T06:00:00.000Z",
     validUntil: "2026-08-24T06:25:00.000Z",
     correlationId: "CORR:GOOGLE-INTEGRATION-001",
@@ -177,7 +185,7 @@ describe("Google canonical controlled execution integration R0.5", () => {
       providerAuthority: authority,
       controlledExecution,
       identity,
-      prompt: "analyse thermal state",
+      prompt: PROMPT,
       completedAt: "2026-08-24T06:13:00.000Z",
     });
 
@@ -199,7 +207,7 @@ describe("Google canonical controlled execution integration R0.5", () => {
       providerAuthority: input.authority,
       controlledExecution: input.controlledExecution,
       identity,
-      prompt: "analyse thermal state",
+      prompt: PROMPT,
       completedAt: "2026-08-24T06:13:00.000Z",
     };
 
@@ -224,7 +232,7 @@ describe("Google canonical controlled execution integration R0.5", () => {
       providerAuthority: authority,
       controlledExecution,
       identity,
-      prompt: "analyse thermal state",
+      prompt: PROMPT,
       completedAt: "2026-08-24T06:13:00.000Z",
     });
 
