@@ -1,0 +1,44 @@
+{
+  "schema": "VSR_RELEASE_RIGHTS_STATUS/1.1",
+  "status": "HOLD",
+  "repository": "Believers-common-group/mcp-node-synnergyze",
+  "baseline_commit": "cfe1138db85ce9b5046d7805cdf60b6fd6a8e02c",
+  "historical_alpha_commit": "a8fdd34334a63d1cd15878b9c136adf8230362a7",
+  "intended_distribution": "LAUNCHPAD_ALPHA",
+  "declared_project_license": "MIT",
+  "root_license_blob": "903661679cbcd3b3047083dca201b911683c0485",
+  "root_license_observation": "MIT licence text naming Algolia, Inc.",
+  "dependency_lockfile": "package-lock.json",
+  "dependency_lockfile_state": "PRESENT",
+  "sbom_workflow": ".github/workflows/license-sbom.yml",
+  "sbom_capability_state": "PRESENT_NOT_RELEASE_EVIDENCE",
+  "governance": {
+    "decision_id": "SRD-MCP-NODE-SYNNERGYZE-R0.10",
+    "issue": "Believers-common-group/SynergyzeGovernance#80",
+    "draft_pr": "Believers-common-group/SynergyzeGovernance#81",
+    "status": "PENDING"
+  },
+  "platform": {
+    "grant_id": "LPG-MCP-NODE-SYNNERGYZE-R0.10",
+    "provider": "Canonical",
+    "platform": "Launchpad",
+    "status": "UNRESOLVED"
+  },
+  "open_conditions": [
+    "ROOT_LICENSE_COPYRIGHT_PROVENANCE_UNRESOLVED",
+    "PROJECT_COPYRIGHT_OWNER_UNRESOLVED",
+    "COMPETENT_LICENSE_GRANT_AUTHORITY_UNRESOLVED",
+    "EXACT_RELEASE_SBOM_RECEIPT_REQUIRED",
+    "LAUNCHPAD_PLATFORM_PERMISSION_DECISION_REQUIRED",
+    "WARDEN_G0_REEVALUATION_REQUIRED"
+  ],
+  "clearance": {
+    "decision_reference": null,
+    "deciding_principal": null,
+    "authority_basis": null,
+    "cleared_at": null
+  },
+  "warden_effect": "NON_ALLOW",
+  "launchpad_effect": "HOLD",
+  "supersedes": "R0.9 historical remediation branch; does not supersede historical source evidence"
+}
