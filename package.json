@@ -42,6 +42,7 @@
   "license": "MIT",
   "description": "Synnergyze Genesis MCP service for governed VSR/Genesis integrations.",
   "dependencies": {
+    "@google/genai": "2.18.0",
     "@modelcontextprotocol/sdk": "^1.11.0",
     "@neondatabase/serverless": "^1.0.1",
     "ajv": "^8.17.1",
