@@ -134,7 +134,13 @@ function validateFederationObject(
   const created = parseInstant(federationObject.createdAt);
   const expires = parseInstant(federationObject.expiresAt);
   const current = parseInstant(at);
-  if (created === null || expires === null || current === null || expires < created || current < created) {
+  if (
+    created === null ||
+    expires === null ||
+    current === null ||
+    expires < created ||
+    current < created
+  ) {
     return failure(federationObject.federationId, "FEDERATION_OBJECT_TIME_INVALID");
   }
   if (current > expires) {
@@ -432,6 +438,19 @@ export class FederatedLicenceEvidenceRuntimeV1 {
         input.destinationDecision,
         input.destinationAuthorityBinding,
         input.reservedAt,
+      ),
+      validateFederationObject(input.federationObject, input.executedAt),
+      validateTrustPath(input.federationObject, input.trustPathProof, input.executedAt),
+      validateContractResolution(
+        input.federationObject,
+        input.contractResolution,
+        input.executedAt,
+      ),
+      validateDestinationAuthority(
+        input.federationObject,
+        input.destinationDecision,
+        input.destinationAuthorityBinding,
+        input.executedAt,
       ),
       validateDestinationLineage(input),
     ];
