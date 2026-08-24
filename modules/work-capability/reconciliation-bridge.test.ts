@@ -1,11 +1,17 @@
+import { createHash } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
+import {
+  buildAuthorizedActionEnvelopeV1,
+  SyntheticRiverReservationServiceV1,
+} from "../river/reservation-service.ts";
 import {
   EffectExpectationServiceV1,
   SyntheticGarmentWaistbandExpectationCompilerV1,
   validateExpectedEffectContractV1,
 } from "../synnergyze/effect-expectation.ts";
 import { ReconciliationFabricV1 } from "../synnergyze/reconciliation-fabric.ts";
+import { evaluateSyntheticWardenDecisionV1 } from "../warden/decision-service.ts";
 import {
   runVerifiedWaistbandFixtureV1,
   validWaistbandFixtureV1,
@@ -17,10 +23,49 @@ import {
   validateWorkReconciliationExpectationV1,
   WorkCapabilityReconciliationBridgeV1,
 } from "./reconciliation-bridge.ts";
-import { prepareAssignedWorkPreflightV1 } from "./runtime.ts";
+
+function digest(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
+function waistbandPreflightV1() {
+  const fixture = validWaistbandFixtureV1();
+  const assignmentDigest = `sha256:${digest(JSON.stringify({
+    workUnitRef: fixture.workUnit.workUnitRef,
+    compositionRef: fixture.composition.compositionRef,
+    actorRefs: [...fixture.composition.actorRefs].sort(),
+  }))}`;
+  const assignmentRef = `WORK-ASSIGNMENT:${assignmentDigest.slice(
+    "sha256:".length,
+    "sha256:".length + 24,
+  )}`;
+  const assignmentBindingRef = `WORK-ASSIGNMENT-BINDING:${assignmentDigest}`;
+  const boundRequest = {
+    ...fixture.request,
+    representationSourceRefs: [...new Set([
+      ...fixture.request.representationSourceRefs,
+      assignmentBindingRef,
+    ])].sort(),
+  };
+  const decision = evaluateSyntheticWardenDecisionV1({
+    request: boundRequest,
+    policy: fixture.policy,
+    decidedAt: fixture.decidedAt,
+  });
+  if (decision.decision !== "ALLOW") throw new Error("expected_allow");
+
+  const action = buildAuthorizedActionEnvelopeV1(boundRequest, decision);
+  const reservation = new SyntheticRiverReservationServiceV1().reserve({
+    request: boundRequest,
+    decision,
+    action,
+    reservedAt: fixture.reservedAt,
+  });
+  return { fixture, assignmentRef, assignmentBindingRef, decision, action, reservation };
+}
 
 function compileWaistbandExpectationV1() {
-  const preflight = prepareAssignedWorkPreflightV1(validWaistbandFixtureV1());
+  const preflight = waistbandPreflightV1();
   const service = new EffectExpectationServiceV1([
     new SyntheticGarmentWaistbandExpectationCompilerV1(),
   ]);
@@ -84,7 +129,7 @@ describe("WORK-CAPABILITY-RECONCILIATION-BRIDGE-001", () => {
   });
 
   it("uses the same assignment-bound preflight lineage as eventual execution", () => {
-    const preflight = prepareAssignedWorkPreflightV1(validWaistbandFixtureV1());
+    const preflight = waistbandPreflightV1();
     const verified = runVerifiedWaistbandFixtureV1({
       inputQuantity: 500,
       acceptedQuantity: 487,
@@ -94,7 +139,8 @@ describe("WORK-CAPABILITY-RECONCILIATION-BRIDGE-001", () => {
     expect(preflight.action.actionRef).toBe(verified.execution.actionRef);
     expect(preflight.reservation.reservationRef).toBe(verified.execution.reservationRef);
     expect(preflight.decision.decisionRef).toBe(verified.execution.wardenDecisionRef);
-    expect(preflight.assignment.assignmentRef).toBe(verified.assignment.assignmentRef);
+    expect(preflight.assignmentRef).toBe(verified.assignment.assignmentRef);
+    expect(verified.assignment.assignmentBindingRef).toBe(preflight.assignmentBindingRef);
   });
 
   it("rejects an unsupported requested effect for the trusted garment compiler", () => {
