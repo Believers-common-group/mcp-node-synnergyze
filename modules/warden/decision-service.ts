@@ -173,6 +173,11 @@ export function evaluateSyntheticWardenDecisionV1(
     return escalate(request, policy, decidedAt, `trust_hold:${reason}`);
   }
 
+  if (request.trustResolution?.result === "REQUIRES_STEP_UP") {
+    const reason = request.trustResolution.reasonCodes?.[0] ?? "unspecified";
+    return escalate(request, policy, decidedAt, `trust_step_up:${reason}`);
+  }
+
   if (policy.manualReviewCapabilityRefs.includes(request.capabilityRef)) {
     return escalate(request, policy, decidedAt, "manual_review_required");
   }
