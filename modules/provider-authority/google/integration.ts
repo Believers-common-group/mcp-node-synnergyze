@@ -18,7 +18,7 @@ import {
   determineProviderRecoveryV1,
   executeProviderControlledExecutionV1,
 } from "../runtime.ts";
-import { GoogleReferenceAdapterV1 } from "./adapter.ts";
+import type { GoogleReferenceAdapterV1 } from "./adapter.ts";
 import type {
   GoogleProviderCallReceiptV1,
   GoogleRuntimeIdentityContextV1,
