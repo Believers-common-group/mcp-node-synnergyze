@@ -42,6 +42,16 @@ export function resolveTrustV1(request: TrustResolutionRequestV1): WardenTrustRe
     };
   }
 
+  if (request.observedAssurance.authority < request.requiredAssurance.authority) {
+    return {
+      resolutionRef: request.resolutionRef,
+      result: "REQUIRES_STEP_UP",
+      material: true,
+      irreversibleEffect: request.intendedEffect.irreversible,
+      reasonCodes: ["insufficient_authority_assurance"],
+    };
+  }
+
   if (request.observedAssurance.compute < request.requiredAssurance.compute) {
     return {
       resolutionRef: request.resolutionRef,
