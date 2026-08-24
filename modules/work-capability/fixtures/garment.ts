@@ -19,6 +19,7 @@ import type {
   CapabilityEvidenceV1,
   CapabilityOutcomeV1,
   RemainingWorkProposalV1,
+  WorkAssignmentV1,
   WorkUnitV1,
 } from "../contracts.ts";
 import { projectProfileBoundCapabilityEvidenceV1 } from "../evidence.ts";
@@ -61,6 +62,8 @@ export interface SyntheticGarmentPerformanceInputV1 {
 }
 
 export interface VerifiedWaistbandFixtureResultV1 {
+  workUnit: WorkUnitV1;
+  assignment: WorkAssignmentV1;
   execution: SynnergyzeExecutionReceiptV1;
   observation: PostExecutionObservationV1;
   verification: EffectVerificationSuccessV1;
@@ -375,6 +378,8 @@ export function runVerifiedWaistbandFixtureV1(
   });
 
   return {
+    workUnit: executionInput.workUnit,
+    assignment: proof.assignment,
     execution: proof.execution,
     observation,
     verification: verificationResult,
