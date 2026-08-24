@@ -1,0 +1,67 @@
+name: Rights evidence capture
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - 'codex/rights-*'
+
+permissions:
+  contents: read
+
+jobs:
+  capture:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out exact branch commit
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Generate governed npm lockfile candidate
+        run: |
+          mkdir -p evidence
+          npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+          cp package-lock.json evidence/package-lock.json
+          sha256sum package-lock.json > evidence/package-lock.sha256
+
+      - name: Download Syft
+        id: syft
+        uses: anchore/sbom-action/download-syft@v0.24.0
+        with:
+          syft-version: v1.42.3
+
+      - name: Capture native Syft and SPDX evidence
+        run: |
+          "${{ steps.syft.outputs.cmd }}" dir:. \
+            -o syft-json=evidence/sbom.syft.json \
+            -o spdx-json=evidence/sbom.spdx.json
+          sha256sum evidence/sbom.syft.json evidence/sbom.spdx.json > evidence/sbom.sha256
+
+      - name: Record fail-closed release gate result
+        shell: bash
+        run: |
+          set +e
+          node scripts/verify-release-rights.mjs > evidence/release-rights-gate.log 2>&1
+          status=$?
+          set -e
+          printf '%s\n' "$status" > evidence/release-rights-gate.exitcode
+          cat evidence/release-rights-gate.log
+          test "$status" -ne 0
+
+      - name: Capture source identity
+        run: |
+          printf '%s\n' "${GITHUB_SHA}" > evidence/source-commit.txt
+          printf '%s\n' "${GITHUB_REF_NAME}" > evidence/source-branch.txt
+
+      - name: Upload evidence bundle
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: rights-evidence-${{ github.sha }}
+          path: evidence/
+          if-no-files-found: error
+          retention-days: 30
