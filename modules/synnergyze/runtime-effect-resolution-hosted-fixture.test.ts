@@ -1,5 +1,5 @@
 import { mkdirSync, writeFileSync } from "node:fs";
-import { generateKeyPairSync } from "node:crypto";
+import { createHash, generateKeyPairSync } from "node:crypto";
 
 import { expect, it } from "vitest";
 
@@ -13,7 +13,30 @@ import {
   type RuntimeEffectExceptionSourceBindingV1,
 } from "./runtime-effect-resolution-export.ts";
 
+function stableJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableJson).join(",")}]`;
+  if (value && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    return `{${Object.keys(record).sort().map((key) => `${JSON.stringify(key)}:${stableJson(record[key])}`).join(",")}}`;
+  }
+  return JSON.stringify(value);
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value, "utf8").digest("hex");
+}
+
 it("emits a public hosted Runtime-resolution fixture", () => {
+  const action = {
+    action_id: "runtime.page.create",
+    capability_id: "runtime.page.create",
+    resource_id: "RUNTIME-001",
+    effect_class: "WRITE",
+  };
+  const providerKey = sha256(stableJson(action));
+  const sourceReplayKey = "RUNTIME-REPLAY:HOSTED-001";
+  const runtimeExceptionRef = `RUNTIME-EFFECT-EXCEPTION:${sha256(`${providerKey}|${sourceReplayKey}`).slice(0, 32)}`;
+
   const seal: RemedyResolutionSealSourceV1 = {
     version: "REMEDY-CAUSAL-SEAL-001",
     sealRef: "RIVER-REMEDY-SEAL:HOSTED-001",
@@ -24,7 +47,7 @@ it("emits a public hosted Runtime-resolution fixture", () => {
     reconciliationRef: "RECONCILIATION:HOSTED-001",
     proposalRef: "REMEDY-PROPOSAL:HOSTED-001",
     authorizationRef: "REMEDY-AUTH:HOSTED-001",
-    originalWardenDecisionRef: "WARDEN-DECISION:HOSTED-ORIGINAL",
+    originalWardenDecisionRef: "WARDEN-DECISION:1",
     remedyWardenDecisionRef: "WARDEN-DECISION:HOSTED-REMEDY",
     remedyExecutionReceiptRef: "REMEDY-EXECUTION:HOSTED-001",
     remedyEffectRef: "REMEDY-EFFECT:HOSTED-001",
@@ -85,12 +108,12 @@ it("emits a public hosted Runtime-resolution fixture", () => {
   };
   const runtimeSource: RuntimeEffectExceptionSourceBindingV1 = {
     version: "RUNTIME-EFFECT-EXCEPTION-SOURCE-BINDING-001",
-    runtimeExceptionRef: "RUNTIME-EFFECT-EXCEPTION:HOSTED-001",
-    sourceReplayKey: "RUNTIME-REPLAY:HOSTED-001",
+    runtimeExceptionRef,
+    sourceReplayKey,
     sourceWardenDecisionReceiptId: seal.originalWardenDecisionRef,
     wardenExceptionRef: seal.exceptionRef,
     sourceEvidenceRef: "RIVER-EVIDENCE:RUNTIME-EXCEPTION-HOSTED-001",
-    sourceDigest: "sha256:hosted-runtime-source",
+    sourceDigest: `sha256:${sha256(stableJson({ runtimeExceptionRef, sourceReplayKey, providerKey, originalWardenDecisionRef: seal.originalWardenDecisionRef }))}`,
     synthetic: false,
   };
   const { privateKey, publicKey } = generateKeyPairSync("ed25519");
@@ -111,21 +134,14 @@ it("emits a public hosted Runtime-resolution fixture", () => {
   if (!dir) return;
   mkdirSync(dir, { recursive: true });
   writeFileSync(`${dir}/resolution.json`, `${JSON.stringify(result.binding, null, 2)}\n`, "utf8");
-  writeFileSync(
-    `${dir}/public-key.pem`,
-    publicKey.export({ type: "spki", format: "pem" }).toString(),
-    "utf8",
-  );
-  writeFileSync(
-    `${dir}/expected.json`,
-    `${JSON.stringify({
-      key_id: "WARDEN-RUNTIME-RESOLUTION-KEY:HOSTED-001",
-      assurance: "A3",
-      runtime_exception_ref: runtimeSource.runtimeExceptionRef,
-      source_replay_key: runtimeSource.sourceReplayKey,
-      source_warden_decision_receipt_id: runtimeSource.sourceWardenDecisionReceiptId,
-      warden_exception_ref: runtimeSource.wardenExceptionRef,
-    }, null, 2)}\n`,
-    "utf8",
-  );
+  writeFileSync(`${dir}/public-key.pem`, publicKey.export({ type: "spki", format: "pem" }).toString(), "utf8");
+  writeFileSync(`${dir}/expected.json`, `${JSON.stringify({
+    key_id: "WARDEN-RUNTIME-RESOLUTION-KEY:HOSTED-001",
+    assurance: "A3",
+    provider_key: providerKey,
+    runtime_exception_ref: runtimeSource.runtimeExceptionRef,
+    source_replay_key: runtimeSource.sourceReplayKey,
+    source_warden_decision_receipt_id: runtimeSource.sourceWardenDecisionReceiptId,
+    warden_exception_ref: runtimeSource.wardenExceptionRef,
+  }, null, 2)}\n`, "utf8");
 });
