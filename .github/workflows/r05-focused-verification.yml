@@ -1,0 +1,26 @@
+name: r05-focused-verification
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+      - name: Install locked dependencies
+        run: npm ci
+      - name: Google provider suite
+        run: npm run test:google-provider
+      - name: Provider authority suite
+        run: npm run test:provider-authority
+      - name: Controlled execution suite
+        run: npm run test:controlled-execution
+      - name: Effect verification suite
+        run: npm run test:effect-verification
+      - name: Reconciliation conformance suite
+        run: npm run test:reconciliation-conformance
