@@ -41,7 +41,7 @@ function authorityFixture(options: {
   prompt?: string;
 } = {}): ProviderAuthorityGateInputV1 {
   const prompt = options.prompt ?? "analyse thermal state";
-  const constraints: string[] = [];
+  const constraints: string[] = ["provider_identity_mode:ADC"];
   if (options.providerConstraint !== false) constraints.push("provider:GOOGLE_CLOUD");
   if (options.requestConstraint !== false) {
     constraints.push(`provider_request:${googleProviderRequestHashV1(config, prompt)}`);
