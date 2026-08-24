@@ -62,6 +62,16 @@ export function resolveTrustV1(request: TrustResolutionRequestV1): WardenTrustRe
     };
   }
 
+  if (request.observedAssurance.evidence < request.requiredAssurance.evidence) {
+    return {
+      resolutionRef: request.resolutionRef,
+      result: "REQUIRES_STEP_UP",
+      material: true,
+      irreversibleEffect: request.intendedEffect.irreversible,
+      reasonCodes: ["insufficient_evidence_assurance"],
+    };
+  }
+
   return {
     resolutionRef: request.resolutionRef,
     result: "SATISFIED",
