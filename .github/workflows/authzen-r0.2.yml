@@ -7,6 +7,7 @@ on:
       - "api/authzen-cert.test.ts"
       - "modules/warden/authzen-*.ts"
       - "scripts/run-authzen-authorization-api-1_0-scenario.mjs"
+      - "scripts/serve-authzen-certification-fixture.mjs"
       - "vercel.json"
       - ".github/workflows/authzen-r0.2.yml"
   workflow_dispatch:
@@ -45,8 +46,10 @@ jobs:
           modules/warden/authzen-certification-fixture.test.ts
           modules/warden/authzen-certification-batch-search.test.ts
 
-      - name: Verify black-box runner syntax
-        run: node --check scripts/run-authzen-authorization-api-1_0-scenario.mjs
+      - name: Verify black-box helper syntax
+        run: |
+          node --check scripts/run-authzen-authorization-api-1_0-scenario.mjs
+          node --check scripts/serve-authzen-certification-fixture.mjs
 
       - name: Run AuthZEN tests
         run: >-
@@ -56,3 +59,33 @@ jobs:
           modules/warden/authzen-http.test.ts
           modules/warden/authzen-certification-fixture.test.ts
           modules/warden/authzen-certification-batch-search.test.ts
+
+      - name: Run black-box Authorization API 1.0 scenario
+        shell: bash
+        run: |
+          set -euo pipefail
+          node --experimental-strip-types --no-warnings=ExperimentalWarnings \
+            scripts/serve-authzen-certification-fixture.mjs \
+            > /tmp/authzen-cert-fixture.log 2>&1 &
+          server_pid=$!
+          trap 'kill "$server_pid" 2>/dev/null || true' EXIT
+
+          ready=0
+          for attempt in $(seq 1 20); do
+            if curl --fail --silent --show-error \
+              http://127.0.0.1:4010/.well-known/authzen-configuration \
+              >/dev/null; then
+              ready=1
+              break
+            fi
+            sleep 0.25
+          done
+
+          if [ "$ready" -ne 1 ]; then
+            cat /tmp/authzen-cert-fixture.log
+            exit 1
+          fi
+
+          AUTHZEN_CERT_BASE_URL=http://127.0.0.1:4010 \
+          AUTHZEN_CERT_ALLOW_HTTP=1 \
+            node scripts/run-authzen-authorization-api-1_0-scenario.mjs
