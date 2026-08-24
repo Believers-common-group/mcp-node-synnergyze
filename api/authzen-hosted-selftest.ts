@@ -174,6 +174,7 @@ async function executeHostedChecks(
 
   await check("subject-search", async () => {
     const response = await jsonCall(origin, authHeaders, "POST", "/access/v1/search/subject", {
+      subject: { type: "user" },
       action: { name: "read" },
       resource: record1,
     });
@@ -188,6 +189,7 @@ async function executeHostedChecks(
     const response = await jsonCall(origin, authHeaders, "POST", "/access/v1/search/resource", {
       subject: alice,
       action: { name: "read" },
+      resource: { type: "record" },
     });
     ensure(response.status === 200, `expected_200_got_${response.status}`);
     const body = asRecord(response.body);
