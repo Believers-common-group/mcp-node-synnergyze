@@ -25,6 +25,9 @@
     },
     "api/authzen-cert.ts": {
       "maxDuration": 10
+    },
+    "api/authzen-hosted-selftest.ts": {
+      "maxDuration": 30
     }
   },
   "rewrites": [
@@ -79,6 +82,10 @@
     {
       "source": "/access/v1/search/action",
       "destination": "/api/authzen-cert?route=search_action"
+    },
+    {
+      "source": "/authzen-hosted-selftest",
+      "destination": "/api/authzen-hosted-selftest"
     }
   ]
 }
