@@ -1,8 +1,8 @@
 import { describe, expect, it } from "vitest";
+
 import type { WardenDecisionV1 } from "../warden/contracts.ts";
 import {
   LicenceFederationRuntimeV1,
-  applyDestinationLicenceDecisionV1,
   createLicenceFederationObjectV1,
   type DestinationFederationAuthorityBindingV1,
 } from "./federated-mission.ts";
@@ -85,7 +85,13 @@ function destinationBinding(
   };
 }
 
-describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
+function readyObject() {
+  const source = createLicenceFederationObjectV1(sourceInput(allow()));
+  if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+  return source.federationObject;
+}
+
+describe("VSR-FEDERATED-MISSION-REFERENCE-R1.1", () => {
   it("source ALLOW creates only a destination-ready object, never Malaysian local effect", () => {
     const result = createLicenceFederationObjectV1(sourceInput(allow()));
 
@@ -104,13 +110,12 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
     });
   });
 
-  it("creates Malaysian licence effect only after independent destination ALLOW", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
-
-    const result = applyDestinationLicenceDecisionV1({
-      federationObject: source.federationObject,
+  it("creates Malaysian local effect only through independently bound destination authority", () => {
+    const runtime = new LicenceFederationRuntimeV1();
+    const result = runtime.applyDestinationDecision({
+      federationObject: readyObject(),
       destinationDecision: destinationAllow(),
+      destinationAuthorityBinding: destinationBinding(),
       recognisedAt: "2026-08-24T00:00:40.000Z",
     });
 
@@ -119,19 +124,18 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
     expect(result.effect.domainRef).toBe("DOMAIN-MY");
     expect(result.effect.sourceWardenDecisionRef).toBe("WARDEN-DECISION:IN-001");
     expect(result.effect.destinationWardenDecisionRef).toBe("WARDEN-DECISION:MY-001");
+    expect(result.idempotentReplay).toBe(false);
   });
 
-  it("destination DENY fails closed", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
-
-    const result = applyDestinationLicenceDecisionV1({
-      federationObject: source.federationObject,
+  it("destination non-ALLOW fails closed", () => {
+    const result = new LicenceFederationRuntimeV1().applyDestinationDecision({
+      federationObject: readyObject(),
       destinationDecision: deny({
         decisionRef: "WARDEN-DECISION:MY-DENY-001",
         wardenRef: "WARDEN-MY",
         action: "federation.licence.recognise",
       }),
+      destinationAuthorityBinding: destinationBinding(),
       recognisedAt: "2026-08-24T00:00:40.000Z",
     });
 
@@ -142,12 +146,10 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
   });
 
   it("rejects reuse of source Warden as destination authority", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
-
-    const result = applyDestinationLicenceDecisionV1({
-      federationObject: source.federationObject,
+    const result = new LicenceFederationRuntimeV1().applyDestinationDecision({
+      federationObject: readyObject(),
       destinationDecision: destinationAllow({ wardenRef: "WARDEN-IN" }),
+      destinationAuthorityBinding: destinationBinding({ wardenRef: "WARDEN-IN" }),
       recognisedAt: "2026-08-24T00:00:40.000Z",
     });
 
@@ -158,12 +160,10 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
   });
 
   it("rejects destination decision bound to a different product", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
-
-    const result = applyDestinationLicenceDecisionV1({
-      federationObject: source.federationObject,
+    const result = new LicenceFederationRuntimeV1().applyDestinationDecision({
+      federationObject: readyObject(),
       destinationDecision: destinationAllow({ targetRef: "PRODUCT-Y-001" }),
+      destinationAuthorityBinding: destinationBinding(),
       recognisedAt: "2026-08-24T00:00:40.000Z",
     });
 
@@ -173,30 +173,11 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
     });
   });
 
-  it("binds destination Warden to destination domain and Federation Contract before effect", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
-    const runtime = new LicenceFederationRuntimeV1();
-
-    const result = runtime.applyDestinationDecision({
-      federationObject: source.federationObject,
-      destinationDecision: destinationAllow(),
-      destinationAuthorityBinding: destinationBinding(),
-      recognisedAt: "2026-08-24T00:00:40.000Z",
-    });
-
-    expect(result.state).toBe("LOCAL_EFFECT_CREATED");
-    if (result.state !== "LOCAL_EFFECT_CREATED") throw new Error("expected_local_effect");
-    expect(result.effect.domainRef).toBe("DOMAIN-MY");
-    expect(result.idempotentReplay).toBe(false);
-  });
-
   it("rejects mismatched destination domain and contract bindings", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+    const federationObject = readyObject();
 
     const wrongDomain = new LicenceFederationRuntimeV1().applyDestinationDecision({
-      federationObject: source.federationObject,
+      federationObject,
       destinationDecision: destinationAllow(),
       destinationAuthorityBinding: destinationBinding({ domainRef: "DOMAIN-SG" }),
       recognisedAt: "2026-08-24T00:00:40.000Z",
@@ -207,7 +188,7 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
     });
 
     const wrongContract = new LicenceFederationRuntimeV1().applyDestinationDecision({
-      federationObject: source.federationObject,
+      federationObject,
       destinationDecision: destinationAllow(),
       destinationAuthorityBinding: destinationBinding({
         contractRef: "FED-CONTRACT-IN-MY-CREATOR-999",
@@ -221,11 +202,8 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
   });
 
   it("rejects inactive destination authority binding", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
-
     const result = new LicenceFederationRuntimeV1().applyDestinationDecision({
-      federationObject: source.federationObject,
+      federationObject: readyObject(),
       destinationDecision: destinationAllow(),
       destinationAuthorityBinding: destinationBinding({ status: "REVOKED" }),
       recognisedAt: "2026-08-24T00:00:40.000Z",
@@ -238,11 +216,10 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
   });
 
   it("rejects expired federation objects and expired destination decisions", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+    const federationObject = readyObject();
 
     const expiredObject = new LicenceFederationRuntimeV1().applyDestinationDecision({
-      federationObject: { ...source.federationObject, expiresAt: "2026-08-24T00:00:30.000Z" },
+      federationObject: { ...federationObject, expiresAt: "2026-08-24T00:00:30.000Z" },
       destinationDecision: destinationAllow(),
       destinationAuthorityBinding: destinationBinding(),
       recognisedAt: "2026-08-24T00:00:40.000Z",
@@ -253,7 +230,7 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
     });
 
     const expiredDecision = new LicenceFederationRuntimeV1().applyDestinationDecision({
-      federationObject: source.federationObject,
+      federationObject,
       destinationDecision: destinationAllow({ validUntil: "2026-08-24T00:00:30.000Z" }),
       destinationAuthorityBinding: destinationBinding(),
       recognisedAt: "2026-08-24T00:00:40.000Z",
@@ -264,19 +241,22 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
     });
   });
 
-  it("replays exact destination recognition idempotently and rejects mutated replay", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
+  it("replays a later-clock duplicate idempotently and rejects mutated replay", () => {
     const runtime = new LicenceFederationRuntimeV1();
     const input = {
-      federationObject: source.federationObject,
+      federationObject: readyObject(),
       destinationDecision: destinationAllow(),
       destinationAuthorityBinding: destinationBinding(),
-      recognisedAt: "2026-08-24T00:00:40.000Z",
     } as const;
 
-    const first = runtime.applyDestinationDecision(input);
-    const replay = runtime.applyDestinationDecision(input);
+    const first = runtime.applyDestinationDecision({
+      ...input,
+      recognisedAt: "2026-08-24T00:00:40.000Z",
+    });
+    const replay = runtime.applyDestinationDecision({
+      ...input,
+      recognisedAt: "2026-08-24T00:05:00.000Z",
+    });
     expect(first.state).toBe("LOCAL_EFFECT_CREATED");
     expect(replay.state).toBe("LOCAL_EFFECT_CREATED");
     if (first.state !== "LOCAL_EFFECT_CREATED" || replay.state !== "LOCAL_EFFECT_CREATED") {
@@ -284,7 +264,8 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
     }
     expect(first.idempotentReplay).toBe(false);
     expect(replay.idempotentReplay).toBe(true);
-    expect(replay.effect.effectRef).toBe(first.effect.effectRef);
+    expect(replay.effect).toEqual(first.effect);
+    expect(replay.river).toEqual(first.river);
     expect(runtime.effectCount()).toBe(1);
 
     const conflict = runtime.applyDestinationDecision({
@@ -296,6 +277,7 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
       destinationAuthorityBinding: destinationBinding({
         contractRef: "FED-CONTRACT-IN-MY-CREATOR-002",
       }),
+      recognisedAt: "2026-08-24T00:05:00.000Z",
     });
     expect(conflict).toMatchObject({
       state: "DESTINATION_EXCEPTION",
@@ -304,12 +286,8 @@ describe("VSR-FEDERATED-MISSION-REFERENCE-R1.0", () => {
   });
 
   it("emits causally linked synthetic non-persisted River transition and effect receipts", () => {
-    const source = createLicenceFederationObjectV1(sourceInput(allow()));
-    if (source.state !== "READY_FOR_DESTINATION") throw new Error("expected_source_ready");
-    const runtime = new LicenceFederationRuntimeV1();
-
-    const result = runtime.applyDestinationDecision({
-      federationObject: source.federationObject,
+    const result = new LicenceFederationRuntimeV1().applyDestinationDecision({
+      federationObject: readyObject(),
       destinationDecision: destinationAllow(),
       destinationAuthorityBinding: destinationBinding(),
       recognisedAt: "2026-08-24T00:00:40.000Z",
