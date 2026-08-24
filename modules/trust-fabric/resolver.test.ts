@@ -116,6 +116,42 @@ describe("WARDEN-TRUST-FABRIC-001 resolver", () => {
     expect(result.reasonCodes).toEqual(["insufficient_evidence_assurance"]);
   });
 
+  it("requires step-up when authority assurance is strong enough but stale", () => {
+    const request = {
+      resolutionRef: "TRUST-RESOLUTION:STALE-AUTHORITY-001",
+      actionRef: "payment.release",
+      intendedEffect: {
+        type: "payment.released",
+        irreversible: true,
+      },
+      requiredAssurance: {
+        identity: 3 as const,
+        authority: 4 as const,
+        compute: 3 as const,
+        evidence: 3 as const,
+      },
+      observedAssurance: {
+        identity: 4 as const,
+        authority: 4 as const,
+        compute: 4 as const,
+        evidence: 4 as const,
+      },
+      requiredMaxAgeSeconds: {
+        authority: 300,
+      },
+      observedAgeSeconds: {
+        authority: 601,
+      },
+      materialConflict: false,
+    };
+
+    const result = resolveTrustV1(request);
+
+    expect(result.result).toBe("REQUIRES_STEP_UP");
+    expect(result.material).toBe(true);
+    expect(result.reasonCodes).toEqual(["stale_authority_assurance"]);
+  });
+
   it("returns conflicted when a material authority conflict affects the requested effect", () => {
     const result = resolveTrustV1({
       resolutionRef: "TRUST-RESOLUTION:CONFLICT-001",
