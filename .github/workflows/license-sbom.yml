@@ -9,7 +9,10 @@ on:
       - LICENSE
       - README.md
       - rights/release-rights.json
+      - rights/authority-declaration.json
+      - rights/launchpad-release-request.json
       - scripts/verify-release-rights.mjs
+      - scripts/verify-r0.12-contracts.mjs
       - .github/workflows/license-sbom.yml
   push:
     branches: [genesis]
@@ -19,7 +22,10 @@ on:
       - LICENSE
       - README.md
       - rights/release-rights.json
+      - rights/authority-declaration.json
+      - rights/launchpad-release-request.json
       - scripts/verify-release-rights.mjs
+      - scripts/verify-r0.12-contracts.mjs
       - .github/workflows/license-sbom.yml
 
 permissions:
@@ -43,6 +49,9 @@ jobs:
       - name: Prepare evidence directory
         run: mkdir -p evidence
 
+      - name: Verify R0.12 authority and Launchpad contracts
+        run: node scripts/verify-r0.12-contracts.mjs
+
       - name: Verify root licence shape and lock metadata
         run: |
           node - <<'NODE'
@@ -63,11 +72,18 @@ jobs:
           }
 
           const licence = fs.readFileSync('LICENSE', 'utf8');
-          if (!licence.startsWith('MIT License\n')) {
-            throw new Error('root LICENSE is not MIT text');
-          }
+          if (!licence.startsWith('MIT License\n')) throw new Error('root LICENSE is not MIT text');
           NODE
-          sha256sum package.json package-lock.json LICENSE rights/release-rights.json scripts/verify-release-rights.mjs > evidence/source-metadata.sha256
+          sha256sum \
+            package.json \
+            package-lock.json \
+            LICENSE \
+            rights/release-rights.json \
+            rights/authority-declaration.json \
+            rights/launchpad-release-request.json \
+            scripts/verify-release-rights.mjs \
+            scripts/verify-r0.12-contracts.mjs \
+            > evidence/source-metadata.sha256
 
       - name: Install exact locked dependency graph
         run: npm ci --ignore-scripts
@@ -126,11 +142,13 @@ jobs:
           NODE
           sha256sum evidence/dependency-licenses.json > evidence/dependency-licenses.sha256
 
-      - name: Capture exact source identity
+      - name: Capture exact source and governed state
         run: |
           git rev-parse HEAD | tee evidence/source-commit.txt
           printf '%s\n' "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" > evidence/source-branch.txt
           cp rights/release-rights.json evidence/release-rights.json
+          cp rights/authority-declaration.json evidence/authority-declaration.json
+          cp rights/launchpad-release-request.json evidence/launchpad-release-request.json
 
       - name: Capture full commit-author lineage evidence
         run: |
@@ -143,11 +161,7 @@ jobs:
             const [commit, name, email, authoredAt] = line.split('\t');
             const key = `${name}\u0000${email}`;
             const current = authors.get(key) ?? {
-              name,
-              email,
-              commits: 0,
-              first_authored_at: authoredAt,
-              last_authored_at: authoredAt,
+              name, email, commits: 0, first_authored_at: authoredAt, last_authored_at: authoredAt,
               classification: email.toLowerCase().endsWith('@algolia.com')
                 ? 'OBSERVED_UPSTREAM_ALGOLIA_AUTHOR'
                 : 'OBSERVED_AUTHOR_REVIEW_REQUIRED'
@@ -180,13 +194,7 @@ jobs:
           for (const line of lines) {
             const [commit, name, email, authoredAt] = line.split('\t');
             const key = `${name}\u0000${email}`;
-            const current = authors.get(key) ?? {
-              name,
-              email,
-              commits: 0,
-              first_authored_at: authoredAt,
-              last_authored_at: authoredAt
-            };
+            const current = authors.get(key) ?? { name, email, commits: 0, first_authored_at: authoredAt, last_authored_at: authoredAt };
             current.commits += 1;
             if (authoredAt < current.first_authored_at) current.first_authored_at = authoredAt;
             if (authoredAt > current.last_authored_at) current.last_authored_at = authoredAt;
