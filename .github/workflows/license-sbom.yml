@@ -130,7 +130,7 @@ jobs:
           printf '%s\n' "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" > evidence/source-branch.txt
           cp rights/release-rights.json evidence/release-rights.json
 
-      - name: Capture commit-author lineage evidence
+      - name: Capture full commit-author lineage evidence
         run: |
           git log --format='%H%x09%an%x09%ae%x09%aI' > evidence/commit-authors.tsv
           node - <<'NODE'
@@ -148,7 +148,7 @@ jobs:
               last_authored_at: authoredAt,
               classification: email.toLowerCase().endsWith('@algolia.com')
                 ? 'OBSERVED_UPSTREAM_ALGOLIA_AUTHOR'
-                : 'OBSERVED_NON_ALGOLIA_AUTHOR_REVIEW_REQUIRED'
+                : 'OBSERVED_AUTHOR_REVIEW_REQUIRED'
             };
             current.commits += 1;
             if (authoredAt < current.first_authored_at) current.first_authored_at = authoredAt;
@@ -156,16 +156,53 @@ jobs:
             authors.set(key, current);
           }
           const inventory = {
-            schema: 'VSR_GIT_AUTHOR_LINEAGE_EVIDENCE/1.0',
+            schema: 'VSR_GIT_AUTHOR_LINEAGE_EVIDENCE/1.1',
             classification: 'OBSERVED_GIT_AUTHORSHIP_NOT_COPYRIGHT_OWNERSHIP',
             commit_count: lines.length,
             author_count: authors.size,
             authors: [...authors.values()].sort((a, b) => b.commits - a.commits || a.email.localeCompare(b.email))
           };
           fs.writeFileSync('evidence/git-author-lineage.json', JSON.stringify(inventory, null, 2));
-          console.log(`Git author lineage: ${inventory.commit_count} commits / ${inventory.author_count} observed author identities`);
+          console.log(`Full Git author lineage: ${inventory.commit_count} commits / ${inventory.author_count} observed author identities`);
           NODE
           sha256sum evidence/commit-authors.tsv evidence/git-author-lineage.json > evidence/git-author-lineage.sha256
+
+      - name: Capture current Genesis delta author evidence
+        run: |
+          git rev-parse origin/main | tee evidence/delta-base-main.txt
+          git log origin/main..HEAD --format='%H%x09%an%x09%ae%x09%aI' > evidence/delta-commit-authors.tsv
+          node - <<'NODE'
+          const fs = require('fs');
+          const lines = fs.readFileSync('evidence/delta-commit-authors.tsv', 'utf8').trim().split('\n').filter(Boolean);
+          const authors = new Map();
+          for (const line of lines) {
+            const [commit, name, email, authoredAt] = line.split('\t');
+            const key = `${name}\u0000${email}`;
+            const current = authors.get(key) ?? {
+              name,
+              email,
+              commits: 0,
+              first_authored_at: authoredAt,
+              last_authored_at: authoredAt
+            };
+            current.commits += 1;
+            if (authoredAt < current.first_authored_at) current.first_authored_at = authoredAt;
+            if (authoredAt > current.last_authored_at) current.last_authored_at = authoredAt;
+            authors.set(key, current);
+          }
+          const inventory = {
+            schema: 'VSR_CANDIDATE_DELTA_AUTHOR_LINEAGE_EVIDENCE/1.0',
+            classification: 'OBSERVED_GIT_AUTHORSHIP_FOR_ORIGIN_MAIN_TO_CANDIDATE_NOT_COPYRIGHT_OWNERSHIP',
+            base_ref: 'origin/main',
+            base_commit: fs.readFileSync('evidence/delta-base-main.txt', 'utf8').trim(),
+            commit_count: lines.length,
+            author_count: authors.size,
+            authors: [...authors.values()].sort((a, b) => b.commits - a.commits || a.email.localeCompare(b.email))
+          };
+          fs.writeFileSync('evidence/delta-git-author-lineage.json', JSON.stringify(inventory, null, 2));
+          console.log(`Genesis delta lineage: ${inventory.commit_count} commits / ${inventory.author_count} observed author identities`);
+          NODE
+          sha256sum evidence/delta-base-main.txt evidence/delta-commit-authors.tsv evidence/delta-git-author-lineage.json > evidence/delta-git-author-lineage.sha256
 
       - name: Upload rights evidence bundle
         if: always()
