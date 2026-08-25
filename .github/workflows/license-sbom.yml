@@ -31,6 +31,7 @@ jobs:
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
 
       - name: Use governed Node toolchain
         uses: actions/setup-node@v4
@@ -128,6 +129,43 @@ jobs:
           git rev-parse HEAD | tee evidence/source-commit.txt
           printf '%s\n' "${GITHUB_HEAD_REF:-${GITHUB_REF_NAME}}" > evidence/source-branch.txt
           cp rights/release-rights.json evidence/release-rights.json
+
+      - name: Capture commit-author lineage evidence
+        run: |
+          git log --format='%H%x09%an%x09%ae%x09%aI' > evidence/commit-authors.tsv
+          node - <<'NODE'
+          const fs = require('fs');
+          const lines = fs.readFileSync('evidence/commit-authors.tsv', 'utf8').trim().split('\n').filter(Boolean);
+          const authors = new Map();
+          for (const line of lines) {
+            const [commit, name, email, authoredAt] = line.split('\t');
+            const key = `${name}\u0000${email}`;
+            const current = authors.get(key) ?? {
+              name,
+              email,
+              commits: 0,
+              first_authored_at: authoredAt,
+              last_authored_at: authoredAt,
+              classification: email.toLowerCase().endsWith('@algolia.com')
+                ? 'OBSERVED_UPSTREAM_ALGOLIA_AUTHOR'
+                : 'OBSERVED_NON_ALGOLIA_AUTHOR_REVIEW_REQUIRED'
+            };
+            current.commits += 1;
+            if (authoredAt < current.first_authored_at) current.first_authored_at = authoredAt;
+            if (authoredAt > current.last_authored_at) current.last_authored_at = authoredAt;
+            authors.set(key, current);
+          }
+          const inventory = {
+            schema: 'VSR_GIT_AUTHOR_LINEAGE_EVIDENCE/1.0',
+            classification: 'OBSERVED_GIT_AUTHORSHIP_NOT_COPYRIGHT_OWNERSHIP',
+            commit_count: lines.length,
+            author_count: authors.size,
+            authors: [...authors.values()].sort((a, b) => b.commits - a.commits || a.email.localeCompare(b.email))
+          };
+          fs.writeFileSync('evidence/git-author-lineage.json', JSON.stringify(inventory, null, 2));
+          console.log(`Git author lineage: ${inventory.commit_count} commits / ${inventory.author_count} observed author identities`);
+          NODE
+          sha256sum evidence/commit-authors.tsv evidence/git-author-lineage.json > evidence/git-author-lineage.sha256
 
       - name: Upload rights evidence bundle
         if: always()
