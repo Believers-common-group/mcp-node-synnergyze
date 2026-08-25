@@ -4,6 +4,7 @@ import { evaluateTrustReceiptRelianceV1 } from "./trust-receipt-reliance.ts";
 import { createTrustReceiptStatusEventV1 } from "./trust-receipt-status.ts";
 import { createTrustReceiptV1 } from "./trust-receipt.ts";
 
+// Issuance is historical evidence; CURRENT reliance requires status knowledge at decision time.
 function receipt() {
   return createTrustReceiptV1({
     receiptType: "authority.role.current",
