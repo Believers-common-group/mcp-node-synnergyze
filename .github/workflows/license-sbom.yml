@@ -9,6 +9,7 @@ on:
       - LICENSE
       - README.md
       - rights/release-rights.json
+      - scripts/verify-release-rights.mjs
       - .github/workflows/license-sbom.yml
   push:
     branches: [genesis]
@@ -18,6 +19,7 @@ on:
       - LICENSE
       - README.md
       - rights/release-rights.json
+      - scripts/verify-release-rights.mjs
       - .github/workflows/license-sbom.yml
 
 permissions:
@@ -65,7 +67,7 @@ jobs:
             throw new Error('root LICENSE is not MIT text');
           }
           NODE
-          sha256sum package.json package-lock.json LICENSE rights/release-rights.json > evidence/source-metadata.sha256
+          sha256sum package.json package-lock.json LICENSE rights/release-rights.json scripts/verify-release-rights.mjs > evidence/source-metadata.sha256
 
       - name: Install exact locked dependency graph
         run: npm ci --ignore-scripts
@@ -214,33 +216,4 @@ jobs:
           retention-days: 30
 
       - name: Enforce governed release admission
-        run: |
-          node - <<'NODE'
-          const fs = require('fs');
-          const crypto = require('crypto');
-          const rights = require('./rights/release-rights.json');
-          const licence = fs.readFileSync('LICENSE');
-          const licenceSha256 = crypto.createHash('sha256').update(licence).digest('hex');
-
-          if (rights.status !== 'CLEARED') {
-            throw new Error(`release rights status is ${rights.status}; Warden/Launchpad admission remains blocked`);
-          }
-          if (rights.governance?.status !== 'CLEARED') {
-            throw new Error(`governance rights decision is ${rights.governance?.status ?? 'missing'}`);
-          }
-          if (!rights.clearance?.decision_reference || !rights.clearance?.deciding_principal || !rights.clearance?.authority_basis || !rights.clearance?.cleared_at) {
-            throw new Error('rights clearance evidence is incomplete');
-          }
-          if (!rights.license_text_sha256) {
-            throw new Error('governed licence-text digest is missing');
-          }
-          if (rights.license_text_sha256 !== licenceSha256) {
-            throw new Error('root LICENSE digest differs from governed licence-text digest');
-          }
-          if (!['NOT_REQUIRED', 'EVIDENCED'].includes(rights.platform?.status)) {
-            throw new Error(`Launchpad platform permission is ${rights.platform?.status ?? 'missing'}`);
-          }
-
-          console.log(`root LICENSE sha256: ${licenceSha256}`);
-          console.log(`rights decision: ${rights.clearance.decision_reference}`);
-          NODE
+        run: node scripts/verify-release-rights.mjs
