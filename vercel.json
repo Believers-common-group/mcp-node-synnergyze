@@ -22,6 +22,9 @@
     },
     "api/registry-bridge.ts": {
       "maxDuration": 60
+    },
+    "api/authzen-cert.ts": {
+      "maxDuration": 10
     }
   },
   "rewrites": [
@@ -52,6 +55,30 @@
     {
       "source": "/registry-bridge",
       "destination": "/api/registry-bridge"
+    },
+    {
+      "source": "/.well-known/authzen-configuration",
+      "destination": "/api/authzen-cert?route=metadata"
+    },
+    {
+      "source": "/access/v1/evaluation",
+      "destination": "/api/authzen-cert?route=evaluation"
+    },
+    {
+      "source": "/access/v1/evaluations",
+      "destination": "/api/authzen-cert?route=evaluations"
+    },
+    {
+      "source": "/access/v1/search/subject",
+      "destination": "/api/authzen-cert?route=search_subject"
+    },
+    {
+      "source": "/access/v1/search/resource",
+      "destination": "/api/authzen-cert?route=search_resource"
+    },
+    {
+      "source": "/access/v1/search/action",
+      "destination": "/api/authzen-cert?route=search_action"
     }
   ]
 }
