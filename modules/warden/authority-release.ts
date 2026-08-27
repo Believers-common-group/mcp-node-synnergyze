@@ -38,7 +38,11 @@ export interface ReleaseAdmissionContextV1 {
   releaseRightsStatus: "HOLD" | "CLEARED" | "DENIED";
   governanceStatus: "PENDING_AUTHORITY" | "CLEARED" | "DENIED";
   platformRoute: "OPEN_PUBLIC_PPA" | "PRIVATE_PPA" | "OTHER";
-  platformPermissionStatus: "NOT_REQUIRED" | "EVIDENCED" | "ROUTE_PREPARED_NOT_AUTHORIZED" | "DENIED";
+  platformPermissionStatus:
+    | "NOT_REQUIRED"
+    | "EVIDENCED"
+    | "ROUTE_PREPARED_NOT_AUTHORIZED"
+    | "DENIED";
   platformApprovalReference?: string;
   purpose: string;
   requestedCapability: string;
@@ -176,13 +180,23 @@ export function evaluateAuthorityResolutionV1(input: {
   if (!declaration.authorityBasis) reasons.push("AUTHORITY_BASIS_MISSING");
   if (declaration.authorityEvidenceRefs.length === 0) reasons.push("AUTHORITY_EVIDENCE_MISSING");
   if (!declaration.automationControllerPrincipal) reasons.push("AUTOMATION_CONTROLLER_MISSING");
-  if (!declaration.automationControllerCapacity) reasons.push("AUTOMATION_CONTROLLER_CAPACITY_MISSING");
-  if (!declaration.automationControllerAuthorityBasis) reasons.push("AUTOMATION_CONTROLLER_AUTHORITY_MISSING");
-  if (declaration.automationControllerEvidenceRefs.length === 0) reasons.push("AUTOMATION_CONTROLLER_EVIDENCE_MISSING");
+  if (!declaration.automationControllerCapacity) {
+    reasons.push("AUTOMATION_CONTROLLER_CAPACITY_MISSING");
+  }
+  if (!declaration.automationControllerAuthorityBasis) {
+    reasons.push("AUTOMATION_CONTROLLER_AUTHORITY_MISSING");
+  }
+  if (declaration.automationControllerEvidenceRefs.length === 0) {
+    reasons.push("AUTOMATION_CONTROLLER_EVIDENCE_MISSING");
+  }
   if (!declaration.distributionAuthorized) reasons.push("DISTRIBUTION_NOT_AUTHORIZED");
-  if (!declaration.permittedDistributionScopes.includes("LAUNCHPAD_ALPHA")) reasons.push("LAUNCHPAD_ALPHA_SCOPE_MISSING");
+  if (!declaration.permittedDistributionScopes.includes("LAUNCHPAD_ALPHA")) {
+    reasons.push("LAUNCHPAD_ALPHA_SCOPE_MISSING");
+  }
   if (declaration.postForkLicenseExpression !== "MIT") reasons.push("POST_FORK_MIT_NOT_AUTHORIZED");
-  if (!Object.values(declaration.attestations).every(Boolean)) reasons.push("AUTHORITY_ATTESTATION_INCOMPLETE");
+  if (!Object.values(declaration.attestations).every(Boolean)) {
+    reasons.push("AUTHORITY_ATTESTATION_INCOMPLETE");
+  }
   if (!declaration.signedAt || !declaration.signatureRef) reasons.push("AUTHORITY_SIGNATURE_MISSING");
   if (!declaration.reviewedAt || !declaration.reviewRef) reasons.push("AUTHORITY_REVIEW_MISSING");
 
@@ -197,7 +211,9 @@ export function evaluateAuthorityResolutionV1(input: {
   if (!validTimeWindow(context)) reasons.push("INVALID_VALIDITY_WINDOW");
 
   if (context.platformRoute === "OPEN_PUBLIC_PPA") {
-    if (context.platformPermissionStatus !== "NOT_REQUIRED") reasons.push("PUBLIC_PPA_ROUTE_NOT_RESOLVED");
+    if (context.platformPermissionStatus !== "NOT_REQUIRED") {
+      reasons.push("PUBLIC_PPA_ROUTE_NOT_RESOLVED");
+    }
   } else if (
     context.platformPermissionStatus !== "EVIDENCED" ||
     !context.platformApprovalReference
@@ -207,7 +223,12 @@ export function evaluateAuthorityResolutionV1(input: {
 
   const declarationDigest = sha256(JSON.stringify(canonicalAuthorityDeclaration(declaration)));
   const contextDigest = sha256(JSON.stringify(canonicalContext(context)));
-  const decision = reasons.length === 0 ? "ALLOW_RIGHTS" : declaration.status === "REVOKED" ? "DENY_RIGHTS" : "HOLD";
+  const decision: AuthorityResolutionReceiptV1["decision"] =
+    reasons.length === 0
+      ? "ALLOW_RIGHTS"
+      : declaration.status === "REVOKED"
+        ? "DENY_RIGHTS"
+        : "HOLD";
   const distributionScope = stableUnique(declaration.permittedDistributionScopes);
   const receiptCore = {
     decision,
@@ -231,7 +252,9 @@ export function evaluateAuthorityResolutionV1(input: {
   };
 }
 
-export function evaluateBuildAdmissionG0V1(input: BuildAdmissionG0InputV1): BuildAdmissionG0DecisionV1 {
+export function evaluateBuildAdmissionG0V1(
+  input: BuildAdmissionG0InputV1,
+): BuildAdmissionG0DecisionV1 {
   const { authorityResolution, context } = input;
   const reasons: string[] = [];
 
@@ -249,7 +272,9 @@ export function evaluateBuildAdmissionG0V1(input: BuildAdmissionG0InputV1): Buil
   }
   if (!validTimeWindow(context)) reasons.push("INVALID_VALIDITY_WINDOW");
   if (context.platformRoute === "OPEN_PUBLIC_PPA") {
-    if (context.platformPermissionStatus !== "NOT_REQUIRED") reasons.push("PLATFORM_ROUTE_NOT_RESOLVED");
+    if (context.platformPermissionStatus !== "NOT_REQUIRED") {
+      reasons.push("PLATFORM_ROUTE_NOT_RESOLVED");
+    }
   } else if (
     context.platformPermissionStatus !== "EVIDENCED" ||
     !context.platformApprovalReference
