@@ -12,6 +12,7 @@ import type {
 export interface AuthorityEvidenceBundleV1 {
   schema: "VSR_AUTHORITY_EVIDENCE_BUNDLE/1.0";
   bundleId: string;
+  status: "UNAVAILABLE" | "EVIDENCED" | "REVOKED" | "SUPERSEDED";
   recordId: string;
   releaseBinding: {
     repository: string;
@@ -33,7 +34,7 @@ export interface AuthorityEvidenceBundleV1 {
     verificationRef: string;
     verifiedAt: string;
     result: "VALID" | "INVALID" | "UNKNOWN";
-  };
+  } | null;
   reviewVerification: {
     reviewRef: string;
     reviewerPrincipal: string;
@@ -42,9 +43,9 @@ export interface AuthorityEvidenceBundleV1 {
     verificationRef: string;
     reviewedAt: string;
     outcome: "APPROVED" | "REJECTED" | "UNKNOWN";
-  };
-  effectiveFrom: string;
-  validUntil: string;
+  } | null;
+  effectiveFrom: string | null;
+  validUntil: string | null;
 }
 
 export interface AuthorityEvidenceAdmissibilityReceiptV1 {
@@ -61,8 +62,8 @@ export interface AuthorityEvidenceAdmissibilityReceiptV1 {
   rightsEvidenceArtifactDigest: string;
   authorityTransitionArtifactDigest: string;
   evaluatedAt: string;
-  effectiveFrom: string;
-  validUntil: string;
+  effectiveFrom: string | null;
+  validUntil: string | null;
   provenanceRefs: readonly string[];
   signatureVerificationRef: string | null;
   reviewVerificationRef: string | null;
@@ -85,7 +86,8 @@ function stableUnique(values: readonly string[]): string[] {
   return [...new Set(values)].sort();
 }
 
-function parseTime(value: string): number | null {
+function parseTime(value: string | null): number | null {
+  if (value === null) return null;
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -94,6 +96,7 @@ function canonicalBundle(bundle: AuthorityEvidenceBundleV1): Record<string, unkn
   return {
     schema: bundle.schema,
     bundleId: bundle.bundleId,
+    status: bundle.status,
     recordId: bundle.recordId,
     releaseBinding: bundle.releaseBinding,
     provenanceEvidence: [...bundle.provenanceEvidence]
@@ -158,6 +161,11 @@ function validateSignature(
   reasons: string[],
 ): void {
   const signature = evidence.signatureVerification;
+  if (signature === null) {
+    reasons.push("SIGNATURE_VERIFICATION_MISSING");
+    return;
+  }
+
   if (signature.signatureRef !== ingest.declaration.signatureRef) {
     reasons.push("SIGNATURE_REFERENCE_MISMATCH");
   }
@@ -168,7 +176,7 @@ function validateSignature(
   if (signature.result !== "VALID") reasons.push("SIGNATURE_VERIFICATION_NOT_VALID");
   if (!signature.verificationRef) reasons.push("SIGNATURE_VERIFICATION_EVIDENCE_MISSING");
 
-  const signedAt = ingest.declaration.signedAt ? parseTime(ingest.declaration.signedAt) : null;
+  const signedAt = parseTime(ingest.declaration.signedAt);
   const verifiedAt = parseTime(signature.verifiedAt);
   if (
     signedAt === null ||
@@ -188,6 +196,11 @@ function validateReview(
   reasons: string[],
 ): void {
   const review = evidence.reviewVerification;
+  if (review === null) {
+    reasons.push("REVIEW_VERIFICATION_MISSING");
+    return;
+  }
+
   if (review.reviewRef !== ingest.declaration.reviewRef) reasons.push("REVIEW_REFERENCE_MISMATCH");
   if (review.recordDigest !== ingest.recordDigest) reasons.push("REVIEW_RECORD_DIGEST_MISMATCH");
   if (!review.reviewerPrincipal || !review.reviewerCapacity || !review.verificationRef) {
@@ -198,9 +211,7 @@ function validateReview(
   }
   if (review.outcome !== "APPROVED") reasons.push("REVIEW_NOT_APPROVED");
 
-  const declaredReviewedAt = ingest.declaration.reviewedAt
-    ? parseTime(ingest.declaration.reviewedAt)
-    : null;
+  const declaredReviewedAt = parseTime(ingest.declaration.reviewedAt);
   const reviewedAt = parseTime(review.reviewedAt);
   if (
     declaredReviewedAt === null ||
@@ -225,6 +236,7 @@ export function evaluateAuthorityEvidenceAdmissibilityV1(input: {
   const validUntil = parseTime(evidence.validUntil);
 
   if (ingest.decision !== "ACCEPTED") reasons.push("AUTHORITY_RECORD_NOT_ACCEPTED");
+  if (evidence.status !== "EVIDENCED") reasons.push("AUTHORITY_EVIDENCE_BUNDLE_NOT_EVIDENCED");
   if (evidence.recordId !== ingest.recordId) reasons.push("AUTHORITY_RECORD_ID_MISMATCH");
   if (!sameReleaseBinding(ingest, evidence)) reasons.push("AUTHORITY_EVIDENCE_RELEASE_BINDING_MISMATCH");
 
@@ -232,7 +244,9 @@ export function evaluateAuthorityEvidenceAdmissibilityV1(input: {
   validateSignature(ingest, evidence, evaluatedAt, reasons);
   validateReview(ingest, evidence, evaluatedAt, reasons);
 
-  if (
+  if (evidence.effectiveFrom === null || evidence.validUntil === null) {
+    reasons.push("AUTHORITY_VALIDITY_WINDOW_MISSING");
+  } else if (
     evaluatedAt === null ||
     effectiveFrom === null ||
     validUntil === null ||
@@ -261,8 +275,8 @@ export function evaluateAuthorityEvidenceAdmissibilityV1(input: {
     effectiveFrom: evidence.effectiveFrom,
     validUntil: evidence.validUntil,
     provenanceRefs: stableUnique(evidence.provenanceEvidence.map((item) => item.ref)),
-    signatureVerificationRef: evidence.signatureVerification.verificationRef || null,
-    reviewVerificationRef: evidence.reviewVerification.verificationRef || null,
+    signatureVerificationRef: evidence.signatureVerification?.verificationRef || null,
+    reviewVerificationRef: evidence.reviewVerification?.verificationRef || null,
     reasonCodes: stableUnique(reasons),
     wardenEffect: "NOT_EVALUATED" as const,
   };
