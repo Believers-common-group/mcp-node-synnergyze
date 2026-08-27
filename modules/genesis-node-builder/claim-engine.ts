@@ -4,6 +4,7 @@ import type {
   CandidateClaimStateV1,
   CandidateClaimV1,
   CandidateEvidenceV1,
+  ClaimSupersessionEventV1,
   ConfidenceBandV1,
 } from "./contracts.ts";
 
@@ -22,6 +23,7 @@ export interface SupersedeClaimInputV1 {
   value: string;
   claimState: Exclude<CandidateClaimStateV1, "SUPERSEDED">;
   confidenceBand: ConfidenceBandV1;
+  supersededAt: string;
   valueUnit?: string;
   effectiveFrom?: string;
   effectiveUntil?: string;
@@ -51,6 +53,10 @@ function cloneEvidence(evidence: CandidateEvidenceV1): CandidateEvidenceV1 {
 
 function cloneClaim(claim: CandidateClaimV1): CandidateClaimV1 {
   return { ...claim, sourceEvidenceRefs: [...claim.sourceEvidenceRefs] };
+}
+
+function cloneSupersessionEvent(event: ClaimSupersessionEventV1): ClaimSupersessionEventV1 {
+  return { ...event };
 }
 
 function canonicalEvidence(evidence: CandidateEvidenceV1): string {
@@ -99,6 +105,7 @@ function canonicalClaim(claim: CandidateClaimV1): string {
 export class CandidateClaimEngineV1 {
   private readonly evidenceByRef = new Map<string, StoredEvidenceV1>();
   private readonly claimsByRef = new Map<string, StoredClaimV1>();
+  private readonly supersessionByPriorClaimRef = new Map<string, ClaimSupersessionEventV1>();
 
   ingestEvidenceV1(input: CandidateEvidenceV1): EvidenceIngestResultV1 {
     const evidence = cloneEvidence(input);
@@ -137,22 +144,12 @@ export class CandidateClaimEngineV1 {
     if (!priorStored) {
       throw new Error("PRIOR_CLAIM_NOT_FOUND");
     }
-    if (priorStored.claim.claimState === "SUPERSEDED") {
+    if (this.supersessionByPriorClaimRef.has(input.priorClaimRef)) {
       throw new Error("PRIOR_CLAIM_ALREADY_SUPERSEDED");
     }
     if (this.claimsByRef.has(input.claimRef)) {
       throw new Error("SUPERSEDING_CLAIM_REF_EXISTS");
     }
-
-    const priorSuperseded: CandidateClaimV1 = {
-      ...priorStored.claim,
-      sourceEvidenceRefs: [...priorStored.claim.sourceEvidenceRefs],
-      claimState: "SUPERSEDED",
-    };
-    this.claimsByRef.set(priorSuperseded.claimRef, {
-      digest: sha256(canonicalClaim(priorSuperseded)),
-      claim: priorSuperseded,
-    });
 
     const nextClaim: CandidateClaimV1 = normalizedClaim({
       claimRef: input.claimRef,
@@ -173,6 +170,25 @@ export class CandidateClaimEngineV1 {
       digest: sha256(canonicalClaim(nextClaim)),
       claim: nextClaim,
     });
+
+    const sourceDigest = sha256(
+      JSON.stringify({
+        candidateRef: priorStored.claim.candidateRef,
+        priorClaimRef: priorStored.claim.claimRef,
+        supersedingClaimRef: nextClaim.claimRef,
+        supersededAt: input.supersededAt,
+      }),
+    );
+    const supersessionEvent: ClaimSupersessionEventV1 = {
+      eventRef: `GENESIS-CLAIM-SUPERSESSION:${sourceDigest.slice(0, 24)}`,
+      candidateRef: priorStored.claim.candidateRef,
+      priorClaimRef: priorStored.claim.claimRef,
+      supersedingClaimRef: nextClaim.claimRef,
+      supersededAt: input.supersededAt,
+      sourceDigest,
+    };
+    this.supersessionByPriorClaimRef.set(priorStored.claim.claimRef, supersessionEvent);
+
     return cloneClaim(nextClaim);
   }
 
@@ -181,7 +197,18 @@ export class CandidateClaimEngineV1 {
       .map((stored) => stored.claim)
       .filter((claim) => claim.candidateRef === candidateRef)
       .sort((left, right) => left.claimRef.localeCompare(right.claimRef))
-      .map(cloneClaim);
+      .map((claim) =>
+        this.supersessionByPriorClaimRef.has(claim.claimRef)
+          ? cloneClaim({ ...claim, claimState: "SUPERSEDED" })
+          : cloneClaim(claim),
+      );
+  }
+
+  listSupersessionEventsV1(candidateRef: string): readonly ClaimSupersessionEventV1[] {
+    return [...this.supersessionByPriorClaimRef.values()]
+      .filter((event) => event.candidateRef === candidateRef)
+      .sort((left, right) => left.eventRef.localeCompare(right.eventRef))
+      .map(cloneSupersessionEvent);
   }
 
   listEvidenceV1(candidateRef: string): readonly CandidateEvidenceV1[] {
