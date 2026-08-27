@@ -1,0 +1,54 @@
+[project]
+name = "arc-runtime"
+version = "0.1.0"
+requires-python = ">=3.12,<3.13"
+
+[dependency-groups]
+dev = [
+  "basedpyright==1.39.10",
+  "pytest>=8.3,<9",
+  "pytest-asyncio>=0.24,<1",
+  "ruff>=0.12,<1",
+]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+asyncio_mode = "auto"
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]
+
+[tool.basedpyright]
+include = ["src", "tests"]
+pythonVersion = "3.12"
+pythonPlatform = "Linux"
+typeCheckingMode = "recommended"
+failOnWarnings = true
+reportUninitializedInstanceVariable = "error"
+reportPossiblyUnboundVariable = "error"
+reportUnboundVariable = "error"
+reportMatchNotExhaustive = "error"
+reportUnreachable = "error"
+reportImplicitOverride = "error"
+reportIncompatibleMethodOverride = "error"
+reportIncompatibleVariableOverride = "error"
+reportMissingSuperCall = "error"
+reportAny = "error"
+reportExplicitAny = "error"
+reportUnknownVariableType = "error"
+reportUnknownMemberType = "error"
+reportUnknownParameterType = "error"
+reportUnknownArgumentType = "error"
+reportMissingParameterType = "error"
+reportMissingTypeArgument = "error"
+reportImportCycles = "error"
+reportImplicitRelativeImport = "error"
+reportUnusedCallResult = "error"
+reportUnusedCoroutine = "error"
+reportIgnoreCommentWithoutRule = "error"
+reportUnnecessaryTypeIgnoreComment = "error"
