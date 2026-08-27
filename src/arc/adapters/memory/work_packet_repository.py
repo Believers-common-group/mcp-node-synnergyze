@@ -14,7 +14,9 @@ class InMemoryWorkPacketRepository:
     async def get(self, work_packet_id: WorkPacketId) -> WorkPacket | None:
         return self._packets.get(work_packet_id)
 
-    async def save(self, packet: WorkPacket, *, expected_revision: int) -> SaveReceipt:
+    async def save(
+        self, packet: WorkPacket, *, expected_revision: int
+    ) -> SaveReceipt:
         current = self._packets.get(packet.work_packet_id)
         if current is None:
             if expected_revision != -1:

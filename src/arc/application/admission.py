@@ -22,11 +22,17 @@ def _freshness(
     if decision.valid_until is not None and now > decision.valid_until:
         return AdmissionValidity(DecisionValidityState.EXPIRED, "DECISION_EXPIRED")
     if current_context_hash != decision.action_context_hash:
-        return AdmissionValidity(DecisionValidityState.RE_ADMISSION_REQUIRED, "CONTEXT_DRIFT")
+        return AdmissionValidity(
+            DecisionValidityState.RE_ADMISSION_REQUIRED, "CONTEXT_DRIFT"
+        )
     if current_authority_snapshot_hash != decision.authority_snapshot_hash:
-        return AdmissionValidity(DecisionValidityState.RE_ADMISSION_REQUIRED, "AUTHORITY_DRIFT")
+        return AdmissionValidity(
+            DecisionValidityState.RE_ADMISSION_REQUIRED, "AUTHORITY_DRIFT"
+        )
     if current_evidence_snapshot_hash != decision.evidence_snapshot_hash:
-        return AdmissionValidity(DecisionValidityState.RE_ADMISSION_REQUIRED, "EVIDENCE_DRIFT")
+        return AdmissionValidity(
+            DecisionValidityState.RE_ADMISSION_REQUIRED, "EVIDENCE_DRIFT"
+        )
     return None
 
 
@@ -66,7 +72,9 @@ def validate_admission_freshness(
                 return AdmissionValidity(
                     DecisionValidityState.RE_ADMISSION_REQUIRED, "CONDITIONS_REMAIN"
                 )
-            return AdmissionValidity(DecisionValidityState.VALID, "CONDITIONS_SATISFIED")
+            return AdmissionValidity(
+                DecisionValidityState.VALID, "CONDITIONS_SATISFIED"
+            )
         case WardenDecisionType.ALLOW:
             freshness = _freshness(
                 decision,

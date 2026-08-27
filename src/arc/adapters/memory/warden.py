@@ -8,7 +8,10 @@ from arc.domain.ids import WardenDecisionId
 class InMemoryWarden:
     async def admit(self, request: WardenAdmissionRequest) -> WardenDecision:
         authority = request.authority_decision.decision_type
-        if request.open_blocking_exception_ids or authority is AuthorityDecisionType.DENY:
+        if (
+            request.open_blocking_exception_ids
+            or authority is AuthorityDecisionType.DENY
+        ):
             decision_type = WardenDecisionType.DENY
         elif authority is AuthorityDecisionType.REVIEW_REQUIRED:
             decision_type = WardenDecisionType.REVIEW_REQUIRED
