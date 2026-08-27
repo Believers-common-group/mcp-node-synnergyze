@@ -119,6 +119,8 @@ export interface SynnergyzeExecutionReceiptV1 {
   deviceSecurityEvidenceRef?: string;
   deviceSecurityPolicyRef?: string;
   deviceSecurityAssuranceLevel?: DeviceSecurityAssuranceLevelV1;
+  containmentEvaluationRef?: string;
+  containmentState?: "ACTIVE" | "RESTRICTED" | "PAUSED" | "ISOLATED" | "DISABLED";
   state: "EXECUTED_UNVERIFIED";
   executedAt: string;
   synthetic: true;
