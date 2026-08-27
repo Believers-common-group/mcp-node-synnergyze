@@ -5,6 +5,11 @@ import type {
   WardenDecisionV1,
   WardenExecutionCheckpointV1,
 } from "../warden/contracts.ts";
+import {
+  InMemoryContainmentControlPlaneV1,
+  type ContainmentControlPlaneV1,
+  type ContainmentMaintenanceSnapshotV1,
+} from "./containment-control.ts";
 import type {
   ResolvedDeviceSecurityContextV1,
   SynnergyzeExecutionReceiptV1,
@@ -33,6 +38,12 @@ export interface SyntheticCapabilityAdapterV1 {
   readonly adapterRef: string;
   readonly capabilityRef: string;
   execute(input: SyntheticCapabilityAdapterInputV1): SyntheticCapabilityAdapterResultV1;
+}
+
+export interface ControlledExecutionMaintenanceSnapshotV1 {
+  registeredCapabilities: readonly string[];
+  executionCount: number;
+  containment: ContainmentMaintenanceSnapshotV1;
 }
 
 interface StoredExecution {
@@ -158,6 +169,7 @@ function assertDeviceSecurity(
 function executionFingerprint(
   input: ControlledExecutionRequestV1,
   adapterRef: string,
+  containmentEvaluationRef: string,
 ): string {
   return digest(
     JSON.stringify({
@@ -183,6 +195,7 @@ function executionFingerprint(
             validUntil: input.executionDeviceSecurity.validUntil ?? null,
           }
         : null,
+      containmentEvaluationRef,
       adapterRef,
       executedAt: input.executedAt,
     }),
@@ -217,11 +230,16 @@ export class SyntheticServiceRequestCreateAdapterV1 implements SyntheticCapabili
 
 export class ControlledExecutionGateV1 {
   private readonly adapters: ReadonlyMap<string, SyntheticCapabilityAdapterV1>;
+  private readonly containment: ContainmentControlPlaneV1;
   private readonly byActionRef = new Map<string, StoredExecution>();
   private readonly actionRefByCorrelation = new Map<string, string>();
 
-  constructor(adapters: readonly SyntheticCapabilityAdapterV1[]) {
+  constructor(
+    adapters: readonly SyntheticCapabilityAdapterV1[],
+    containment: ContainmentControlPlaneV1 = new InMemoryContainmentControlPlaneV1(),
+  ) {
     this.adapters = new Map(adapters.map((adapter) => [adapter.capabilityRef, adapter]));
+    this.containment = containment;
   }
 
   execute(input: ControlledExecutionRequestV1): SynnergyzeExecutionReceiptV1 {
@@ -239,7 +257,17 @@ export class ControlledExecutionGateV1 {
     const adapter = this.adapters.get(input.action.capabilityRef);
     if (!adapter) throw new Error(`execution_capability_not_registered:${input.action.capabilityRef}`);
 
-    const fingerprint = executionFingerprint(input, adapter.adapterRef);
+    const containment = this.containment.evaluate({
+      targetRef: input.action.targetRef,
+      capabilityRef: input.action.capabilityRef,
+      programRef: input.action.programRef,
+      evaluatedAt: input.executedAt,
+    });
+    if (containment.decision !== "ALLOW") {
+      throw new Error(`execution_containment_${containment.state.toLowerCase()}`);
+    }
+
+    const fingerprint = executionFingerprint(input, adapter.adapterRef, containment.evaluationRef);
     const existing = this.byActionRef.get(input.action.actionRef);
     if (existing) {
       if (existing.fingerprint !== fingerprint) throw new Error("execution_idempotency_conflict");
@@ -264,6 +292,7 @@ export class ControlledExecutionGateV1 {
         input.checkpoint.checkpointRef,
         input.executionDeviceSecurity?.resolutionRef ?? "NO-DEVICE-SECURITY",
         input.executionDeviceSecurity?.evidenceRef ?? "NO-DEVICE-EVIDENCE",
+        containment.evaluationRef,
         adapter.adapterRef,
         adapterResult.adapterResultRef,
       ].join("|"),
@@ -286,6 +315,8 @@ export class ControlledExecutionGateV1 {
       deviceSecurityEvidenceRef: input.executionDeviceSecurity?.evidenceRef,
       deviceSecurityPolicyRef: input.executionDeviceSecurity?.policyRef,
       deviceSecurityAssuranceLevel: input.executionDeviceSecurity?.assuranceLevel,
+      containmentEvaluationRef: containment.evaluationRef,
+      containmentState: containment.state,
       state: "EXECUTED_UNVERIFIED",
       executedAt: input.executedAt,
       synthetic: true,
@@ -303,5 +334,13 @@ export class ControlledExecutionGateV1 {
 
   receipts(): readonly SynnergyzeExecutionReceiptV1[] {
     return [...this.byActionRef.values()].map(({ receipt }) => ({ ...receipt }));
+  }
+
+  maintenanceSnapshot(evaluatedAt: string): ControlledExecutionMaintenanceSnapshotV1 {
+    return {
+      registeredCapabilities: [...this.adapters.keys()].sort(),
+      executionCount: this.executionCount(),
+      containment: this.containment.maintenanceSnapshot(evaluatedAt),
+    };
   }
 }
