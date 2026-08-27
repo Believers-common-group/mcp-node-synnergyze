@@ -1,5 +1,21 @@
 export type WardenDecisionStatus = "ALLOW" | "ESCALATE" | "DENY";
 
+export type WardenTrustResolutionStateV1 =
+  | "SATISFIED"
+  | "HOLD"
+  | "DENIED"
+  | "CONFLICTED"
+  | "REQUIRES_STEP_UP"
+  | "REQUIRES_ADJUDICATION";
+
+export interface WardenTrustResolutionV1 {
+  resolutionRef: string;
+  result: WardenTrustResolutionStateV1;
+  material: boolean;
+  irreversibleEffect: boolean;
+  reasonCodes?: readonly string[];
+}
+
 export interface WardenDecisionRequestV1 {
   requestRef: string;
   actorRef: string;
@@ -18,6 +34,7 @@ export interface WardenDecisionRequestV1 {
   deviceSecuritySourceRefs?: readonly string[];
   deviceSecurityResolvedAt?: string;
   deviceSecurityValidUntil?: string;
+  trustResolution?: WardenTrustResolutionV1;
   authorityRefs: readonly string[];
   policyRefs: readonly string[];
   representationSourceRefs: readonly string[];

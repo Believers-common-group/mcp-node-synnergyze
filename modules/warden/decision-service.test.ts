@@ -77,6 +77,29 @@ describe("VSR-NETWORK-WARDEN-DECISION-SERVICE-001", () => {
     expect(decision.validUntil).toBe("2026-08-14T07:10:00.000Z");
   });
 
+  it("escalates a material unresolved trust conflict before issuing an action token", () => {
+    const conflicted = request() as WardenDecisionRequestV1 & {
+      trustResolution: {
+        result: "CONFLICTED";
+        material: true;
+        irreversibleEffect: true;
+        resolutionRef: string;
+      };
+    };
+    conflicted.trustResolution = {
+      result: "CONFLICTED",
+      material: true,
+      irreversibleEffect: true,
+      resolutionRef: "TRUST-RESOLUTION:CONFLICT-001",
+    };
+
+    const decision = decide(conflicted);
+
+    expect(decision.decision).toBe("ESCALATE");
+    expect(decision.reasonCodes).toEqual(["material_trust_conflict"]);
+    expect("actionToken" in decision).toBe(false);
+  });
+
   it("escalates a manual-review capability and never emits an action token", () => {
     const decision = decide(
       request({

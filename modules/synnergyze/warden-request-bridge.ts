@@ -1,6 +1,9 @@
 import { createHash } from "node:crypto";
 
-import type { WardenDecisionRequestV1 } from "../warden/contracts.ts";
+import type {
+  WardenDecisionRequestV1,
+  WardenTrustResolutionV1,
+} from "../warden/contracts.ts";
 import type {
   ResolvedDeviceSecurityContextV1,
   SynnergyzeEventDraftV1,
@@ -24,6 +27,7 @@ export interface WardenRequestBridgeInputV1 {
   event: SynnergyzeEventDraftV1;
   representation: ResolvedRepresentationContextV1;
   deviceSecurity?: ResolvedDeviceSecurityContextV1;
+  trustResolution?: WardenTrustResolutionV1;
   requestedAt: string;
 }
 
@@ -73,6 +77,19 @@ function canonicalRefs(values: readonly string[]): string[] {
   return [...new Set(values.filter(Boolean))].sort();
 }
 
+function canonicalTrustResolution(
+  trustResolution: WardenTrustResolutionV1 | undefined,
+): Record<string, unknown> | null {
+  if (!trustResolution) return null;
+  return {
+    resolutionRef: trustResolution.resolutionRef,
+    result: trustResolution.result,
+    material: trustResolution.material,
+    irreversibleEffect: trustResolution.irreversibleEffect,
+    reasonCodes: [...(trustResolution.reasonCodes ?? [])].sort(),
+  };
+}
+
 function parseInstant(value: string): number | undefined {
   const parsed = Date.parse(value);
   return Number.isFinite(parsed) ? parsed : undefined;
@@ -96,7 +113,7 @@ function fail(
 export function buildWardenDecisionRequestV1(
   input: WardenRequestBridgeInputV1,
 ): WardenRequestBridgeResultV1 {
-  const { program, event, representation, deviceSecurity } = input;
+  const { program, event, representation, deviceSecurity, trustResolution } = input;
 
   if (program.state !== "READY_FOR_AUTHORIZATION" || program.authorized !== false) {
     return fail("PROGRAM_NOT_READY", "program_not_ready_for_authorization_request", input);
@@ -240,6 +257,7 @@ export function buildWardenDecisionRequestV1(
     deviceSecuritySourceRefs: deviceSecuritySourceRefs ?? [],
     deviceSecurityResolvedAt: event.executionDeviceRef ? deviceSecurity?.resolvedAt ?? null : null,
     deviceSecurityValidUntil: event.executionDeviceRef ? deviceSecurity?.validUntil ?? null : null,
+    trustResolution: canonicalTrustResolution(trustResolution),
     authorityRefs,
     policyRefs,
     representationSourceRefs,
@@ -266,6 +284,7 @@ export function buildWardenDecisionRequestV1(
     deviceSecuritySourceRefs,
     deviceSecurityResolvedAt: event.executionDeviceRef ? deviceSecurity?.resolvedAt : undefined,
     deviceSecurityValidUntil: event.executionDeviceRef ? deviceSecurity?.validUntil : undefined,
+    trustResolution,
     authorityRefs,
     policyRefs,
     representationSourceRefs,
