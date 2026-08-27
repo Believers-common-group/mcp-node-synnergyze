@@ -1,9 +1,12 @@
 import type {
+  DimensionHealthInputV1,
   DimensionHealthResultV1,
+  EcosystemHealthSubjectV1,
   EvidenceFreshnessV1,
   HealthDimensionV1,
   HealthEvidenceObservationV1,
   HealthStateV1,
+  SubjectHealthProfileV1,
 } from "./contracts.ts";
 
 function parseInstant(value: string): number | null {
@@ -121,6 +124,65 @@ export function compileDimensionHealthV1(input: {
     confidence: clampConfidence(evidence.confidence),
     evidenceRefs: [...new Set(evidence.evidenceRefs.filter((ref) => ref.trim()))].sort(),
     observationRef: evidence.observationRef,
+    evaluatedAt,
+    derived: true,
+  };
+}
+
+const SUBJECT_STATE_PRECEDENCE: readonly HealthStateV1[] = [
+  "CRITICAL",
+  "ISOLATED",
+  "DEGRADED",
+  "STALE",
+  "UNKNOWN",
+  "WATCH",
+  "RECOVERING",
+  "MAINTENANCE",
+  "HEALTHY",
+  "NOT_APPLICABLE",
+];
+
+function aggregateSubjectState(dimensions: readonly DimensionHealthResultV1[]): HealthStateV1 {
+  if (dimensions.length === 0) return "UNKNOWN";
+  for (const state of SUBJECT_STATE_PRECEDENCE) {
+    if (dimensions.some((dimension) => dimension.state === state)) return state;
+  }
+  return "UNKNOWN";
+}
+
+export function compileSubjectHealthProfileV1(
+  subject: EcosystemHealthSubjectV1,
+  dimensionInputs: readonly DimensionHealthInputV1[],
+  evaluatedAt: string,
+): SubjectHealthProfileV1 {
+  const dimensions = dimensionInputs.map((input) =>
+    compileDimensionHealthV1({
+      subjectRef: subject.subjectRef,
+      dimension: input.dimension,
+      evaluatedAt,
+      expectedIntervalSeconds: input.expectedIntervalSeconds,
+      evidence: input.evidence,
+    }),
+  );
+
+  const evidenceRefs = [
+    ...new Set(dimensions.flatMap((dimension) => dimension.evidenceRefs).filter((ref) => ref.trim())),
+  ].sort();
+  const confidence = dimensions.length === 0
+    ? 0
+    : Math.min(...dimensions.map((dimension) => dimension.confidence));
+
+  return {
+    version: "SYNNERGYZE-OBSERVATORY-ECOSYSTEM-HEALTH-001-R0.1",
+    subject: {
+      ...subject,
+      affiliationRefs: [...subject.affiliationRefs],
+      dependencyRefs: [...subject.dependencyRefs],
+    },
+    state: aggregateSubjectState(dimensions),
+    dimensions,
+    confidence,
+    evidenceRefs,
     evaluatedAt,
     derived: true,
   };
