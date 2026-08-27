@@ -44,20 +44,21 @@ describe("CandidateClaimEngineV1", () => {
     );
   });
 
-  it("preserves the old claim and creates an append-only superseding claim", () => {
+  it("preserves immutable claim history and records supersession as an append-only event", () => {
     const engine = new CandidateClaimEngineV1();
-    engine.ingestClaimV1({
+    const originalClaim = {
       claimRef: "CLAIM:AREA:PUBLIC",
       candidateRef: "GENESIS-CANDIDATE:MOA",
-      claimType: "PROPERTY_ATTRIBUTE",
+      claimType: "PROPERTY_ATTRIBUTE" as const,
       subjectRef: "GENESIS-CANDIDATE:MOA",
       predicate: "site_area_acres",
       value: "13",
       valueUnit: "acre",
       sourceEvidenceRefs: ["EVIDENCE:PUBLIC:AREA:001"],
-      claimState: "CORROBORATED_PUBLIC",
-      confidenceBand: "MEDIUM",
-    });
+      claimState: "CORROBORATED_PUBLIC" as const,
+      confidenceBand: "MEDIUM" as const,
+    };
+    engine.ingestClaimV1(originalClaim);
 
     const newClaim = engine.supersedeClaimV1({
       priorClaimRef: "CLAIM:AREA:PUBLIC",
@@ -66,17 +67,28 @@ describe("CandidateClaimEngineV1", () => {
       value: "12.96",
       claimState: "AUTHORITATIVELY_VERIFIED",
       confidenceBand: "HIGH",
+      supersededAt: "2026-08-28T02:00:00Z",
     });
 
-    const claims = engine.listClaimsV1("GENESIS-CANDIDATE:MOA");
-    expect(claims.find((claim) => claim.claimRef === "CLAIM:AREA:PUBLIC")?.claimState).toBe(
-      "SUPERSEDED",
-    );
+    expect(engine.ingestClaimV1(originalClaim).state).toBe("REPLAY");
+
+    const projectedClaims = engine.listClaimsV1("GENESIS-CANDIDATE:MOA");
     expect(
-      claims.find((claim) => claim.claimRef === "CLAIM:AREA:PUBLIC")?.sourceEvidenceRefs,
+      projectedClaims.find((claim) => claim.claimRef === "CLAIM:AREA:PUBLIC")?.claimState,
+    ).toBe("SUPERSEDED");
+    expect(
+      projectedClaims.find((claim) => claim.claimRef === "CLAIM:AREA:PUBLIC")?.sourceEvidenceRefs,
     ).toEqual(["EVIDENCE:PUBLIC:AREA:001"]);
     expect(newClaim.supersedesClaimRef).toBe("CLAIM:AREA:PUBLIC");
     expect(newClaim.subjectRef).toBe("GENESIS-CANDIDATE:MOA");
     expect(newClaim.predicate).toBe("site_area_acres");
+
+    expect(engine.listSupersessionEventsV1("GENESIS-CANDIDATE:MOA")).toEqual([
+      expect.objectContaining({
+        priorClaimRef: "CLAIM:AREA:PUBLIC",
+        supersedingClaimRef: "CLAIM:AREA:SURVEY",
+        supersededAt: "2026-08-28T02:00:00Z",
+      }),
+    ]);
   });
 });
