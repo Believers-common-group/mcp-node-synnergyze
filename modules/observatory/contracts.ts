@@ -70,6 +70,12 @@ export interface EvidenceFreshnessV1 {
   ageSeconds?: number;
 }
 
+export interface DimensionHealthInputV1 {
+  dimension: HealthDimensionV1;
+  expectedIntervalSeconds: number;
+  evidence?: HealthEvidenceObservationV1;
+}
+
 export interface DimensionHealthResultV1 {
   version: "SYNNERGYZE-OBSERVATORY-ECOSYSTEM-HEALTH-001-R0.1";
   subjectRef: string;
@@ -79,6 +85,17 @@ export interface DimensionHealthResultV1 {
   confidence: number;
   evidenceRefs: readonly string[];
   observationRef?: string;
+  evaluatedAt: string;
+  derived: true;
+}
+
+export interface SubjectHealthProfileV1 {
+  version: "SYNNERGYZE-OBSERVATORY-ECOSYSTEM-HEALTH-001-R0.1";
+  subject: EcosystemHealthSubjectV1;
+  state: HealthStateV1;
+  dimensions: readonly DimensionHealthResultV1[];
+  confidence: number;
+  evidenceRefs: readonly string[];
   evaluatedAt: string;
   derived: true;
 }
