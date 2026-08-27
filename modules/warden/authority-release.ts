@@ -203,31 +203,14 @@ export function evaluateAuthorityResolutionV1(input: {
   if (context.upstreamRightsStatus !== "EVIDENCED" || context.upstreamLicenseExpression !== "MIT") {
     reasons.push("UPSTREAM_RIGHTS_NOT_EVIDENCED");
   }
-  if (context.postForkRightsStatus !== "CLEARED" || context.postForkLicenseExpression !== "MIT") {
-    reasons.push("POST_FORK_RIGHTS_NOT_CLEARED");
-  }
-  if (context.releaseRightsStatus !== "CLEARED") reasons.push("RELEASE_RIGHTS_NOT_CLEARED");
-  if (context.governanceStatus !== "CLEARED") reasons.push("GOVERNANCE_NOT_CLEARED");
-  if (!validTimeWindow(context)) reasons.push("INVALID_VALIDITY_WINDOW");
-
-  if (context.platformRoute === "OPEN_PUBLIC_PPA") {
-    if (context.platformPermissionStatus !== "NOT_REQUIRED") {
-      reasons.push("PUBLIC_PPA_ROUTE_NOT_RESOLVED");
-    }
-  } else if (
-    context.platformPermissionStatus !== "EVIDENCED" ||
-    !context.platformApprovalReference
-  ) {
-    reasons.push("PLATFORM_APPROVAL_NOT_EVIDENCED");
-  }
 
   const declarationDigest = sha256(JSON.stringify(canonicalAuthorityDeclaration(declaration)));
   const contextDigest = sha256(JSON.stringify(canonicalContext(context)));
   const decision: AuthorityResolutionReceiptV1["decision"] =
-    reasons.length === 0
-      ? "ALLOW_RIGHTS"
-      : declaration.status === "REVOKED"
-        ? "DENY_RIGHTS"
+    declaration.status === "REVOKED"
+      ? "DENY_RIGHTS"
+      : reasons.length === 0
+        ? "ALLOW_RIGHTS"
         : "HOLD";
   const distributionScope = stableUnique(declaration.permittedDistributionScopes);
   const receiptCore = {
@@ -267,6 +250,11 @@ export function evaluateBuildAdmissionG0V1(
   ) {
     reasons.push("SOURCE_OR_EVIDENCE_BINDING_MISMATCH");
   }
+  if (context.postForkRightsStatus !== "CLEARED" || context.postForkLicenseExpression !== "MIT") {
+    reasons.push("POST_FORK_RIGHTS_NOT_CLEARED");
+  }
+  if (context.releaseRightsStatus !== "CLEARED") reasons.push("RELEASE_RIGHTS_NOT_CLEARED");
+  if (context.governanceStatus !== "CLEARED") reasons.push("GOVERNANCE_NOT_CLEARED");
   if (!input.wardenRef || !input.decidingPrincipal || !input.capabilityGrantRef) {
     reasons.push("WARDEN_AUTHORITY_BINDING_INCOMPLETE");
   }
