@@ -4,7 +4,6 @@ import type {
   CandidateClaimV1,
   CandidateConflictClassificationV1,
   CandidateConflictV1,
-  CandidateIdentityKindV1,
   CandidateIdentityV1,
 } from "./contracts.ts";
 
@@ -39,14 +38,6 @@ function classificationForPredicate(predicate: string): CandidateConflictClassif
   if (normalized.includes("use")) return "USE_CONFLICT";
   return "EVIDENCE_INSUFFICIENT";
 }
-
-const strongIdentityKinds = new Set<CandidateIdentityKindV1>([
-  "SURVEY_NUMBER",
-  "PID",
-  "EID",
-  "MUNICIPAL_ID",
-  "REGISTERED_DOCUMENT_REF",
-]);
 
 function canonicalClaim(claim: CandidateClaimV1) {
   return {
@@ -124,13 +115,18 @@ export function reconcileCandidateClaimsV1(
       continue;
     }
 
-    const classification = classificationForPredicate(group[0].predicate);
+    const classification: CandidateConflictClassificationV1 = group.some(
+      (claim) => claim.claimType === "IDENTITY",
+    )
+      ? "IDENTITY_CONFLICT"
+      : classificationForPredicate(group[0].predicate);
     const authoritativeCount = group.filter(
       (claim) => claim.claimState === "AUTHORITATIVELY_VERIFIED",
     ).length;
     const claimRefs = stableUnique(group.map((claim) => claim.claimRef));
     const evidenceRefs = stableUnique(group.flatMap((claim) => claim.sourceEvidenceRefs));
-    const severity = authoritativeCount >= 2 ? "BLOCKING" : "REVIEW";
+    const severity =
+      classification === "IDENTITY_CONFLICT" || authoritativeCount >= 2 ? "BLOCKING" : "REVIEW";
     const conflictSeed = JSON.stringify({
       candidateRef: input.candidateRef,
       key,
@@ -148,43 +144,6 @@ export function reconcileCandidateClaimsV1(
       evidenceRefs,
       classification,
       severity,
-      resolutionState: "OPEN",
-      requiredReviewCapabilityRef: "genesis.node_builder.conflict.review",
-    });
-  }
-
-  const identityGroups = new Map<CandidateIdentityKindV1, CandidateIdentityV1[]>();
-  for (const identity of identities) {
-    if (!strongIdentityKinds.has(identity.kind)) continue;
-    const group = identityGroups.get(identity.kind) ?? [];
-    group.push(identity);
-    identityGroups.set(identity.kind, group);
-  }
-
-  for (const [kind, group] of [...identityGroups.entries()].sort(([a], [b]) => a.localeCompare(b))) {
-    const values = stableUnique(group.map((identity) => identity.normalizedValue));
-    if (values.length <= 1) continue;
-
-    const identityRefs = stableUnique(group.map((identity) => identity.identityRef));
-    const evidenceRefs = stableUnique(group.flatMap((identity) => identity.sourceEvidenceRefs));
-    const conflictSeed = JSON.stringify({
-      candidateRef: input.candidateRef,
-      kind,
-      classification: "IDENTITY_CONFLICT",
-      identityRefs,
-      evidenceRefs,
-      values,
-      severity: "BLOCKING",
-    });
-
-    conflicts.push({
-      conflictRef: `GENESIS-CONFLICT:${sha256(conflictSeed).slice(0, 24)}`,
-      candidateRef: input.candidateRef,
-      claimRefs: [],
-      identityRefs,
-      evidenceRefs,
-      classification: "IDENTITY_CONFLICT",
-      severity: "BLOCKING",
       resolutionState: "OPEN",
       requiredReviewCapabilityRef: "genesis.node_builder.conflict.review",
     });
