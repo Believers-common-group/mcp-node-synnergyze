@@ -240,7 +240,7 @@ export class InMemoryMaintenanceControlPlaneV1 {
       ...input.evidenceRefs,
     ];
     let containmentTransitionRef: string | undefined;
-    let stateAfter = stored.session.state;
+    let stateAfter: MaintenanceSessionStateV1 = stored.session.state;
 
     if (input.checkpoint === "LIMITED_RESTART") {
       try {
