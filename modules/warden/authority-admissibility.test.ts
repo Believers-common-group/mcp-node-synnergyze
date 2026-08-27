@@ -76,7 +76,12 @@ function authorityRecord(overrides: Partial<CompetentAuthorityRecordV1> = {}): C
   };
 }
 
+function acceptedIngest() {
+  return ingestCompetentAuthorityRecordV1({ record: authorityRecord(), context: context() });
+}
+
 function evidenceBundle(overrides: Partial<AuthorityEvidenceBundleV1> = {}): AuthorityEvidenceBundleV1 {
+  const recordDigest = acceptedIngest().recordDigest;
   return {
     schema: "VSR_AUTHORITY_EVIDENCE_BUNDLE/1.0",
     bundleId: "AEB-MCP-NODE-SYNNERGYZE-R0.15",
@@ -106,7 +111,7 @@ function evidenceBundle(overrides: Partial<AuthorityEvidenceBundleV1> = {}): Aut
     signatureVerification: {
       signatureRef: "SIGNATURE:AUTHORITY:001",
       signerPrincipal: "DIGITALME:COMPETENT-PRINCIPAL",
-      recordDigest: "sha256:record-digest",
+      recordDigest,
       verificationRef: "VERIFY:SIGNATURE:001",
       verifiedAt: "2026-08-27T19:12:00.000Z",
       result: "VALID",
@@ -115,7 +120,7 @@ function evidenceBundle(overrides: Partial<AuthorityEvidenceBundleV1> = {}): Aut
       reviewRef: "REVIEW:AUTHORITY:001",
       reviewerPrincipal: "DIGITALME:INDEPENDENT-REVIEWER",
       reviewerCapacity: "CAPACITY:LEGAL-REVIEW",
-      recordDigest: "sha256:record-digest",
+      recordDigest,
       verificationRef: "VERIFY:REVIEW:001",
       reviewedAt: "2026-08-27T19:20:00.000Z",
       outcome: "APPROVED",
@@ -124,10 +129,6 @@ function evidenceBundle(overrides: Partial<AuthorityEvidenceBundleV1> = {}): Aut
     validUntil: "2026-08-28T19:15:00.000Z",
     ...overrides,
   };
-}
-
-function acceptedIngest() {
-  return ingestCompetentAuthorityRecordV1({ record: authorityRecord(), context: context() });
 }
 
 describe("VSR-SOFTWARE-RIGHTS-GRAPH-001 R0.15 authority evidence admissibility", () => {
