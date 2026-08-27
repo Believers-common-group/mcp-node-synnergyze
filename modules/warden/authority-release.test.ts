@@ -66,7 +66,11 @@ describe("VSR-SOFTWARE-RIGHTS-GRAPH-001 R0.13", () => {
   it("fails closed and still emits an immutable receipt when competent authority is undeclared", () => {
     const receipt = evaluateAuthorityResolutionV1({
       declaration: declaration({ status: "UNDECLARED" }),
-      context: context({ postForkRightsStatus: "PENDING_AUTHORITY", releaseRightsStatus: "HOLD", governanceStatus: "PENDING_AUTHORITY" }),
+      context: context({
+        postForkRightsStatus: "PENDING_AUTHORITY",
+        releaseRightsStatus: "HOLD",
+        governanceStatus: "PENDING_AUTHORITY",
+      }),
     });
 
     expect(receipt.decision).toBe("HOLD");
@@ -74,6 +78,25 @@ describe("VSR-SOFTWARE-RIGHTS-GRAPH-001 R0.13", () => {
     expect(receipt.sourceSha).toBe(SOURCE_SHA);
     expect(receipt.rightsEvidenceArtifactDigest).toBe(EVIDENCE_DIGEST);
     expect(receipt.receiptId).toMatch(/^AUTHORITY-RESOLUTION:/);
+  });
+
+  it("resolves competent authority before downstream release, platform, or Warden state advances", () => {
+    const receipt = evaluateAuthorityResolutionV1({
+      declaration: declaration(),
+      context: context({
+        postForkRightsStatus: "PENDING_AUTHORITY",
+        postForkLicenseExpression: null,
+        releaseRightsStatus: "HOLD",
+        governanceStatus: "PENDING_AUTHORITY",
+        platformPermissionStatus: "ROUTE_PREPARED_NOT_AUTHORIZED",
+        requestedAt: "",
+        validUntil: "",
+      }),
+    });
+
+    expect(receipt.decision).toBe("ALLOW_RIGHTS");
+    expect(receipt.licenseExpression).toBe("MIT");
+    expect(receipt.wardenEffect).toBe("NOT_EVALUATED");
   });
 
   it("resolves an evidenced MIT authority declaration without turning it into Warden authorization", () => {
@@ -101,6 +124,27 @@ describe("VSR-SOFTWARE-RIGHTS-GRAPH-001 R0.13", () => {
     expect("authorizationToken" in decision).toBe(false);
   });
 
+  it("Warden G0 denies when downstream rights or governance state has not advanced", () => {
+    const rights = evaluateAuthorityResolutionV1({ declaration: declaration(), context: context() });
+    const decision = evaluateBuildAdmissionG0V1({
+      authorityResolution: rights,
+      context: context({
+        postForkRightsStatus: "PENDING_AUTHORITY",
+        releaseRightsStatus: "HOLD",
+        governanceStatus: "PENDING_AUTHORITY",
+      }),
+      wardenRef: "WARDEN:ALPHA",
+      decidingPrincipal: "DIGITALME:WARDEN-OPERATOR",
+      capabilityGrantRef: "CAPABILITY:LAUNCHPAD-BUILD:001",
+      decidedAt: "2026-08-27T15:11:00.000Z",
+    });
+
+    expect(decision.decision).toBe("DENY_BUILD");
+    expect(decision.reasonCodes).toContain("POST_FORK_RIGHTS_NOT_CLEARED");
+    expect(decision.reasonCodes).toContain("RELEASE_RIGHTS_NOT_CLEARED");
+    expect(decision.reasonCodes).toContain("GOVERNANCE_NOT_CLEARED");
+  });
+
   it("Warden G0 allows only the exact evidenced rights/platform/source tuple", () => {
     const rights = evaluateAuthorityResolutionV1({ declaration: declaration(), context: context() });
     const first = evaluateBuildAdmissionG0V1({
@@ -121,7 +165,9 @@ describe("VSR-SOFTWARE-RIGHTS-GRAPH-001 R0.13", () => {
     });
 
     expect(first.decision).toBe("ALLOW_BUILD");
-    if (first.decision !== "ALLOW_BUILD" || replay.decision !== "ALLOW_BUILD") throw new Error("expected allow");
+    if (first.decision !== "ALLOW_BUILD" || replay.decision !== "ALLOW_BUILD") {
+      throw new Error("expected allow");
+    }
     expect(first.authorizationToken).toMatch(/^WARDEN-BUILD-TOKEN:/);
     expect(replay).toEqual(first);
   });
