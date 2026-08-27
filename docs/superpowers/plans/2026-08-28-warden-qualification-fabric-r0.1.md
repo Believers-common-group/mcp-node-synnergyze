@@ -47,7 +47,7 @@
 
 **Modify**
 - `package.json` — add `test:qualification` and `lint:qualification`.
-- `.github/workflows/qualification-simulation-r0.1.yml` — add qualification tests/lint after the Simulation plan creates it.
+- `.github/workflows/qualification-simulation-r0.1.yml` — add qualification tests/lint after the Simulation plan creates the workflow.
 - `.vsr/module-bindings.yaml` — register qualification module and Warden qualification engine.
 - `.vsr/repository-components.yaml` — register evaluator, Warden engine, status/review ledger, presentation, River receipt and store.
 - `modules/contracts.test.ts` — cross-boundary proof that qualification does not imply authorization.
@@ -58,12 +58,15 @@ Create these exact foundations in `modules/qualification/contracts.ts`:
 
 ```ts
 import type {
+  RealityAdmissionDecisionV1,
   RealityMaturityV1,
   SimulationEffectFlagsV1,
 } from "../simulation/contracts.ts";
 
 export type EvidenceGradeV1 =
   | "E0_CLAIMED" | "E1_OBSERVED" | "E2_CORROBORATED" | "E3_VERIFIED" | "E4_ASSURED";
+
+export type CriterionStateV1 = "PASS" | "FAIL" | "REVIEW_REQUIRED" | "UNKNOWN";
 
 export type QualificationProgressionLevelV1 =
   | "L0_DISCOVERED" | "L1_IDENTIFIED" | "L2_EVIDENCED"
@@ -87,9 +90,21 @@ export interface QualificationVectorV1 {
   effectReliability: number;
   economicReadiness: number;
 }
+
+export interface AssessorAuthoritySnapshotV1 {
+  authoritySnapshotRef: string;
+  assessorPrincipalRef: string;
+  authorityDomainRefs: readonly string[];
+  validFrom: string;
+  validUntil: string;
+  sourceEvidenceRefs: readonly string[];
+  sourceDigest: string;
+}
 ```
 
-Each vector value is an integer `0..5` in R0.1 and is runtime-validated. Also define `QualificationSchemeV1`, `QualificationSchemeRevisionV1`, `CompetencyV1`, `CompetencyRequirementV1`, `ProgressionModelV1`, `ProgressionLevelRuleV1`, `AssessmentMethodV1`, `EvidenceRequirementV1`, `QualificationEvidenceItemV1`, `QualificationEvidenceBundleV1`, `CriterionResultV1`, `QualificationEvaluationRequestV1`, `QualificationEvaluationV1`, `QualificationDecisionV1`, `QualificationAssertionV1`, `QualificationStatusEventV1`, `QualificationReviewV1`, `QualificationAppealV1`, `QualificationStandingV1`, and `QualificationPresentationV1`.
+Each vector value is an integer `0..5` in R0.1 and is runtime-validated. Also define `QualificationSchemeV1`, `QualificationSchemeRevisionV1`, `CompetencyV1`, `CompetencyRequirementV1`, `ProgressionModelV1`, `ProgressionLevelRuleV1`, `AssessmentMethodV1`, `EvidenceRequirementV1`, `QualificationEvidenceItemV1`, `QualificationEvidenceBundleV1`, `CriterionResultV1`, `QualificationEvaluationRequestV1`, `QualificationEvaluationV1`, `QualificationDecisionV1`, `QualificationAssertionV1`, `QualificationStatusEventV1`, `QualificationReviewV1`, `QualificationAppealV1`, `QualificationStandingV1`, `QualificationPresentationRequestV1`, `QualificationPresentationV1`, `QualificationReceiptManifestV1`, and `WardenQualificationEvaluationInputV1`.
+
+`WardenQualificationEvaluationInputV1` must contain `request`, `schemeRevision`, `progressionModel`, `evidenceBundle`, `assessorAuthority`, `currentAssertions`, and `realityAdmission: RealityAdmissionDecisionV1`.
 
 The R0.1 assertion is explicitly non-live:
 
@@ -164,10 +179,10 @@ const invalidToken: QualificationAssertionV1 = { ...assertion, actionToken: "TOK
 
 **Files:** Create `modules/qualification/canonical.ts`, `modules/qualification/evidence-bundle.test.ts`, `modules/qualification/evidence-bundle.ts`.
 
-**Interfaces:** Produces `buildQualificationEvidenceBundleV1(input)` and `qualificationEvidenceBundleDigestV1(bundle)`.
+**Interfaces:** Produces `buildQualificationEvidenceBundleV1(input): QualificationEvidenceBundleV1` and `qualificationEvidenceBundleDigestV1(bundle): string`.
 
 - [ ] **Step 1: Write ordering/hash tests with items carrying `grade`, `evidenceRef`, `observedAt`, `provenanceVerified`, `integrityVerified`, and optional `conflictGroupRef`.** Reordered inputs must hash identically.
-- [ ] **Step 2: Add failures:** changed duplicate evidence ref → `qualification_evidence_conflict`; integrity false where E3/E4 required → `EVIDENCE_INTEGRITY_UNKNOWN`; stale item beyond `maxAgeSeconds` → `EVIDENCE_RECENCY_FAILED`; minimum grade absent → `EVIDENCE_INSUFFICIENT`.
+- [ ] **Step 2: Add failures:** changed duplicate evidence ref → `QUALIFICATION_EVIDENCE_CONFLICT`; integrity false where E3/E4 required → `EVIDENCE_INTEGRITY_UNKNOWN`; stale item beyond `maxAgeSeconds` → `EVIDENCE_RECENCY_FAILED`; minimum grade absent → `EVIDENCE_INSUFFICIENT`.
 - [ ] **Step 3: Run `npx vitest run modules/qualification/evidence-bundle.test.ts`; expect RED.**
 - [ ] **Step 4: Implement explicit grade ordering:**
 
@@ -185,14 +200,14 @@ Sort evidence by `evidenceRef`, validate instants, canonicalize conflict refs an
 
 **Files:** Create `modules/qualification/criteria-evaluator.test.ts`, `modules/qualification/criteria-evaluator.ts`.
 
-**Interfaces:** Produces `evaluateQualificationCriteriaV1(input): QualificationEvaluationV1`.
+**Interfaces:** Produces `evaluateQualificationCriteriaV1(input: QualificationEvaluationRequestV1): QualificationEvaluationV1`.
 
 - [ ] **Step 1: Write a passing scheme fixture with minimum evidence grade, capability demonstration, recency and an independent-assessment criterion.** Assert one `CriterionResultV1` per criterion and deterministic vector output.
-- [ ] **Step 2: Add failures:** unmet prerequisite → `PREREQUISITE_NOT_MET`; conflicting evidence → `REVIEW_REQUIRED`; absent evidence → `EVIDENCE_INSUFFICIENT`; vector outside `0..5` → `qualification_vector_out_of_range`.
+- [ ] **Step 2: Add failures:** unmet prerequisite → `PREREQUISITE_NOT_MET`; conflicting evidence → `REVIEW_REQUIRED`; absent evidence → `EVIDENCE_INSUFFICIENT`; vector outside `0..5` → `QUALIFICATION_VECTOR_OUT_OF_RANGE`.
 - [ ] **Step 3: Add a test where `requiresIndependentAssessor: true` and `assessorPrincipalRef === candidatePrincipalRef`; expect `ASSESSOR_INDEPENDENCE_REQUIRED`.**
 - [ ] **Step 4: Add a test proving 1,000 hours of E0/E1 evidence cannot satisfy a criterion requiring E3.**
 - [ ] **Step 5: Run `npx vitest run modules/qualification/criteria-evaluator.test.ts`; expect RED.**
-- [ ] **Step 6: Implement pure criterion evaluation returning `PASS | FAIL | REVIEW_REQUIRED | UNKNOWN`; derive vector values only from explicit scheme rules.**
+- [ ] **Step 6: Implement pure criterion evaluation returning `CriterionStateV1`; derive vector values only from explicit scheme rules.**
 - [ ] **Step 7: Re-run focused test + type-check; expect PASS.**
 - [ ] **Step 8: Commit `feat(qualification): add deterministic criteria and assessor guards`.**
 
@@ -200,10 +215,10 @@ Sort evidence by `evidenceRef`, validate instants, canonicalize conflict refs an
 
 **Files:** Create `modules/qualification/projection.test.ts`, `modules/qualification/projection.ts`.
 
-**Interfaces:** Produces `projectQualificationLevelV1(evaluation, model): QualificationProgressionLevelV1`.
+**Interfaces:** Produces `projectQualificationLevelV1(evaluation: QualificationEvaluationV1, model: ProgressionModelV1): QualificationProgressionLevelV1`.
 
 - [ ] **Step 1: Write tests proving one principal can be `L4_QUALIFIED` in mechanical design and `L1_IDENTIFIED` in electrical maintenance from different scheme/scope evaluations.**
-- [ ] **Step 2: Add a test that the projection stops at the highest fully satisfied level and never averages a failed dimension into promotion.**
+- [ ] **Step 2: Add a test that projection stops at the highest fully satisfied level and never averages a failed dimension into promotion.**
 - [ ] **Step 3: Run `npx vitest run modules/qualification/projection.test.ts`; expect RED.**
 - [ ] **Step 4: Implement ordered explicit vector minima + required criterion refs.** Export no `trustScore`, `reputationScore`, or network-wide principal-rank function.
 - [ ] **Step 5: Re-run focused test + type-check; expect PASS.**
@@ -213,22 +228,25 @@ Sort evidence by `evidenceRef`, validate instants, canonicalize conflict refs an
 
 **Files:** Create `modules/warden/qualification-engine.test.ts`, `modules/warden/qualification-engine.ts`.
 
-**Interfaces:** Consumes scheme revision, canonical evidence bundle, assessor-authority snapshot, current assertions, simulation admission decision and evaluation time. Produces `WardenQualificationEngineV1.evaluate(input): QualificationDecisionV1`.
+**Interfaces:** Produces `WardenQualificationEngineV1.evaluate(input: WardenQualificationEvaluationInputV1): QualificationDecisionV1`.
 
 - [ ] **Step 1: Write tests for `ASSERT`, `MAINTAIN`, `REFUSE`, and `UNKNOWN`.** `ASSERT` requires active scheme revision, valid assessor authority, adequate evidence/prerequisites and admitted M1–M3 maturity.
 - [ ] **Step 2: Add blockers:** missing authority → `UNKNOWN` + `ASSESSOR_AUTHORITY_MISSING`; inactive scheme → `REFUSE` + `QUALIFICATION_SCHEME_NOT_ACTIVE`; unresolved evidence integrity → `UNKNOWN`; M4 request → `REALITY_PROMOTION_REQUIRES_FUTURE_AUTHORITY`.
 - [ ] **Step 3: Assert every `ASSERT` result has `authorized: false`, assertion `live: false`, all effect flags false, and no `actionToken` key.**
 - [ ] **Step 4: Run `npx vitest run modules/warden/qualification-engine.test.ts`; expect RED.**
-- [ ] **Step 5: Implement the engine with imports only from `modules/qualification/**` and `modules/simulation/**`:**
+- [ ] **Step 5: Implement the engine directly from the two pure qualification functions; do not invent another service layer:**
 
 ```ts
 export class WardenQualificationEngineV1 {
   evaluate(input: WardenQualificationEvaluationInputV1): QualificationDecisionV1 {
-    return evaluateSimulatedQualificationV1(input);
+    const evaluation = evaluateQualificationCriteriaV1(input.request);
+    const progressionLevel = projectQualificationLevelV1(evaluation, input.progressionModel);
+    return compileQualificationDecisionV1({ input, evaluation, progressionLevel });
   }
 }
 ```
 
+Create `compileQualificationDecisionV1(args): QualificationDecisionV1` in the same file; it validates `input.realityAdmission.admitted`, scheme state, assessor authority validity, then constructs only the allowed decision/assertion shape.
 - [ ] **Step 6: Re-run focused test + type-check; expect PASS.**
 - [ ] **Step 7: Run `grep -nE '(decision-service|execution-gate|silk|silk-dam)' modules/warden/qualification-engine.ts`; expect no output.**
 - [ ] **Step 8: Commit `feat(warden): add simulated qualification engine`.**
@@ -240,7 +258,7 @@ export class WardenQualificationEngineV1 {
 **Interfaces:** Produces `InMemoryQualificationStatusLedgerV1.append(event)`, `.openReview(review)`, `.fileAppeal(appeal)`, `.history(assertionRef)`, and `.standing(assertionRef, at): QualificationStandingV1`.
 
 - [ ] **Step 1: Write assert → review-required → limited/suspended/superseded history tests and deep-freeze the original assertion to prove it never mutates.**
-- [ ] **Step 2: Write an operational-failure test permitting only `QUALIFICATION_REVIEW_REQUIRED`; direct outcome→revocation must throw `qualification_direct_outcome_demotion_forbidden`.**
+- [ ] **Step 2: Write an operational-failure test permitting only `QUALIFICATION_REVIEW_REQUIRED`; direct outcome→revocation must throw `QUALIFICATION_DIRECT_OUTCOME_DEMOTION_FORBIDDEN`.**
 - [ ] **Step 3: Write current-standing tests for valid, expired, suspended, revoked and superseded assertions at specific instants.** Historical truth remains retrievable even when current standing is unavailable.
 - [ ] **Step 4: Write appeal tests requiring `appealRef`, `subjectAssertionRef`, `reasonCode`, supporting evidence refs, `filedAt`, `state: "OPEN"`, and M0–M3 maturity.**
 - [ ] **Step 5: Run `npx vitest run modules/qualification/status-ledger.test.ts`; expect RED.**
@@ -252,9 +270,9 @@ export class WardenQualificationEngineV1 {
 
 **Files:** Create `modules/qualification/presentation.test.ts`, `modules/qualification/presentation.ts`.
 
-**Interfaces:** Produces `presentQualificationV1(assertion, request): QualificationPresentationV1`.
+**Interfaces:** Produces `presentQualificationV1(assertion: QualificationAssertionV1, request: QualificationPresentationRequestV1): QualificationPresentationV1`.
 
-- [ ] **Step 1: Write a test where a verifier asks only whether mechanical-design L3+ is valid.** Expected presentation contains scheme ref, scope ref, projected level, validity and assertion ref, but not vector internals, criterion refs, evidence bundle contents, assessor notes or work history.
+- [ ] **Step 1: Write a test where a verifier asks only whether mechanical-design L3+ is valid.** Expected presentation contains assertion/scheme/scope/level/validity but not vector internals, criterion refs, bundle contents, assessor notes or work history.
 - [ ] **Step 2: Add a test that an unsupported disclosure field request is rejected as `QUALIFICATION_DISCLOSURE_NOT_PERMITTED`.**
 - [ ] **Step 3: Run `npx vitest run modules/qualification/presentation.test.ts`; expect RED.**
 - [ ] **Step 4: Implement an allowlisted presentation factory:**
@@ -279,9 +297,9 @@ return {
 
 **Files:** Create `modules/qualification/river-receipt.test.ts`, `modules/qualification/river-receipt.ts`.
 
-**Interfaces:** Consumes `QualificationDecisionV1`, `QualificationEvidenceBundleV1`, and River `EventEnvelopeV1`. Produces `compileQualificationRiverEventV1(input): EventEnvelopeV1` plus `QualificationReceiptManifestV1`.
+**Interfaces:** Produces `compileQualificationRiverEventV1(input): { event: EventEnvelopeV1; manifest: QualificationReceiptManifestV1 }`.
 
-- [ ] **Step 1: Write a test asserting event type `QUALIFICATION_EVALUATED`, sequence, correlation id, deterministic payload digest, scheme revision ref, evidence bundle ref/hash, decision ref and reality maturity.**
+- [ ] **Step 1: Write a test asserting event type `QUALIFICATION_EVALUATED`, sequence, correlation id, deterministic payload digest, scheme revision ref, evidence bundle ref/hash, decision ref and reality maturity in the manifest.**
 - [ ] **Step 2: Add tests proving changed evidence hash changes payload digest and M4+ input is rejected before receipt compilation.**
 - [ ] **Step 3: Run `npx vitest run modules/qualification/river-receipt.test.ts`; expect RED.**
 - [ ] **Step 4: Implement a pure `EventEnvelopeV1` compiler only; do not call River reservation/seal services.**
