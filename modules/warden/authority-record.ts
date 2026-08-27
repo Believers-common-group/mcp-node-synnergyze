@@ -29,10 +29,10 @@ export interface CompetentAuthorityRecordV1 {
   automationControllerAuthorityBasis: string | null;
   automationControllerEvidenceRefs: readonly string[];
   attestations: {
-    necessaryRightsOwnedOrControlled: boolean;
-    authorityToLicensePostForkModifications: boolean;
-    automationOutputAttributableToAuthorizedController: boolean;
-    noKnownConflictingGrantOrAssignment: boolean;
+    necessaryRightsOwnedOrControlled: boolean | null;
+    authorityToLicensePostForkModifications: boolean | null;
+    automationOutputAttributableToAuthorizedController: boolean | null;
+    noKnownConflictingGrantOrAssignment: boolean | null;
   };
   signedAt: string | null;
   signatureRef: string | null;
@@ -109,6 +109,21 @@ function normalizedDeclarationStatus(
   return accepted ? "EVIDENCED" : "SUPERSEDED";
 }
 
+function normalizedAttestations(
+  record: CompetentAuthorityRecordV1,
+): AuthorityDeclarationV1["attestations"] {
+  return {
+    necessaryRightsOwnedOrControlled:
+      record.attestations.necessaryRightsOwnedOrControlled === true,
+    authorityToLicensePostForkModifications:
+      record.attestations.authorityToLicensePostForkModifications === true,
+    automationOutputAttributableToAuthorizedController:
+      record.attestations.automationOutputAttributableToAuthorizedController === true,
+    noKnownConflictingGrantOrAssignment:
+      record.attestations.noKnownConflictingGrantOrAssignment === true,
+  };
+}
+
 function toDeclaration(
   record: CompetentAuthorityRecordV1,
   status: AuthorityDeclarationV1["status"],
@@ -130,7 +145,7 @@ function toDeclaration(
     automationControllerCapacity: record.automationControllerCapacity,
     automationControllerAuthorityBasis: record.automationControllerAuthorityBasis,
     automationControllerEvidenceRefs: stableUnique(record.automationControllerEvidenceRefs),
-    attestations: record.attestations,
+    attestations: normalizedAttestations(record),
     signedAt: record.signedAt,
     signatureRef: record.signatureRef,
     reviewedAt: record.reviewedAt,
@@ -163,6 +178,9 @@ export function ingestCompetentAuthorityRecordV1(input: {
   }
   if (!record.governanceDecisionRef) reasons.push("GOVERNANCE_DECISION_EVIDENCE_MISSING");
   if (!record.recordId.trim()) reasons.push("AUTHORITY_RECORD_ID_MISSING");
+  if (Object.values(record.attestations).some((value) => value === null)) {
+    reasons.push("AUTHORITY_ATTESTATION_UNKNOWN");
+  }
 
   const accepted = reasons.length === 0;
   const decision: AuthorityRecordIngestReceiptV1["decision"] =
