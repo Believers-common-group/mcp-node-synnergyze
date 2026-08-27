@@ -97,7 +97,7 @@ describe("reconcileCandidateClaimsV1", () => {
     expect(result.conflicts).toEqual([]);
   });
 
-  it("turns competing singular municipal identifiers into a blocking identity conflict", () => {
+  it("allows multiple municipal identifiers to coexist as identity clues", () => {
     const identities: CandidateIdentityV1[] = [
       {
         identityRef: "IDENTITY:PID:A",
@@ -118,6 +118,36 @@ describe("reconcileCandidateClaimsV1", () => {
     ];
 
     const result = reconcileCandidateClaimsV1({ candidateRef, claims: [], identities });
+    expect(result.conflicts).toEqual([]);
+  });
+
+  it("blocks explicit competing canonical identity claims", () => {
+    const claims: CandidateClaimV1[] = [
+      {
+        claimRef: "CLAIM:IDENTITY:A",
+        candidateRef,
+        claimType: "IDENTITY",
+        subjectRef: candidateRef,
+        predicate: "canonical_property_identity",
+        value: "PROPERTY-A",
+        sourceEvidenceRefs: ["EVIDENCE:IDENTITY:A"],
+        claimState: "EVIDENCED",
+        confidenceBand: "HIGH",
+      },
+      {
+        claimRef: "CLAIM:IDENTITY:B",
+        candidateRef,
+        claimType: "IDENTITY",
+        subjectRef: candidateRef,
+        predicate: "canonical_property_identity",
+        value: "PROPERTY-B",
+        sourceEvidenceRefs: ["EVIDENCE:IDENTITY:B"],
+        claimState: "EVIDENCED",
+        confidenceBand: "HIGH",
+      },
+    ];
+
+    const result = reconcileCandidateClaimsV1({ candidateRef, claims, identities: [] });
     expect(result.conflicts[0]).toMatchObject({
       classification: "IDENTITY_CONFLICT",
       severity: "BLOCKING",
