@@ -123,6 +123,7 @@ export interface CandidateConflictV1 {
   conflictRef: string;
   candidateRef: string;
   claimRefs: readonly string[];
+  identityRefs?: readonly string[];
   evidenceRefs: readonly string[];
   classification: CandidateConflictClassificationV1;
   severity: "INFO" | "REVIEW" | "BLOCKING";
