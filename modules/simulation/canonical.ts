@@ -19,6 +19,14 @@ export function canonicalSha256V1(value: unknown): string {
   return `sha256:${createHash("sha256").update(encoded).digest("hex")}`;
 }
 
+export function canonicalReferenceSetV1(refs: readonly string[]): readonly string[] {
+  return [...new Set(refs)].sort((left, right) => left.localeCompare(right));
+}
+
+export function canonicalReferenceSetHashV1(refs: readonly string[]): string {
+  return canonicalSha256V1(canonicalReferenceSetV1(refs));
+}
+
 export function realityAdmissionRequestHashV1(
   request: Omit<RealityAdmissionRequestV1, "envelopeHash">,
 ): string {
