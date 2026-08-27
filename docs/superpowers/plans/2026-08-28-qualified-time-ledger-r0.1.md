@@ -4,7 +4,7 @@
 
 **Goal:** Implement `VSR-QUALIFIED-TIME-LEDGER-001 R0.1` as an append-only T0–T4 pre-economic chain that converts observed duration into attributable, recorded, verified, qualified and economically eligible contribution without creating money, stored value, obligation, transferability, redemption, payment, or settlement.
 
-**Architecture:** Create a standalone `modules/qualified-time` boundary. Each stage is an immutable record linked to the preceding stage and to River evidence, qualification scheme/assertion refs, simulation maturity and policy revision. A `ContributionRecordV1` captures the work/capability/objective context before verification. Economic eligibility remains a pure pre-SILK classification whose output is deliberately non-payable and non-settleable.
+**Architecture:** Create a standalone `modules/qualified-time` boundary. Each stage is an immutable record linked to the preceding stage and to River evidence, qualification scheme/assertion refs, simulation maturity and policy revision. A `ContributionRecordV1` captures work/capability/objective context before verification. Economic eligibility is a pure pre-SILK classification whose output is deliberately non-payable and non-settleable.
 
 **Tech Stack:** Node 22.14.0, TypeScript 5.8.3, Vitest 3.1.1, PostgreSQL-compatible/Neon DB, ESLint 9.24
 
@@ -32,7 +32,7 @@
 ## File Map
 
 **Create**
-- `modules/qualified-time/contracts.ts` — T0–T4, contribution and economic-readiness contracts.
+- `modules/qualified-time/contracts.ts` — T0–T4, contribution, qualification-binding and economic-readiness contracts.
 - `modules/qualified-time/contracts.test.ts` — compile-time prohibition of monetary/settlement/live-effect fields.
 - `modules/qualified-time/canonical.ts` — stable hashes for every chain record.
 - `modules/qualified-time/time-observation.ts` / `.test.ts` — T0 observed duration.
@@ -57,9 +57,16 @@ Create these exact foundations in `modules/qualified-time/contracts.ts`:
 
 ```ts
 import type {
+  RealityAdmissionDecisionV1,
   RealityMaturityV1,
   SimulationEffectFlagsV1,
 } from "../simulation/contracts.ts";
+import type {
+  EvidenceGradeV1,
+  QualificationAssertionV1,
+  QualificationEvidenceBundleV1,
+  QualificationProgressionLevelV1,
+} from "../qualification/contracts.ts";
 
 export type EconomicReadinessV1 =
   | "V0_NONE"
@@ -68,7 +75,7 @@ export type EconomicReadinessV1 =
   | "V3_ECONOMIC_ELIGIBLE"
   | "V4_SILK_ADMISSIBLE";
 
-type PreLiveMaturityV1 = Extract<RealityMaturityV1,
+export type PreLiveMaturityV1 = Extract<RealityMaturityV1,
   "M0_MODELLED" | "M1_SYNTHETIC" | "M2_REPLAYED" | "M3_SHADOW">;
 
 export interface TimeObservationV1 {
@@ -139,9 +146,31 @@ export interface QualifiedTimeClaimV1 {
   effectFlags: SimulationEffectFlagsV1;
   sourceDigest: string;
 }
+
+export interface QualificationBindingPolicyV1 {
+  policyRevisionRef: string;
+  schemeRevisionRef: string;
+  capabilityRefs: readonly string[];
+  scopeRefs: readonly string[];
+  minimumQualificationLevel: QualificationProgressionLevelV1;
+  validFrom: string;
+  validUntil: string;
+}
+
+export interface EconomicEligibilityPolicyV1 {
+  policyRevisionRef: string;
+  capabilityRefs: readonly string[];
+  scopeRefs: readonly string[];
+  minimumQualificationLevel: QualificationProgressionLevelV1;
+  minimumEvidenceGrade: EvidenceGradeV1;
+  minimumReadiness: Exclude<EconomicReadinessV1, "V4_SILK_ADMISSIBLE">;
+  maySimulateSilkReadiness: boolean;
+  validFrom: string;
+  validUntil: string;
+}
 ```
 
-The T4 result is deliberately restrictive:
+The T4 result and evaluation input are deliberately restrictive:
 
 ```ts
 export interface EconomicEligibilityResultV1 {
@@ -161,9 +190,17 @@ export interface EconomicEligibilityResultV1 {
   effectFlags: SimulationEffectFlagsV1;
   sourceDigest: string;
 }
-```
 
-Also define `EconomicEligibilityPolicyV1` with explicit capability, scope, minimum qualification level, evidence grade/readiness requirements and policy validity, but no monetary amount, exchange rate or settlement fields.
+export interface EconomicEligibilityEvaluationInputV1 {
+  claim: QualifiedTimeClaimV1;
+  qualificationAssertion: QualificationAssertionV1;
+  evidenceBundle: QualificationEvidenceBundleV1;
+  policy: EconomicEligibilityPolicyV1;
+  priorReadiness: EconomicReadinessV1;
+  realityAdmission: RealityAdmissionDecisionV1;
+  evaluatedAt: string;
+}
+```
 
 ---
 
@@ -171,7 +208,7 @@ Also define `EconomicEligibilityPolicyV1` with explicit capability, scope, minim
 
 **Files:** Create `modules/qualified-time/contracts.ts`, `modules/qualified-time/contracts.test.ts`; modify `modules/contracts.test.ts`.
 
-**Interfaces:** Consumes Simulation public maturity/effect contracts; produces all T0–T4 contracts.
+**Interfaces:** Consumes Simulation and Qualification public contracts; produces all T0–T4 contracts.
 
 - [ ] **Step 1: Write a valid T4 object and forbidden-shape tests:**
 
@@ -204,7 +241,7 @@ const invalidPayable: EconomicEligibilityResultV1 = { ...eligible, payable: true
 
 - [ ] **Step 2: Add a cross-boundary assertion in `modules/contracts.test.ts` that T4 `createsObligation === false` while the existing SILK settlement finality type remains separate.**
 - [ ] **Step 3: Run `npx vitest run modules/qualified-time/contracts.test.ts modules/contracts.test.ts`; expect RED because contracts are absent.**
-- [ ] **Step 4: Implement the exact named contracts and blocker-code union including `QUALIFICATION_REQUIRED`, `QUALIFICATION_LEVEL_INSUFFICIENT`, `VERIFIED_TIME_EXCEEDS_ATTRIBUTED_TIME`, and `QUALIFIED_TIME_EXCEEDS_VERIFIED_TIME`.**
+- [ ] **Step 4: Implement the exact contracts and blocker-code union including `QUALIFICATION_REQUIRED`, `QUALIFICATION_LEVEL_INSUFFICIENT`, `VERIFIED_TIME_EXCEEDS_ATTRIBUTED_TIME`, `VERIFIED_TIME_PRINCIPAL_MISMATCH`, `QUALIFIED_TIME_EXCEEDS_VERIFIED_TIME`, and `ECONOMIC_POLICY_NOT_APPLICABLE`.**
 - [ ] **Step 5: Re-run focused tests + `npm run -s type-check`; expect PASS.**
 - [ ] **Step 6: Commit `feat(qualified-time): define t0-t4 pre-economic contracts`.**
 
@@ -238,12 +275,12 @@ const invalidPayable: EconomicEligibilityResultV1 = { ...eligible, payable: true
 
 **Files:** Create `modules/qualified-time/contribution-record.test.ts`, `modules/qualified-time/contribution-record.ts`.
 
-**Interfaces:** Consumes `TimeAttributionV1` and evidence bundle ref; produces `createContributionRecordV1(input): ContributionRecordV1`.
+**Interfaces:** Consumes `TimeAttributionV1`; produces `createContributionRecordV1(input): ContributionRecordV1`.
 
 - [ ] **Step 1: Write a test binding attribution, principal, task/objective, capability, scope, attributed duration and evidence bundle ref.**
 - [ ] **Step 2: Add failures for principal mismatch with attribution, changed attributedMillis, missing task/capability/scope, missing evidence bundle and maturity mismatch.**
 - [ ] **Step 3: Run `npx vitest run modules/qualified-time/contribution-record.test.ts`; expect RED.**
-- [ ] **Step 4: Implement immutable contribution identity from the exact attribution + work-context refs.** Do not claim verification or qualification in this object.
+- [ ] **Step 4: Implement immutable contribution identity from exact attribution + work-context refs.** Do not claim verification or qualification in this object.
 - [ ] **Step 5: Re-run focused test + type-check; expect PASS.**
 - [ ] **Step 6: Commit `feat(qualified-time): record contribution context`.**
 
@@ -254,7 +291,7 @@ const invalidPayable: EconomicEligibilityResultV1 = { ...eligible, payable: true
 **Interfaces:** Consumes `ContributionRecordV1` and `QualificationEvidenceBundleV1`; produces `verifyContributionTimeV1(input): VerifiedContributionTimeV1`.
 
 - [ ] **Step 1: Write a test verifying 4,200,000 ms from a contribution carrying 4,800,000 attributed ms; bind contribution/principal/capability/scope/evidence.**
-- [ ] **Step 2: Add failures:** verified > attributed → `VERIFIED_TIME_EXCEEDS_ATTRIBUTED_TIME`; bundle principal mismatch → `verified_time_principal_mismatch`; integrity unresolved → `EVIDENCE_INTEGRITY_UNKNOWN`; M4+ → `REALITY_PROMOTION_REQUIRES_FUTURE_AUTHORITY`.
+- [ ] **Step 2: Add failures:** verified > attributed → `VERIFIED_TIME_EXCEEDS_ATTRIBUTED_TIME`; bundle principal mismatch → `VERIFIED_TIME_PRINCIPAL_MISMATCH`; integrity unresolved → `EVIDENCE_INTEGRITY_UNKNOWN`; M4+ → `REALITY_PROMOTION_REQUIRES_FUTURE_AUTHORITY`.
 - [ ] **Step 3: Run `npx vitest run modules/qualified-time/contribution-verification.test.ts`; expect RED.**
 - [ ] **Step 4: Implement evidence-bound verification; never infer verified duration from task completion alone.**
 - [ ] **Step 5: Re-run focused test + type-check; expect PASS.**
@@ -264,13 +301,13 @@ const invalidPayable: EconomicEligibilityResultV1 = { ...eligible, payable: true
 
 **Files:** Create `modules/qualified-time/qualification-compiler.test.ts`, `modules/qualified-time/qualification-compiler.ts`.
 
-**Interfaces:** Consumes `VerifiedContributionTimeV1`, `QualificationAssertionV1` and policy binding; produces `compileQualifiedTimeClaimV1(input): QualifiedTimeClaimV1`.
+**Interfaces:** Consumes `VerifiedContributionTimeV1`, `QualificationAssertionV1`, `QualificationBindingPolicyV1`; produces `compileQualifiedTimeClaimV1(input): QualifiedTimeClaimV1`.
 
-- [ ] **Step 1: Write a passing test where verified contribution, simulated qualification assertion and policy share principal/capability/scope/scheme revision and M1 maturity; assert qualifiedMillis ≤ verifiedMillis.**
-- [ ] **Step 2: Add failures for principal/scope/capability/scheme mismatch, assertion not valid at contribution time and qualified > verified.**
-- [ ] **Step 3: Add a test proving a long verified duration cannot compensate for missing/insufficient qualification; expect `QUALIFICATION_REQUIRED` or `QUALIFICATION_LEVEL_INSUFFICIENT`.**
+- [ ] **Step 1: Write a passing test where verification, simulated assertion and binding policy share principal/capability/scope/scheme revision and M1 maturity; assert qualifiedMillis ≤ verifiedMillis.**
+- [ ] **Step 2: Add failures for principal/scope/capability/scheme mismatch, expired assertion/policy at contribution time and qualified > verified.**
+- [ ] **Step 3: Add a test proving long verified duration cannot compensate for missing/insufficient qualification; expect `QUALIFICATION_REQUIRED` or `QUALIFICATION_LEVEL_INSUFFICIENT`.**
 - [ ] **Step 4: Run `npx vitest run modules/qualified-time/qualification-compiler.test.ts`; expect RED.**
-- [ ] **Step 5: Implement exact binding; consume the assertion without creating or modifying it.**
+- [ ] **Step 5: Implement exact binding and level ordering; consume the assertion without creating/modifying it.**
 - [ ] **Step 6: Re-run focused test + type-check; expect PASS.**
 - [ ] **Step 7: Commit `feat(qualified-time): compile qualified contribution time`.**
 
@@ -278,13 +315,13 @@ const invalidPayable: EconomicEligibilityResultV1 = { ...eligible, payable: true
 
 **Files:** Create `modules/qualified-time/economic-eligibility.test.ts`, `modules/qualified-time/economic-eligibility.ts`.
 
-**Interfaces:** Consumes `QualifiedTimeClaimV1`, `EconomicEligibilityPolicyV1`, readiness facts and reality admission; produces `evaluateEconomicEligibilityV1(input): EconomicEligibilityResultV1`.
+**Interfaces:** Produces `evaluateEconomicEligibilityV1(input: EconomicEligibilityEvaluationInputV1): EconomicEligibilityResultV1`.
 
 - [ ] **Step 1: Write V0, V1, V2, V3 and simulated V4 readiness tests; every result keeps economic/settlement fields null/false.**
 - [ ] **Step 2: Add a V4 test requiring `SIMULATED_SILK_READINESS_ONLY` and proving the module exports no SILK handoff/settlement-intent factory.**
-- [ ] **Step 3: Add failures for policy revision mismatch, insufficient qualification, unverified evidence and M4+ reality request.**
+- [ ] **Step 3: Add failures for policy mismatch/expiry, insufficient qualification, evidence below minimum grade, non-admitted reality input and M4+ request.**
 - [ ] **Step 4: Run `npx vitest run modules/qualified-time/economic-eligibility.test.ts`; expect RED.**
-- [ ] **Step 5: Implement the pure classifier with one hard-coded pre-economic effect constant:**
+- [ ] **Step 5: Implement the classifier with one hard-coded pre-economic effect constant:**
 
 ```ts
 const PRE_ECONOMIC_EFFECT = {
@@ -308,11 +345,11 @@ const PRE_ECONOMIC_EFFECT = {
 
 - [ ] **Step 1: Write scripted-DB tests for insert-once, idempotent replay, conflicting replay and full T0→T4 reconstruction by claim/result ref.**
 - [ ] **Step 2: Write SQL-file tests requiring parent FKs T1→T0, contribution→T1, T2→contribution, T3→T2 and T4→T3/policy.**
-- [ ] **Step 3: Enforce non-negative millis and parent-child duration bounds using duplicated parent-bound duration columns validated at write time plus SQL CHECKs; store methods must transactionally verify the parent row before insert.**
+- [ ] **Step 3: Enforce non-negative millis and parent-child duration bounds using duplicated parent-bound duration columns validated at write time plus SQL CHECKs; store methods transactionally verify the parent row before insert.**
 - [ ] **Step 4: Require T4 tables to omit monetary-value and settlement-reference columns entirely; persist only `eligible`, readiness, reasons and false booleans `creates_obligation`, `payable`, `transferable`, `redeemable`, each constrained false.**
 - [ ] **Step 5: Add a schema test that rejects tables/standalone columns named `wallet`, `currency`, `exchange_rate`, `transfer`, `redemption`, `payment`, or `settlement_intent`.**
 - [ ] **Step 6: Run `npx vitest run modules/qualified-time/postgres-qualified-time-store.test.ts`; expect RED.**
-- [ ] **Step 7: Implement local query interfaces, SHA-256 source digests, conflict/readback behavior and reconstruction.**
+- [ ] **Step 7: Implement local query interfaces, SHA-256 source digests, conflict/readback behavior and reconstruction.** Reconstruct `economicValue: null` and `settlementRef: null` in application code because those columns are intentionally absent.
 - [ ] **Step 8: Re-run focused test + type-check; expect PASS.**
 - [ ] **Step 9: Commit `feat(qualified-time): add durable t0-t4 ledger`.**
 
@@ -337,10 +374,10 @@ const PRE_ECONOMIC_EFFECT = {
 - [ ] **Step 9: Run `npm run lint:simulation && npm run lint:qualification && npm run lint:qualified-time`; expect PASS.**
 - [ ] **Step 10: Run `npm run -s type-check`; expect PASS.**
 - [ ] **Step 11: Run `grep -R -nE 'from .*\/(silk|silk-dam)\/|SettlementIntent|SettlementState|EconomicConsequenceDraft' modules/qualified-time`; expect no implementation match.**
-- [ ] **Step 12: Inspect any negative test fixtures separately and verify no production implementation can emit `payable: true`, `transferable: true`, `createsObligation: true`, value, wallet, transfer, redemption, payment or settlement semantics.**
+- [ ] **Step 12: Inspect negative test fixtures separately and verify no production implementation can emit `payable: true`, `transferable: true`, `createsObligation: true`, value, wallet, transfer, redemption, payment or settlement semantics.**
 - [ ] **Step 13: Inspect the plan and implementation for unresolved placeholder markers; none may remain.**
 - [ ] **Step 14: Commit `chore(qualified-time): register complete r0.1 acceptance surface`.**
 
 ## Completion Gate
 
-R0.1 is complete only when the exact branch head passes all three focused subsystem suites, focused lint and repo type-check, and the durable T0–T4 chain can be replayed from immutable inputs without any monetary value, stored value, wage discharge, obligation, transfer, redemption, payment, settlement intent or SILK runtime effect. Promotion to M4 advisory or any live/economic release requires a separate reviewed design and implementation plan.
+R0.1 is complete only when the exact branch head passes all three focused subsystem suites, focused lint and repo type-check, and the durable T0–T4 chain can be replayed from immutable inputs without monetary value, stored value, wage discharge, obligation, transfer, redemption, payment, settlement intent or SILK runtime effect. Promotion to M4 advisory or any live/economic release requires a separate reviewed design and implementation plan.
