@@ -83,6 +83,15 @@ export interface CandidateClaimV1 {
   supersedesClaimRef?: string;
 }
 
+export interface ClaimSupersessionEventV1 {
+  eventRef: string;
+  candidateRef: string;
+  priorClaimRef: string;
+  supersedingClaimRef: string;
+  supersededAt: string;
+  sourceDigest: string;
+}
+
 export type EvidenceStateV1 =
   | "DISCOVERED"
   | "RETRIEVED"
