@@ -85,6 +85,7 @@ function evidenceBundle(overrides: Partial<AuthorityEvidenceBundleV1> = {}): Aut
   return {
     schema: "VSR_AUTHORITY_EVIDENCE_BUNDLE/1.0",
     bundleId: "AEB-MCP-NODE-SYNNERGYZE-R0.15",
+    status: "EVIDENCED",
     recordId: "CAR-MCP-NODE-SYNNERGYZE-R0.15",
     releaseBinding: {
       repository: "Believers-common-group/mcp-node-synnergyze",
@@ -132,6 +133,28 @@ function evidenceBundle(overrides: Partial<AuthorityEvidenceBundleV1> = {}): Aut
 }
 
 describe("VSR-SOFTWARE-RIGHTS-GRAPH-001 R0.15 authority evidence admissibility", () => {
+  it("holds an unavailable evidence bundle without inventing signature, review, or validity facts", () => {
+    const ingest = acceptedIngest();
+    const receipt = evaluateAuthorityEvidenceAdmissibilityV1({
+      ingest,
+      evidence: evidenceBundle({
+        status: "UNAVAILABLE",
+        provenanceEvidence: [],
+        signatureVerification: null,
+        reviewVerification: null,
+        effectiveFrom: null,
+        validUntil: null,
+      }),
+      evaluatedAt: "2026-08-27T19:30:00.000Z",
+    });
+
+    expect(receipt.decision).toBe("HOLD");
+    expect(receipt.reasonCodes).toContain("AUTHORITY_EVIDENCE_BUNDLE_NOT_EVIDENCED");
+    expect(receipt.reasonCodes).toContain("SIGNATURE_VERIFICATION_MISSING");
+    expect(receipt.reasonCodes).toContain("REVIEW_VERIFICATION_MISSING");
+    expect(receipt.reasonCodes).toContain("AUTHORITY_VALIDITY_WINDOW_MISSING");
+  });
+
   it("holds when provenance evidence does not bind the authority record", () => {
     const ingest = acceptedIngest();
     const bundle = evidenceBundle({
@@ -159,7 +182,7 @@ describe("VSR-SOFTWARE-RIGHTS-GRAPH-001 R0.15 authority evidence admissibility",
       ingest,
       evidence: evidenceBundle({
         signatureVerification: {
-          ...evidenceBundle().signatureVerification,
+          ...evidenceBundle().signatureVerification!,
           result: "INVALID",
         },
       }),
@@ -176,7 +199,7 @@ describe("VSR-SOFTWARE-RIGHTS-GRAPH-001 R0.15 authority evidence admissibility",
       ingest,
       evidence: evidenceBundle({
         reviewVerification: {
-          ...evidenceBundle().reviewVerification,
+          ...evidenceBundle().reviewVerification!,
           reviewerPrincipal: "DIGITALME:COMPETENT-PRINCIPAL",
           outcome: "APPROVED",
         },
