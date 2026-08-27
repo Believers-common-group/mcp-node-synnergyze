@@ -34,9 +34,10 @@ describe("GENESIS-REFERENCE-ASSET-MOA-001 public acquisition proof", () => {
       "PUBLIC-EVIDENCE PROTOTYPE — NOT AUTHORITATIVE PROPERTY RECORD",
     );
     expect(fixture.evidence.every((item) => item.accessClass === "PUBLIC")).toBe(true);
-    expect(
-      fixture.claims.some((claim) => claim.claimState === "AUTHORITATIVELY_VERIFIED"),
-    ).toBe(false);
+    expect(fixture.claims.map((claim) => claim.claimState)).toEqual([
+      "CORROBORATED_PUBLIC",
+      "INFERRED",
+    ]);
 
     const ledger = new CandidateClaimEngineV1();
     for (const evidence of fixture.evidence) ledger.ingestEvidenceV1(evidence);
