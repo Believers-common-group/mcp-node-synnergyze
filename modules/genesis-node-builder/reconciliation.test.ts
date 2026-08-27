@@ -73,7 +73,7 @@ describe("reconcileCandidateClaimsV1", () => {
     });
   });
 
-  it("turns competing unresolved identity clues into a blocking identity conflict", () => {
+  it("allows multiple survey numbers to represent one multi-parcel asset", () => {
     const identities: CandidateIdentityV1[] = [
       {
         identityRef: "IDENTITY:SURVEY:239",
@@ -89,6 +89,30 @@ describe("reconcileCandidateClaimsV1", () => {
         kind: "SURVEY_NUMBER",
         normalizedValue: "240",
         sourceEvidenceRefs: ["EVIDENCE:SURVEY:240"],
+        observedAt: "2026-08-28T00:01:00Z",
+      },
+    ];
+
+    const result = reconcileCandidateClaimsV1({ candidateRef, claims: [], identities });
+    expect(result.conflicts).toEqual([]);
+  });
+
+  it("turns competing singular municipal identifiers into a blocking identity conflict", () => {
+    const identities: CandidateIdentityV1[] = [
+      {
+        identityRef: "IDENTITY:PID:A",
+        candidateRef,
+        kind: "PID",
+        normalizedValue: "PID-A",
+        sourceEvidenceRefs: ["EVIDENCE:PID:A"],
+        observedAt: "2026-08-28T00:00:00Z",
+      },
+      {
+        identityRef: "IDENTITY:PID:B",
+        candidateRef,
+        kind: "PID",
+        normalizedValue: "PID-B",
+        sourceEvidenceRefs: ["EVIDENCE:PID:B"],
         observedAt: "2026-08-28T00:01:00Z",
       },
     ];
