@@ -44,9 +44,9 @@ const readiness: AcquisitionReadinessSnapshotV1 = {
   projectionOnly: true,
 };
 
-// @ts-expect-error Node Builder snapshots are projections and can never be authority.
 const invalidAuthoritySnapshot: AcquisitionReadinessSnapshotV1 = {
   ...readiness,
+  // @ts-expect-error Node Builder snapshots are projections and can never be authority.
   projectionOnly: false,
 };
 void invalidAuthoritySnapshot;
