@@ -92,18 +92,72 @@ function parseTime(value: string | null): number | null {
   return Number.isFinite(parsed) ? parsed : null;
 }
 
+function canonicalReleaseContext(value: ReleaseAdmissionContextV1): Record<string, unknown> {
+  return {
+    repository: value.repository,
+    sourceSha: value.sourceSha,
+    rightsEvidenceArtifactDigest: value.rightsEvidenceArtifactDigest,
+    authorityTransitionArtifactDigest: value.authorityTransitionArtifactDigest,
+    upstreamRightsStatus: value.upstreamRightsStatus,
+    upstreamLicenseExpression: value.upstreamLicenseExpression,
+    postForkRightsStatus: value.postForkRightsStatus,
+    postForkLicenseExpression: value.postForkLicenseExpression,
+    releaseRightsStatus: value.releaseRightsStatus,
+    governanceStatus: value.governanceStatus,
+    platformRoute: value.platformRoute,
+    platformPermissionStatus: value.platformPermissionStatus,
+    platformApprovalReference: value.platformApprovalReference ?? null,
+    purpose: value.purpose,
+    requestedCapability: value.requestedCapability,
+    requestedAt: value.requestedAt,
+    validUntil: value.validUntil,
+  };
+}
+
 function canonicalBundle(bundle: AuthorityEvidenceBundleV1): Record<string, unknown> {
   return {
     schema: bundle.schema,
     bundleId: bundle.bundleId,
     status: bundle.status,
     recordId: bundle.recordId,
-    releaseBinding: bundle.releaseBinding,
+    releaseBinding: {
+      repository: bundle.releaseBinding.repository,
+      sourceSha: bundle.releaseBinding.sourceSha,
+      rightsEvidenceArtifactDigest: bundle.releaseBinding.rightsEvidenceArtifactDigest,
+      authorityTransitionArtifactDigest: bundle.releaseBinding.authorityTransitionArtifactDigest,
+    },
     provenanceEvidence: [...bundle.provenanceEvidence]
-      .map((item) => ({ ...item }))
+      .map((item) => ({
+        ref: item.ref,
+        digest: item.digest,
+        subject: item.subject,
+        issuer: item.issuer,
+        observedAt: item.observedAt,
+      }))
       .sort((a, b) => `${a.ref}:${a.digest}`.localeCompare(`${b.ref}:${b.digest}`)),
-    signatureVerification: bundle.signatureVerification,
-    reviewVerification: bundle.reviewVerification,
+    signatureVerification:
+      bundle.signatureVerification === null
+        ? null
+        : {
+            signatureRef: bundle.signatureVerification.signatureRef,
+            signerPrincipal: bundle.signatureVerification.signerPrincipal,
+            recordDigest: bundle.signatureVerification.recordDigest,
+            verificationRef: bundle.signatureVerification.verificationRef,
+            verifiedAt: bundle.signatureVerification.verifiedAt,
+            result: bundle.signatureVerification.result,
+          },
+    reviewVerification:
+      bundle.reviewVerification === null
+        ? null
+        : {
+            reviewRef: bundle.reviewVerification.reviewRef,
+            reviewerPrincipal: bundle.reviewVerification.reviewerPrincipal,
+            reviewerCapacity: bundle.reviewVerification.reviewerCapacity,
+            recordDigest: bundle.reviewVerification.recordDigest,
+            verificationRef: bundle.reviewVerification.verificationRef,
+            reviewedAt: bundle.reviewVerification.reviewedAt,
+            outcome: bundle.reviewVerification.outcome,
+          },
     effectiveFrom: bundle.effectiveFrom,
     validUntil: bundle.validUntil,
   };
@@ -367,7 +421,7 @@ export function promoteReleaseContextFromAdmissibleAuthorityV1(input: {
         governanceStatus: "CLEARED",
       }
     : { ...context };
-  const receiptCore = {
+  const outwardCore = {
     decision: promoted ? ("PROMOTED" as const) : ("HOLD" as const),
     authorityRecordIngestReceiptId: ingest.receiptId,
     authorityEvidenceAdmissibilityReceiptId: admissibility.receiptId,
@@ -376,10 +430,14 @@ export function promoteReleaseContextFromAdmissibleAuthorityV1(input: {
     context: promotedContext,
     wardenEffect: "NOT_EVALUATED" as const,
   };
+  const hashCore = {
+    ...outwardCore,
+    context: canonicalReleaseContext(promotedContext),
+  };
 
   return {
     schema: "VSR_ADMISSIBLE_AUTHORITY_PROMOTION_RECEIPT/1.0",
-    receiptId: `AUTHORITY-PROMOTION-R0.15:${sha256(JSON.stringify(receiptCore))}`,
-    ...receiptCore,
+    receiptId: `AUTHORITY-PROMOTION-R0.15:${sha256(JSON.stringify(hashCore))}`,
+    ...outwardCore,
   };
 }
