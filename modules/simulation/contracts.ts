@@ -90,3 +90,35 @@ export interface RealityAdmissionDecisionV1 {
   envelopeHash: string;
   effectFlags: SimulationEffectFlagsV1;
 }
+
+export interface SimulationScenarioV1 {
+  scenarioRef: string;
+  mode: SimulationModeV1;
+  sourceRealityRef?: string;
+  populationSnapshotRef: string;
+  policyRevisionRefs: readonly string[];
+  qualificationSchemeRevisionRefs: readonly string[];
+  computeModelRefs: readonly string[];
+  createdAt: string;
+  realityClass: R0_1RealityMaturityV1;
+}
+
+export interface SimulationSnapshotV1 {
+  snapshotRef: string;
+  hash: string;
+  payload: unknown;
+}
+
+export interface SimulationOutcomeRecordV1 {
+  outcomeRef: string;
+  scenarioRef: string;
+  branchRef: string;
+  realityClass: R0_1RealityMaturityV1;
+  inputSnapshotRef: string;
+  inputHash: string;
+  outputSnapshotRef: string;
+  outputHash: string;
+  evaluatorRef: string;
+  computeModelRefs: readonly string[];
+  effectFlags: SimulationEffectFlagsV1;
+}
