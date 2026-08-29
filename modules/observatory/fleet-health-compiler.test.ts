@@ -65,4 +65,23 @@ describe("SYNNERGYZE-OBSERVATORY-ECOSYSTEM-HEALTH-001 R0.2 fleet aggregation", (
     ]);
     expect(fleet.derived).toBe(true);
   });
+
+  it("does not keep a cached healthy child current after its evidence freshness window expires", () => {
+    const cachedHealthy = availabilityProfile(
+      "GENESIS-NODE:ALPHA-NODE-001",
+      "2026-08-27T23:59:50.000Z",
+      "RIVER-EVIDENCE:ALPHA:AVAILABILITY",
+    );
+
+    expect(cachedHealthy.state).toBe("HEALTHY");
+
+    const fleet = compileFleetHealthV1({
+      aggregateRef: "OBSERVATORY-FLEET:SYNNERGYZE",
+      aggregateType: "NETWORK",
+      childProfiles: [cachedHealthy],
+      evaluatedAt: "2026-08-28T00:03:00.000Z",
+    });
+
+    expect(fleet.state).toBe("STALE");
+  });
 });
