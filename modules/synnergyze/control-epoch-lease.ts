@@ -6,8 +6,16 @@ import type {
   ContainmentTransitionReceiptV1,
 } from "./containment-control.ts";
 
+export interface ContainmentEpochContextV1 {
+  targetRef: string;
+  capabilityRef: string;
+  programRef: string;
+  domainRef?: string;
+}
+
 export interface ContainmentEpochSourceV1 extends ContainmentControlPlaneV1 {
   transitionReceipts(): readonly ContainmentTransitionReceiptV1[];
+  currentContextEpoch?(input: ContainmentEpochContextV1): number;
 }
 
 export interface ControlLeaseIssueRequestV1 {
@@ -94,7 +102,7 @@ export class ControlEpochLeaseServiceV1 implements ControlLeaseVerifierPortV1 {
 
     const evaluation = this.evaluateFor(input, input.issuedAt);
     if (evaluation.decision !== "ALLOW") throw new Error("control_lease_containment_denied");
-    const controlEpoch = this.currentEpoch(input.targetRef);
+    const controlEpoch = this.epochFor(input);
     const normalized: ControlLeaseIssueRequestV1 = { ...input };
     const leaseRef = `WARDEN-CONTROL-LEASE:${digest(
       JSON.stringify({
@@ -126,7 +134,7 @@ export class ControlEpochLeaseServiceV1 implements ControlLeaseVerifierPortV1 {
     if (evaluated < issued) throw new Error("control_lease_not_yet_valid");
     if (evaluated > expires) throw new Error("control_lease_expired");
 
-    const currentEpoch = this.currentEpoch(lease.targetRef);
+    const currentEpoch = this.epochFor(lease);
     if (currentEpoch !== lease.controlEpoch) throw new Error("control_lease_epoch_stale");
 
     const evaluation = this.evaluateFor(lease, input.evaluatedAt);
@@ -147,8 +155,20 @@ export class ControlEpochLeaseServiceV1 implements ControlLeaseVerifierPortV1 {
     return lease ? cloneLease(lease) : undefined;
   }
 
+  private epochFor(input: ContainmentEpochContextV1): number {
+    if (this.containment.currentContextEpoch) {
+      return this.containment.currentContextEpoch({
+        targetRef: input.targetRef,
+        capabilityRef: input.capabilityRef,
+        programRef: input.programRef,
+        domainRef: input.domainRef,
+      });
+    }
+    return this.currentEpoch(input.targetRef);
+  }
+
   private evaluateFor(
-    input: Pick<ControlLeaseIssueRequestV1, "targetRef" | "capabilityRef" | "programRef" | "domainRef">,
+    input: ContainmentEpochContextV1,
     evaluatedAt: string,
   ): ContainmentEvaluationV1 {
     return this.containment.evaluate({
