@@ -265,55 +265,58 @@ export class HostActuatorFabricV1 {
   }
 
   maintenanceActuator(): MaintenanceActuatorPortV1 {
-    const fabric = this;
+    const execute = (
+      command: MaintenanceActuationCommandV1,
+      executedAt: string,
+    ): MaintenanceActuationExecutionReceiptV1 => {
+      const hostReceipt = this.executeHostOperation({
+        targetRef: command.targetRef,
+        operation: operationForMaintenanceAction(command.action),
+        expectedStateRef: command.expectedStateRef,
+        authorityRef: command.authorityRef,
+        requestedAt: command.requestedAt,
+        executedAt,
+      });
+      this.maintenanceExecutions.set(hostReceipt.executionReceiptRef, hostReceipt);
+      return {
+        executionReceiptRef: hostReceipt.executionReceiptRef,
+        commandRef: command.commandRef,
+        actuatorRef: "HOST-ACTUATOR-FABRIC-001",
+        sessionRef: command.sessionRef,
+        targetRef: command.targetRef,
+        action: command.action,
+        executedAt: hostReceipt.executedAt,
+        synthetic: hostReceipt.synthetic,
+      };
+    };
+
+    const observe = (
+      command: MaintenanceActuationCommandV1,
+      receipt: MaintenanceActuationExecutionReceiptV1,
+      observedAt: string,
+    ): MaintenanceActuationObservationV1 => {
+      if (receipt.commandRef !== command.commandRef) {
+        throw new Error("maintenance_actuation_command_receipt_mismatch");
+      }
+      const hostReceipt = this.maintenanceExecutions.get(receipt.executionReceiptRef);
+      if (!hostReceipt) throw new Error("host_maintenance_execution_not_found");
+      const hostObservation = this.observeHostOperation(hostReceipt, observedAt);
+      return {
+        observationRef: hostObservation.observationRef,
+        executionReceiptRef: receipt.executionReceiptRef,
+        targetRef: receipt.targetRef,
+        action: receipt.action,
+        observedStateRef: hostObservation.observedStateRef,
+        observedAt: hostObservation.observedAt,
+        sourceEvidenceRef: hostObservation.sourceEvidenceRef,
+        synthetic: hostObservation.synthetic,
+      };
+    };
+
     return {
       actuatorRef: "HOST-ACTUATOR-FABRIC-001",
-      execute(
-        command: MaintenanceActuationCommandV1,
-        executedAt: string,
-      ): MaintenanceActuationExecutionReceiptV1 {
-        const hostReceipt = fabric.executeHostOperation({
-          targetRef: command.targetRef,
-          operation: operationForMaintenanceAction(command.action),
-          expectedStateRef: command.expectedStateRef,
-          authorityRef: command.authorityRef,
-          requestedAt: command.requestedAt,
-          executedAt,
-        });
-        fabric.maintenanceExecutions.set(hostReceipt.executionReceiptRef, hostReceipt);
-        return {
-          executionReceiptRef: hostReceipt.executionReceiptRef,
-          commandRef: command.commandRef,
-          actuatorRef: "HOST-ACTUATOR-FABRIC-001",
-          sessionRef: command.sessionRef,
-          targetRef: command.targetRef,
-          action: command.action,
-          executedAt: hostReceipt.executedAt,
-          synthetic: hostReceipt.synthetic,
-        };
-      },
-      observe(
-        command: MaintenanceActuationCommandV1,
-        receipt: MaintenanceActuationExecutionReceiptV1,
-        observedAt: string,
-      ): MaintenanceActuationObservationV1 {
-        if (receipt.commandRef !== command.commandRef) {
-          throw new Error("maintenance_actuation_command_receipt_mismatch");
-        }
-        const hostReceipt = fabric.maintenanceExecutions.get(receipt.executionReceiptRef);
-        if (!hostReceipt) throw new Error("host_maintenance_execution_not_found");
-        const hostObservation = fabric.observeHostOperation(hostReceipt, observedAt);
-        return {
-          observationRef: hostObservation.observationRef,
-          executionReceiptRef: receipt.executionReceiptRef,
-          targetRef: receipt.targetRef,
-          action: receipt.action,
-          observedStateRef: hostObservation.observedStateRef,
-          observedAt: hostObservation.observedAt,
-          sourceEvidenceRef: hostObservation.sourceEvidenceRef,
-          synthetic: hostObservation.synthetic,
-        };
-      },
+      execute,
+      observe,
     };
   }
 }
