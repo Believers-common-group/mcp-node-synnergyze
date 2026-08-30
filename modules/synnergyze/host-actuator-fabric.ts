@@ -330,6 +330,7 @@ export class HostActuatorFabricV1 {
         requestedAt: command.requestedAt,
         executedAt,
         controlLeaseRef: command.controlLeaseRef,
+        containmentAdmissionTokenRef: command.containmentAdmissionTokenRef,
       });
       this.maintenanceExecutions.set(hostReceipt.executionReceiptRef, hostReceipt);
       return {
@@ -343,6 +344,8 @@ export class HostActuatorFabricV1 {
         controlLeaseRef: hostReceipt.controlLeaseRef,
         controlEpoch: hostReceipt.controlEpoch,
         containmentEvaluationRef: hostReceipt.containmentEvaluationRef,
+        containmentAdmissionTokenRef: hostReceipt.containmentAdmissionTokenRef,
+        containmentAdmissionEnvelopeRef: hostReceipt.containmentAdmissionEnvelopeRef,
         synthetic: hostReceipt.synthetic,
       };
     };
