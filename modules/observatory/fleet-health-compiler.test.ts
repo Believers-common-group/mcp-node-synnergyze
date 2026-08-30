@@ -16,7 +16,12 @@ function subject(subjectRef: string): EcosystemHealthSubjectV1 {
   };
 }
 
-function availabilityProfile(subjectRef: string, observedAt: string, evidenceRef: string) {
+function availabilityProfile(
+  subjectRef: string,
+  observedAt: string,
+  evidenceRef: string,
+  confidence: number,
+) {
   return compileSubjectHealthProfileV1(
     subject(subjectRef),
     [{
@@ -28,7 +33,7 @@ function availabilityProfile(subjectRef: string, observedAt: string, evidenceRef
         evidenceRefs: [evidenceRef],
         condition: "POSITIVE",
         severity: "NONE",
-        confidence: 1,
+        confidence,
       },
     }],
     EVALUATED_AT,
@@ -36,16 +41,18 @@ function availabilityProfile(subjectRef: string, observedAt: string, evidenceRef
 }
 
 describe("SYNNERGYZE-OBSERVATORY-ECOSYSTEM-HEALTH-001 R0.2 fleet aggregation", () => {
-  it("preserves child evidence and refuses an all-green fleet when one child is stale", () => {
+  it("preserves child evidence, refuses stale all-green, and bounds aggregate confidence", () => {
     const healthy = availabilityProfile(
       "GENESIS-NODE:ALPHA-NODE-001",
       "2026-08-27T23:59:50.000Z",
       "RIVER-EVIDENCE:ALPHA:AVAILABILITY",
+      0.9,
     );
     const stale = availabilityProfile(
       "GENESIS-NODE:BETA-NODE-001",
       "2026-08-27T23:55:00.000Z",
       "RIVER-EVIDENCE:BETA:AVAILABILITY",
+      0.4,
     );
 
     const fleet = compileFleetHealthV1({
@@ -59,6 +66,7 @@ describe("SYNNERGYZE-OBSERVATORY-ECOSYSTEM-HEALTH-001 R0.2 fleet aggregation", (
     expect(fleet.state).not.toBe("HEALTHY");
     expect(fleet.children).toEqual([healthy, stale]);
     expect(fleet.childStateCounts).toEqual({ HEALTHY: 1, STALE: 1 });
+    expect(fleet.confidence).toBe(0.4);
     expect(fleet.evidenceRefs).toEqual([
       "RIVER-EVIDENCE:ALPHA:AVAILABILITY",
       "RIVER-EVIDENCE:BETA:AVAILABILITY",
