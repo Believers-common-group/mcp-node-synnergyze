@@ -1,5 +1,6 @@
 import { createHash } from "node:crypto";
 
+import type { ControlLeaseVerifierPortV1 } from "./control-epoch-lease.ts";
 import type {
   MaintenanceActuationCommandV1,
   MaintenanceActuationExecutionReceiptV1,
@@ -40,6 +41,7 @@ export interface HostOperationRequestV1 {
   authorityRef: string;
   requestedAt: string;
   executedAt?: string;
+  controlLeaseRef?: string;
 }
 
 export interface HostActuationExecutionReceiptV1 {
@@ -54,6 +56,9 @@ export interface HostActuationExecutionReceiptV1 {
   authorityRef: string;
   requestedAt: string;
   executedAt: string;
+  controlLeaseRef?: string;
+  controlEpoch?: number;
+  containmentEvaluationRef?: string;
   synthetic: boolean;
 }
 
@@ -150,6 +155,7 @@ export class InMemoryHostResourceAdapterV1 implements HostResourceAdapterPortV1 
         authorityRef: request.authorityRef,
         requestedAt: request.requestedAt,
         executedAt,
+        controlLeaseRef: request.controlLeaseRef ?? null,
       }),
     ).slice(0, 24)}`;
     return {
@@ -164,6 +170,7 @@ export class InMemoryHostResourceAdapterV1 implements HostResourceAdapterPortV1 
       authorityRef: request.authorityRef,
       requestedAt: request.requestedAt,
       executedAt,
+      controlLeaseRef: request.controlLeaseRef,
       synthetic: true,
     };
   }
@@ -214,6 +221,7 @@ export class HostActuatorFabricV1 {
   constructor(
     bindings: readonly HostResourceBindingV1[],
     adapters: readonly HostResourceAdapterPortV1[],
+    private readonly controlLeaseVerifier?: ControlLeaseVerifierPortV1,
   ) {
     for (const adapter of adapters) {
       requireText(adapter.providerRef, "host_provider_ref_required");
@@ -252,7 +260,28 @@ export class HostActuatorFabricV1 {
     requireText(input.expectedStateRef, "host_expected_state_required");
     requireText(input.authorityRef, "host_authority_ref_required");
     const executedAt = input.executedAt ?? input.requestedAt;
-    return adapter.execute(cloneBinding(binding), input, executedAt);
+
+    let controlEpoch: number | undefined;
+    let containmentEvaluationRef: string | undefined;
+    if (this.controlLeaseVerifier) {
+      if (!input.controlLeaseRef?.trim()) throw new Error("control_lease_required");
+      const verification = this.controlLeaseVerifier.verifyLease({
+        leaseRef: input.controlLeaseRef,
+        targetRef: input.targetRef,
+        authorityRef: input.authorityRef,
+        evaluatedAt: executedAt,
+      });
+      controlEpoch = verification.controlEpoch;
+      containmentEvaluationRef = verification.containmentEvaluationRef;
+    }
+
+    const receipt = adapter.execute(cloneBinding(binding), input, executedAt);
+    return {
+      ...receipt,
+      controlLeaseRef: input.controlLeaseRef,
+      controlEpoch,
+      containmentEvaluationRef,
+    };
   }
 
   observeHostOperation(
