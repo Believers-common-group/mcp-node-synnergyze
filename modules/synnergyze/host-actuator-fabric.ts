@@ -305,6 +305,7 @@ export class HostActuatorFabricV1 {
         authorityRef: command.authorityRef,
         requestedAt: command.requestedAt,
         executedAt,
+        controlLeaseRef: command.controlLeaseRef,
       });
       this.maintenanceExecutions.set(hostReceipt.executionReceiptRef, hostReceipt);
       return {
@@ -315,6 +316,9 @@ export class HostActuatorFabricV1 {
         targetRef: command.targetRef,
         action: command.action,
         executedAt: hostReceipt.executedAt,
+        controlLeaseRef: hostReceipt.controlLeaseRef,
+        controlEpoch: hostReceipt.controlEpoch,
+        containmentEvaluationRef: hostReceipt.containmentEvaluationRef,
         synthetic: hostReceipt.synthetic,
       };
     };
