@@ -23,6 +23,7 @@ function availabilityProfile(
   evidenceRef: string,
   condition: "POSITIVE" | "NEGATIVE" | "UNKNOWN" = "POSITIVE",
   severity: "NONE" | "WATCH" | "DEGRADED" | "CRITICAL" = "NONE",
+  evaluatedAt = EVALUATED_AT,
 ) {
   return compileSubjectHealthProfileV1(
     subject(subjectRef),
@@ -38,7 +39,7 @@ function availabilityProfile(
         confidence: 1,
       },
     }],
-    EVALUATED_AT,
+    evaluatedAt,
   );
 }
 
@@ -141,8 +142,11 @@ describe("SYNNERGYZE-OBSERVATORY-ECOSYSTEM-HEALTH-001 R0.2 fleet aggregation", (
   it("surfaces a stale child when mixed with a currently fresh child", () => {
     const fresh = availabilityProfile(
       "GENESIS-NODE:ALPHA-NODE-001",
-      "2026-08-27T23:59:50.000Z",
+      "2026-08-28T00:02:00.000Z",
       "RIVER-EVIDENCE:ALPHA:AVAILABILITY",
+      "POSITIVE",
+      "NONE",
+      "2026-08-28T00:02:05.000Z",
     );
     const cached = availabilityProfile(
       "GENESIS-NODE:BETA-NODE-001",
@@ -158,7 +162,7 @@ describe("SYNNERGYZE-OBSERVATORY-ECOSYSTEM-HEALTH-001 R0.2 fleet aggregation", (
     });
 
     expect(fleet.state).toBe("STALE");
-    expect(fleet.childStateCounts).toEqual({ STALE: 2 });
+    expect(fleet.childStateCounts).toEqual({ HEALTHY: 1, STALE: 1 });
   });
 
   it("preserves a CRITICAL child while its evidence is only aging", () => {
