@@ -21,6 +21,7 @@ export interface MaintenanceActuationRequestV1 {
   executedAt: string;
   observedAt: string;
   verifiedAt: string;
+  controlLeaseRef?: string;
 }
 
 export interface MaintenanceActuationCommandV1 {
@@ -33,6 +34,7 @@ export interface MaintenanceActuationCommandV1 {
   authorityRef: string;
   expectedStateRef: string;
   requestedAt: string;
+  controlLeaseRef?: string;
 }
 
 export interface MaintenanceActuationExecutionReceiptV1 {
@@ -43,6 +45,9 @@ export interface MaintenanceActuationExecutionReceiptV1 {
   targetRef: string;
   action: MaintenanceActuatorActionV1;
   executedAt: string;
+  controlLeaseRef?: string;
+  controlEpoch?: number;
+  containmentEvaluationRef?: string;
   synthetic: boolean;
 }
 
@@ -193,7 +198,7 @@ export class SyntheticMaintenanceActuatorV1 implements MaintenanceActuatorPortV1
     parseInstant(executedAt, "maintenance_actuation_invalid_execution_time");
     this.invocations += 1;
     const executionReceiptRef = `MAINTENANCE-ACTUATION-RECEIPT:${digest(
-      `${command.commandRef}|${this.actuatorRef}|${executedAt}`,
+      `${command.commandRef}|${this.actuatorRef}|${executedAt}|${command.controlLeaseRef ?? "NO_LEASE"}`,
     ).slice(0, 24)}`;
     return {
       executionReceiptRef,
@@ -203,6 +208,7 @@ export class SyntheticMaintenanceActuatorV1 implements MaintenanceActuatorPortV1
       targetRef: command.targetRef,
       action: command.action,
       executedAt,
+      controlLeaseRef: command.controlLeaseRef,
       synthetic: true,
     };
   }
@@ -289,6 +295,7 @@ export class MaintenanceActuationCoordinatorV1 {
         authorityRef: input.authorityRef,
         expectedStateRef,
         requestedAt: input.requestedAt,
+        controlLeaseRef: input.controlLeaseRef ?? null,
       }),
     ).slice(0, 24)}`;
     const command: MaintenanceActuationCommandV1 = {
@@ -301,6 +308,7 @@ export class MaintenanceActuationCoordinatorV1 {
       authorityRef: input.authorityRef,
       expectedStateRef,
       requestedAt: input.requestedAt,
+      controlLeaseRef: input.controlLeaseRef,
     };
 
     const execution = this.actuator.execute(command, input.executedAt);
@@ -332,18 +340,22 @@ export class MaintenanceActuationCoordinatorV1 {
       throw new Error("maintenance_effect_verification_state_mismatch");
     }
 
+    const evidenceRefs = [
+      commandRef,
+      execution.executionReceiptRef,
+      observation.observationRef,
+      observation.sourceEvidenceRef,
+      effectVerificationRef,
+    ];
+    if (execution.controlLeaseRef) evidenceRefs.push(execution.controlLeaseRef);
+    if (execution.containmentEvaluationRef) evidenceRefs.push(execution.containmentEvaluationRef);
+
     const checkpointReceipt = this.maintenance.recordCheckpoint({
       sessionRef: input.sessionRef,
       checkpoint: input.checkpoint,
       authorityRef: input.authorityRef,
       recordedAt: input.verifiedAt,
-      evidenceRefs: [
-        commandRef,
-        execution.executionReceiptRef,
-        observation.observationRef,
-        observation.sourceEvidenceRef,
-        effectVerificationRef,
-      ],
+      evidenceRefs,
     });
 
     return {
