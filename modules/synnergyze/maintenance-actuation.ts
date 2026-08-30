@@ -43,7 +43,7 @@ export interface MaintenanceActuationExecutionReceiptV1 {
   targetRef: string;
   action: MaintenanceActuatorActionV1;
   executedAt: string;
-  synthetic: true;
+  synthetic: boolean;
 }
 
 export interface MaintenanceActuationObservationV1 {
@@ -54,7 +54,20 @@ export interface MaintenanceActuationObservationV1 {
   observedStateRef: string;
   observedAt: string;
   sourceEvidenceRef: string;
-  synthetic: true;
+  synthetic: boolean;
+}
+
+export interface MaintenanceActuatorPortV1 {
+  readonly actuatorRef: string;
+  execute(
+    command: MaintenanceActuationCommandV1,
+    executedAt: string,
+  ): MaintenanceActuationExecutionReceiptV1;
+  observe(
+    command: MaintenanceActuationCommandV1,
+    receipt: MaintenanceActuationExecutionReceiptV1,
+    observedAt: string,
+  ): MaintenanceActuationObservationV1;
 }
 
 export interface MaintenanceEffectVerificationV1 {
@@ -163,7 +176,7 @@ function checkpointReady(
   }
 }
 
-export class SyntheticMaintenanceActuatorV1 {
+export class SyntheticMaintenanceActuatorV1 implements MaintenanceActuatorPortV1 {
   readonly actuatorRef = "SYNTHETIC-MAINTENANCE-ACTUATOR-001";
   private invocations = 0;
   private readonly observedEffects = new Map<MaintenanceActuatorActionV1, string>();
@@ -231,7 +244,7 @@ export class SyntheticMaintenanceActuatorV1 {
 export class MaintenanceActuationCoordinatorV1 {
   constructor(
     private readonly maintenance: InMemoryMaintenanceControlPlaneV1,
-    private readonly actuator: SyntheticMaintenanceActuatorV1,
+    private readonly actuator: MaintenanceActuatorPortV1,
   ) {}
 
   executeCheckpoint(input: MaintenanceActuationRequestV1): MaintenanceActuationResultV1 {
