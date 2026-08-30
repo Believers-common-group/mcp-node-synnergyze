@@ -22,6 +22,7 @@ export interface MaintenanceActuationRequestV1 {
   observedAt: string;
   verifiedAt: string;
   controlLeaseRef?: string;
+  containmentAdmissionTokenRef?: string;
 }
 
 export interface MaintenanceActuationCommandV1 {
@@ -35,6 +36,7 @@ export interface MaintenanceActuationCommandV1 {
   expectedStateRef: string;
   requestedAt: string;
   controlLeaseRef?: string;
+  containmentAdmissionTokenRef?: string;
 }
 
 export interface MaintenanceActuationExecutionReceiptV1 {
@@ -48,6 +50,8 @@ export interface MaintenanceActuationExecutionReceiptV1 {
   controlLeaseRef?: string;
   controlEpoch?: number;
   containmentEvaluationRef?: string;
+  containmentAdmissionTokenRef?: string;
+  containmentAdmissionEnvelopeRef?: string;
   synthetic: boolean;
 }
 
@@ -198,7 +202,7 @@ export class SyntheticMaintenanceActuatorV1 implements MaintenanceActuatorPortV1
     parseInstant(executedAt, "maintenance_actuation_invalid_execution_time");
     this.invocations += 1;
     const executionReceiptRef = `MAINTENANCE-ACTUATION-RECEIPT:${digest(
-      `${command.commandRef}|${this.actuatorRef}|${executedAt}|${command.controlLeaseRef ?? "NO_LEASE"}`,
+      `${command.commandRef}|${this.actuatorRef}|${executedAt}|${command.controlLeaseRef ?? "NO_LEASE"}|${command.containmentAdmissionTokenRef ?? "NO_ADMISSION"}`,
     ).slice(0, 24)}`;
     return {
       executionReceiptRef,
@@ -209,6 +213,7 @@ export class SyntheticMaintenanceActuatorV1 implements MaintenanceActuatorPortV1
       action: command.action,
       executedAt,
       controlLeaseRef: command.controlLeaseRef,
+      containmentAdmissionTokenRef: command.containmentAdmissionTokenRef,
       synthetic: true,
     };
   }
@@ -296,6 +301,7 @@ export class MaintenanceActuationCoordinatorV1 {
         expectedStateRef,
         requestedAt: input.requestedAt,
         controlLeaseRef: input.controlLeaseRef ?? null,
+        containmentAdmissionTokenRef: input.containmentAdmissionTokenRef ?? null,
       }),
     ).slice(0, 24)}`;
     const command: MaintenanceActuationCommandV1 = {
@@ -309,6 +315,7 @@ export class MaintenanceActuationCoordinatorV1 {
       expectedStateRef,
       requestedAt: input.requestedAt,
       controlLeaseRef: input.controlLeaseRef,
+      containmentAdmissionTokenRef: input.containmentAdmissionTokenRef,
     };
 
     const execution = this.actuator.execute(command, input.executedAt);
@@ -349,6 +356,8 @@ export class MaintenanceActuationCoordinatorV1 {
     ];
     if (execution.controlLeaseRef) evidenceRefs.push(execution.controlLeaseRef);
     if (execution.containmentEvaluationRef) evidenceRefs.push(execution.containmentEvaluationRef);
+    if (execution.containmentAdmissionTokenRef) evidenceRefs.push(execution.containmentAdmissionTokenRef);
+    if (execution.containmentAdmissionEnvelopeRef) evidenceRefs.push(execution.containmentAdmissionEnvelopeRef);
 
     const checkpointReceipt = this.maintenance.recordCheckpoint({
       sessionRef: input.sessionRef,
