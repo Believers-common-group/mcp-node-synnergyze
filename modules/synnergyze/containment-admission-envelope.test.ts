@@ -12,6 +12,7 @@ import {
   type ContainmentAdmissionVerifierPortV1,
 } from "./containment-admission-envelope.ts";
 import { HostActuatorFabricV1, InMemoryHostResourceAdapterV1 } from "./host-actuator-fabric.ts";
+import type { MaintenanceActuationCommandV1 } from "./maintenance-actuation.ts";
 
 const AUTHORITY = "WARDEN:ALPHA:CONTAINMENT-001";
 const CAPABILITY = "maintenance.control";
@@ -189,6 +190,53 @@ describe("WARDEN-MAINTENANCE-CONTROL-001 R0.6 containment admission envelope", (
       controlLeaseRef: lease.leaseRef,
       containmentAdmissionTokenRef: admitted.token.tokenRef,
     });
+    expect(receipt.containmentAdmissionTokenRef).toBe(admitted.token.tokenRef);
+    expect(receipt.containmentAdmissionEnvelopeRef).toBe(admitted.envelope.envelopeRef);
+    expect(provider.invocationCount()).toBe(1);
+  });
+
+  it("propagates admission lineage through the maintenance actuator bridge", () => {
+    const { admission, leases } = fixture();
+    const admitted = admit(admission);
+    const lease = leases.issueLease({
+      targetRef: DEVICE,
+      capabilityRef: CAPABILITY,
+      programRef: PROGRAM,
+      authorityRef: AUTHORITY,
+      issuedAt: "2026-08-30T07:31:00.000Z",
+      expiresAt: "2026-08-30T07:36:00.000Z",
+    });
+    const provider = new InMemoryHostResourceAdapterV1("HOST-PROVIDER:MAINT-001");
+    const host = new HostActuatorFabricV1(
+      [
+        {
+          bindingRef: "HOST-BINDING:MAINT",
+          targetRef: DEVICE,
+          resourceKind: "SERVICE",
+          providerRef: provider.providerRef,
+          resourceRef: "SERVICE:ALPHA-WARDEN",
+          allowedOperations: ["STOP"],
+        },
+      ],
+      [provider],
+      leases,
+      admission,
+    );
+    const command: MaintenanceActuationCommandV1 = {
+      commandRef: "WARDEN-MAINTENANCE-COMMAND:R0.6",
+      sessionRef: "MAINTENANCE-SESSION:R0.6",
+      targetRef: DEVICE,
+      programRef: PROGRAM,
+      action: "STOP",
+      checkpoint: "STOP_VERIFIED",
+      authorityRef: AUTHORITY,
+      expectedStateRef: "PAUSED",
+      requestedAt: "2026-08-30T07:32:00.000Z",
+      controlLeaseRef: lease.leaseRef,
+      containmentAdmissionTokenRef: admitted.token.tokenRef,
+    };
+
+    const receipt = host.maintenanceActuator().execute(command, "2026-08-30T07:32:01.000Z");
     expect(receipt.containmentAdmissionTokenRef).toBe(admitted.token.tokenRef);
     expect(receipt.containmentAdmissionEnvelopeRef).toBe(admitted.envelope.envelopeRef);
     expect(provider.invocationCount()).toBe(1);
