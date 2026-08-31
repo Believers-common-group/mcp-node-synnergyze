@@ -8,6 +8,8 @@
     "schemas:channels": "node --experimental-strip-types --no-warnings=ExperimentalWarnings scripts/write-channel-schemas.ts",
     "lint": "eslint --ext .ts src api rc1 compute agent-fabric site-handoff modules",
     "test": "vitest",
+    "test:channels": "vitest run modules/channels",
+    "test:channel-r0-1": "vitest run modules/channels/r0-1-acceptance.test.ts modules/river/publication-service.test.ts",
     "test:node-builder": "vitest run modules/genesis-node-builder",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
     "test:rc1": "vitest run rc1/runtime.test.ts",
