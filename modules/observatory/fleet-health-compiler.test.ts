@@ -4,6 +4,7 @@ import type { EcosystemHealthSubjectV1, SubjectHealthProfileV1 } from "./contrac
 import { compileSubjectHealthProfileV1 } from "./health-compiler.ts";
 import { compileFleetHealthV1 } from "./fleet-health-compiler.ts";
 
+// Adversarial fleet freshness review: keep this file test-only.
 const EVALUATED_AT = "2026-08-28T00:00:00.000Z";
 
 function subject(subjectRef: string): EcosystemHealthSubjectV1 {
