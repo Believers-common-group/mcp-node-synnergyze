@@ -3,7 +3,11 @@ import type { SyntheticRiverPublicationServiceV1 } from "../river/publication-se
 import { buildAuthorizedActionEnvelopeV1 } from "../river/reservation-service.ts";
 import type { SyntheticRiverReservationServiceV1 } from "../river/reservation-service.ts";
 import type { WardenDecisionRequestV1, WardenDecisionV1 } from "../warden/contracts.ts";
-import { classificationAllowed } from "./classification.ts";
+import {
+  assertProjectionFieldNameSafe,
+  assertProjectionValueSafe,
+  classificationAllowed,
+} from "./classification.ts";
 import type {
   ChannelDeliveryEnvelopeV1,
   HeaderBoardV1,
@@ -29,6 +33,25 @@ function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
+function hasOwn(record: object, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(record, key);
+}
+
+function assertBoardPayloadSafe(board: HeaderBoardV1): void {
+  for (const [fieldName, value] of Object.entries(board.payload)) {
+    if (!hasOwn(board.fieldClassifications, fieldName)) {
+      throw new Error(`header_board_field_classification_missing:${fieldName}`);
+    }
+    assertProjectionFieldNameSafe(fieldName);
+    assertProjectionValueSafe(value, fieldName);
+  }
+  for (const fieldName of Object.keys(board.fieldClassifications)) {
+    if (!hasOwn(board.payload, fieldName)) {
+      throw new Error(`header_board_payload_missing_for_classification:${fieldName}`);
+    }
+  }
+}
+
 function assertRouteAdmitsBoard(board: HeaderBoardV1, route: ServiceRouteV1): void {
   if (!classificationAllowed(board.classification, route.allowedClassifications)) {
     throw new Error(`route_board_classification_violation:${board.classification}`);
@@ -50,6 +73,7 @@ export class SyntheticChannelPublicationServiceV1 {
   async publish(input: ChannelPublicationInputV1): Promise<ChannelPublicationOutcomeV1> {
     if (input.route.status !== "ACTIVE") throw new Error("route_inactive");
     if (input.route.channelRef !== input.board.channelRef) throw new Error("route_channel_mismatch");
+    assertBoardPayloadSafe(input.board);
     assertRouteAdmitsBoard(input.board, input.route);
     if (input.wardenRequest.targetRef !== input.board.headerBoardRef) {
       throw new Error("publication_warden_target_mismatch");
