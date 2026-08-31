@@ -1,3 +1,5 @@
+import type { PublicationDeliveryState } from "../channels/contracts.ts";
+
 export interface ActionEnvelopeV1 {
   actionRef: string;
   requestRef: string;
@@ -73,4 +75,17 @@ export interface CausalTraceV1 {
   effectRef?: string;
   sealRef?: string;
   sealed: boolean;
+}
+
+export interface PublicationEvidenceInputV1 {
+  headerBoardRef: string;
+  channelRef: string;
+  routeRef: string;
+  sourceEventRefs: readonly string[];
+  reservation: EvidenceReservationV1;
+  state: PublicationDeliveryState;
+  providerReceiptRef?: string;
+  payloadDigest: string;
+  observedAt: string;
+  correlationId: string;
 }
