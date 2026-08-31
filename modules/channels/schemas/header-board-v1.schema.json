@@ -3,24 +3,66 @@
   "$id": "https://virtualsilkroad.local/schemas/header-board-v1.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["headerBoardRef", "channelRef", "publicationType", "subjectRef", "sourceEventRefs", "publisherPrincipalRef", "publisherCapacityRef", "audiencePolicyRef", "classification", "effectiveFrom", "status", "actionCapabilities", "payload", "fieldClassifications", "correlationId"],
+  "required": [
+    "headerBoardRef",
+    "channelRef",
+    "publicationType",
+    "subjectRef",
+    "sourceEventRefs",
+    "publisherPrincipalRef",
+    "publisherCapacityRef",
+    "audiencePolicyRef",
+    "classification",
+    "effectiveFrom",
+    "status",
+    "actionCapabilities",
+    "payload",
+    "fieldClassifications",
+    "correlationId"
+  ],
   "properties": {
-    "headerBoardRef": {"type": "string", "minLength": 1},
-    "channelRef": {"type": "string", "minLength": 1},
-    "publicationType": {"type": "string", "enum": ["ARTICLE", "BULLETIN", "ALERT", "STATUS", "PROPOSAL", "REQUEST", "TECHNICAL_NOTICE"]},
-    "subjectRef": {"type": "string", "minLength": 1},
-    "sourceEventRefs": {"type": "array", "minItems": 1, "items": {"type": "string", "minLength": 1}},
-    "publisherPrincipalRef": {"type": "string", "minLength": 1},
-    "publisherCapacityRef": {"type": "string", "minLength": 1},
-    "audiencePolicyRef": {"type": "string", "minLength": 1},
-    "classification": {"type": "string", "enum": ["PUBLIC", "CUSTOMER", "PARTNER", "WORKFORCE", "MANAGEMENT", "GOVERNED_INTERNAL", "CONFIDENTIAL", "RESTRICTED"]},
-    "effectiveFrom": {"type": "string"},
-    "effectiveUntil": {"type": "string"},
-    "status": {"type": "string", "enum": ["DRAFT", "PREPARED", "PENDING_ADMISSION", "ADMITTED", "ESCALATED", "DENIED", "PUBLISHED", "OBSERVED", "ACKNOWLEDGED", "ACTED_ON", "SUPERSEDED", "WITHDRAWN", "EXPIRED", "ARCHIVED"]},
-    "actionCapabilities": {"type": "array", "uniqueItems": true, "items": {"type": "string", "enum": ["ACKNOWLEDGE", "COMMENT", "SUBSCRIBE", "REQUEST_ACCESS", "PROPOSE_CHANGE", "OPEN_API", "FORK", "ACCEPT", "REJECT", "REQUEST_REVIEW", "EXECUTE_BOUNDED_ACTION"]}},
-    "payload": {"type": "object"},
-    "fieldClassifications": {"type": "object", "additionalProperties": {"type": "string", "enum": ["PUBLIC", "CUSTOMER", "PARTNER", "WORKFORCE", "MANAGEMENT", "GOVERNED_INTERNAL", "CONFIDENTIAL", "RESTRICTED"]}},
-    "supersedesRef": {"type": "string", "minLength": 1},
-    "correlationId": {"type": "string", "minLength": 1}
+    "headerBoardRef": { "type": "string", "minLength": 1 },
+    "channelRef": { "type": "string", "minLength": 1 },
+    "publicationType": {
+      "type": "string",
+      "enum": ["ARTICLE", "BULLETIN", "ALERT", "STATUS", "PROPOSAL", "REQUEST", "TECHNICAL_NOTICE"]
+    },
+    "subjectRef": { "type": "string", "minLength": 1 },
+    "sourceEventRefs": {
+      "type": "array",
+      "items": { "type": "string", "minLength": 1 },
+      "minItems": 1
+    },
+    "publisherPrincipalRef": { "type": "string", "minLength": 1 },
+    "publisherCapacityRef": { "type": "string", "minLength": 1 },
+    "audiencePolicyRef": { "type": "string", "minLength": 1 },
+    "classification": {
+      "type": "string",
+      "enum": ["PUBLIC", "CUSTOMER", "PARTNER", "WORKFORCE", "MANAGEMENT", "GOVERNED_INTERNAL", "CONFIDENTIAL", "RESTRICTED"]
+    },
+    "effectiveFrom": { "type": "string" },
+    "effectiveUntil": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["DRAFT", "PREPARED", "PENDING_ADMISSION", "ADMITTED", "ESCALATED", "DENIED", "PUBLISHED", "OBSERVED", "ACKNOWLEDGED", "ACTED_ON", "SUPERSEDED", "WITHDRAWN", "EXPIRED", "ARCHIVED"]
+    },
+    "actionCapabilities": {
+      "type": "array",
+      "uniqueItems": true,
+      "items": {
+        "type": "string",
+        "enum": ["ACKNOWLEDGE", "COMMENT", "SUBSCRIBE", "REQUEST_ACCESS", "PROPOSE_CHANGE", "OPEN_API", "FORK", "ACCEPT", "REJECT", "REQUEST_REVIEW", "EXECUTE_BOUNDED_ACTION"]
+      }
+    },
+    "payload": { "type": "object" },
+    "fieldClassifications": {
+      "type": "object",
+      "additionalProperties": {
+        "type": "string",
+        "enum": ["PUBLIC", "CUSTOMER", "PARTNER", "WORKFORCE", "MANAGEMENT", "GOVERNED_INTERNAL", "CONFIDENTIAL", "RESTRICTED"]
+      }
+    },
+    "supersedesRef": { "type": "string", "minLength": 1 },
+    "correlationId": { "type": "string", "minLength": 1 }
   }
 }
