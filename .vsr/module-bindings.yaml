@@ -104,11 +104,13 @@ modules:
         - ActionEnvelopeV1
         - EventEnvelopeV1
         - EffectReceiptV1
+        - PublicationEvidenceInputV1
       output:
         - EvidenceReservationV1
         - EventReceiptV1
         - EvidenceSealV1
         - CausalTraceV1
+        - PublicationReceiptV1
       type_file: modules/river/contracts.ts
     depends_on:
       - CANONICAL-REGISTRY-REFS
@@ -120,6 +122,7 @@ modules:
       - SENTINEL-ALPHA-OBSERVABILITY-001
       - EMPIRE-BACK-GATE-001
       - SILK-DAM-001
+      - VSR-CHANNEL-001
     forbidden:
       - authorize-action
       - rewrite-sealed-evidence
@@ -129,6 +132,7 @@ modules:
     tests:
       - modules/contracts.test.ts
       - modules/river/reservation-service.test.ts
+      - modules/river/publication-service.test.ts
       - modules/rc1-adapters.test.ts
       - rc1/runtime.test.ts
 
