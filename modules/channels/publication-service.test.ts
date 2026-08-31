@@ -220,4 +220,26 @@ describe("Channel publication service", () => {
     }
     expect(second.receipt.receiptRef).toBe(first.receipt.receiptRef);
   });
+
+  it("records route failure after reservation as River evidence", async () => {
+    const adapter = new SyntheticInMemoryRouteAdapterV1("DELIVERY_FAILED");
+    const riverPublications = new SyntheticRiverPublicationServiceV1();
+    const service = new SyntheticChannelPublicationServiceV1(
+      new SyntheticRiverReservationServiceV1(),
+      riverPublications,
+      adapter,
+    );
+    const outcome = await service.publish({
+      board,
+      route,
+      wardenRequest,
+      wardenDecision: allowDecision(),
+      reservedAt: "2026-09-01T00:01:20Z",
+      observedAt: "2026-09-01T00:01:30Z",
+    });
+    expect(outcome.state).toBe("DELIVERY_FAILED");
+    expect(adapter.deliveryCount()).toBe(1);
+    expect(riverPublications.all()).toHaveLength(1);
+    expect(riverPublications.all()[0].state).toBe("DELIVERY_FAILED");
+  });
 });
