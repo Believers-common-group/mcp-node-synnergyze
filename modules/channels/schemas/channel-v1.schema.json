@@ -1,0 +1,17 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virtualsilkroad.local/schemas/channel-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["channelRef", "ownerContextRef", "subjectScopeRef", "status", "allowedClassifications", "routeRefs", "version", "createdAt"],
+  "properties": {
+    "channelRef": {"type": "string", "minLength": 1},
+    "ownerContextRef": {"type": "string", "minLength": 1},
+    "subjectScopeRef": {"type": "string", "minLength": 1},
+    "status": {"type": "string", "enum": ["ACTIVE", "INACTIVE", "ARCHIVED"]},
+    "allowedClassifications": {"type": "array", "minItems": 1, "uniqueItems": true, "items": {"type": "string", "enum": ["PUBLIC", "CUSTOMER", "PARTNER", "WORKFORCE", "MANAGEMENT", "GOVERNED_INTERNAL", "CONFIDENTIAL", "RESTRICTED"]}},
+    "routeRefs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "version": {"type": "integer", "minimum": 1},
+    "createdAt": {"type": "string"}
+  }
+}
