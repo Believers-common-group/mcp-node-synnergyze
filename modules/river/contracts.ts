@@ -1,5 +1,3 @@
-import type { PublicationDeliveryState } from "../channels/contracts.ts";
-
 export interface ActionEnvelopeV1 {
   actionRef: string;
   requestRef: string;
@@ -77,13 +75,33 @@ export interface CausalTraceV1 {
   sealed: boolean;
 }
 
+export type PublicationDeliveryStateV1 =
+  | "DELIVERED"
+  | "DELIVERY_FAILED"
+  | "DELIVERY_UNCERTAIN";
+
+export interface PublicationReceiptV1 {
+  receiptRef: string;
+  headerBoardRef: string;
+  channelRef: string;
+  routeRef: string;
+  sourceEventRefs: readonly string[];
+  riverReservationRef: string;
+  wardenDecisionRef: string;
+  state: PublicationDeliveryStateV1;
+  providerReceiptRef?: string;
+  payloadDigest: string;
+  observedAt: string;
+  correlationId: string;
+}
+
 export interface PublicationEvidenceInputV1 {
   headerBoardRef: string;
   channelRef: string;
   routeRef: string;
   sourceEventRefs: readonly string[];
   reservation: EvidenceReservationV1;
-  state: PublicationDeliveryState;
+  state: PublicationDeliveryStateV1;
   providerReceiptRef?: string;
   payloadDigest: string;
   observedAt: string;
