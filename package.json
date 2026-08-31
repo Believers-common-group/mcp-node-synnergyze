@@ -5,6 +5,7 @@
   "scripts": {
     "start": "node --experimental-strip-types --no-warnings=ExperimentalWarnings src/app.ts",
     "type-check": "tsc --noEmit",
+    "schemas:channels": "node --experimental-strip-types --no-warnings=ExperimentalWarnings scripts/write-channel-schemas.ts",
     "lint": "eslint --ext .ts src api rc1 compute agent-fabric site-handoff modules",
     "test": "vitest",
     "test:node-builder": "vitest run modules/genesis-node-builder",
