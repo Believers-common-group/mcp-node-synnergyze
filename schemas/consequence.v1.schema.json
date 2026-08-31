@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"consequence.v1.schema.json","enum":["D0","D1","D2","D3","D4","D5"]}

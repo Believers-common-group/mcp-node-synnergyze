@@ -5,7 +5,8 @@
   "scripts": {
     "start": "node --experimental-strip-types --no-warnings=ExperimentalWarnings src/app.ts",
     "type-check": "tsc --noEmit",
-    "lint": "eslint --ext .ts src api rc1 compute agent-fabric site-handoff modules",
+    "lint": "eslint --ext .ts src api rc1 compute agent-fabric site-handoff modules packages",
+    "lint:pef": "eslint packages/contracts modules/pef",
     "test": "vitest",
     "test:node-builder": "vitest run modules/genesis-node-builder",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
@@ -33,6 +34,10 @@
     "test:bag-lock-runtime": "vitest run modules/synnergyze/warden-request-bridge.test.ts modules/synnergyze/execution-gate.test.ts",
     "test:sites": "vitest run api/sites.test.ts",
     "test:site-handoff": "vitest run site-handoff",
+    "test:pef-contracts": "vitest run packages/contracts/contracts.test.ts modules/pef/ingestion.test.ts",
+    "test:pef-persistence": "vitest run modules/pef/persistence.test.ts modules/pef/postgres-store.test.ts",
+    "test:pef": "vitest run packages/contracts/contracts.test.ts modules/pef/ingestion.test.ts modules/pef/persistence.test.ts modules/pef/postgres-store.test.ts",
+    "verify:pef": "npm run type-check && npm run lint:pef && npm run test:pef",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
     "debug": "mcp-inspector npm start"

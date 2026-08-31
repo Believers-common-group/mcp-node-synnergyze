@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2020-12/schema","$id":"assertion.v1.schema.json","enum":["physical_observation","derived_fact","inference","authority","execution","effect","exception","reconciliation","compensation"]}
