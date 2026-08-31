@@ -90,104 +90,135 @@ function nonAllow(decision: "DENY" | "ESCALATE"): WardenDecisionV1 {
   };
 }
 
-describe("Channel publication service", () => {
-  it("publishes after Warden ALLOW and River reservation", async () => {
-    const adapter = new SyntheticInMemoryRouteAdapterV1();
-    const riverPublications = new SyntheticRiverPublicationServiceV1();
-    const service = new SyntheticChannelPublicationServiceV1(
+function service(adapter = new SyntheticInMemoryRouteAdapterV1()) {
+  const riverPublications = new SyntheticRiverPublicationServiceV1();
+  return {
+    adapter,
+    riverPublications,
+    service: new SyntheticChannelPublicationServiceV1(
       new SyntheticRiverReservationServiceV1(),
       riverPublications,
       adapter,
-    );
-    const outcome = await service.publish({
+    ),
+  };
+}
+
+const publicationTimes = {
+  reservedAt: "2026-09-01T00:01:20Z",
+  observedAt: "2026-09-01T00:01:30Z",
+} as const;
+
+describe("Channel publication service", () => {
+  it("publishes after Warden ALLOW and River reservation", async () => {
+    const runtime = service();
+    const outcome = await runtime.service.publish({
       board,
       route,
       wardenRequest,
       wardenDecision: allowDecision(),
-      reservedAt: "2026-09-01T00:01:20Z",
-      observedAt: "2026-09-01T00:01:30Z",
+      ...publicationTimes,
     });
     expect(outcome.state).toBe("PUBLISHED");
-    expect(adapter.deliveryCount()).toBe(1);
+    expect(runtime.adapter.deliveryCount()).toBe(1);
     if (outcome.state !== "PUBLISHED") throw new Error("expected_published_outcome");
     expect(outcome.receipt.state).toBe("DELIVERED");
-    expect(riverPublications.all()).toHaveLength(1);
+    expect(runtime.riverPublications.all()).toHaveLength(1);
   });
 
   it.each(["DENY", "ESCALATE"] as const)("produces zero route effects for %s", async (decision) => {
-    const adapter = new SyntheticInMemoryRouteAdapterV1();
-    const riverPublications = new SyntheticRiverPublicationServiceV1();
-    const service = new SyntheticChannelPublicationServiceV1(
-      new SyntheticRiverReservationServiceV1(),
-      riverPublications,
-      adapter,
-    );
-    const outcome = await service.publish({
+    const runtime = service();
+    const outcome = await runtime.service.publish({
       board,
       route,
       wardenRequest,
       wardenDecision: nonAllow(decision),
-      reservedAt: "2026-09-01T00:01:20Z",
-      observedAt: "2026-09-01T00:01:30Z",
+      ...publicationTimes,
     });
     expect(outcome.state).toBe(decision === "DENY" ? "DENIED" : "ESCALATED");
-    expect(adapter.deliveryCount()).toBe(0);
-    expect(riverPublications.all()).toHaveLength(0);
+    expect(runtime.adapter.deliveryCount()).toBe(0);
+    expect(runtime.riverPublications.all()).toHaveLength(0);
   });
 
   it("fails before route delivery when River reservation is expired", async () => {
-    const adapter = new SyntheticInMemoryRouteAdapterV1();
-    const service = new SyntheticChannelPublicationServiceV1(
-      new SyntheticRiverReservationServiceV1(),
-      new SyntheticRiverPublicationServiceV1(),
-      adapter,
-    );
-    await expect(service.publish({
-      board,
-      route,
-      wardenRequest,
-      wardenDecision: allowDecision(),
-      reservedAt: "2026-09-01T00:20:00Z",
-      observedAt: "2026-09-01T00:20:01Z",
-    })).rejects.toThrow("river_warden_decision_expired");
-    expect(adapter.deliveryCount()).toBe(0);
+    const runtime = service();
+    await expect(
+      runtime.service.publish({
+        board,
+        route,
+        wardenRequest,
+        wardenDecision: allowDecision(),
+        reservedAt: "2026-09-01T00:20:00Z",
+        observedAt: "2026-09-01T00:20:01Z",
+      }),
+    ).rejects.toThrow("river_warden_decision_expired");
+    expect(runtime.adapter.deliveryCount()).toBe(0);
   });
 
   it("rejects a route missing any field classification carried by the Header Board", async () => {
-    const adapter = new SyntheticInMemoryRouteAdapterV1();
-    const service = new SyntheticChannelPublicationServiceV1(
-      new SyntheticRiverReservationServiceV1(),
-      new SyntheticRiverPublicationServiceV1(),
-      adapter,
-    );
+    const runtime = service();
     const partnerOnlyRoute: ServiceRouteV1 = { ...route, allowedClassifications: ["PARTNER"] };
-    await expect(service.publish({
-      board,
-      route: partnerOnlyRoute,
-      wardenRequest,
-      wardenDecision: allowDecision(),
-      reservedAt: "2026-09-01T00:01:20Z",
-      observedAt: "2026-09-01T00:01:30Z",
-    })).rejects.toThrow("route_payload_classification_violation:PUBLIC");
-    expect(adapter.deliveryCount()).toBe(0);
+    await expect(
+      runtime.service.publish({
+        board,
+        route: partnerOnlyRoute,
+        wardenRequest,
+        wardenDecision: allowDecision(),
+        ...publicationTimes,
+      }),
+    ).rejects.toThrow("route_payload_classification_violation:PUBLIC");
+    expect(runtime.adapter.deliveryCount()).toBe(0);
+  });
+
+  it("rejects manually constructed payload keys without field classification", async () => {
+    const runtime = service();
+    const unsafeBoard: HeaderBoardV1 = {
+      ...board,
+      payload: { ...board.payload, unclassifiedNote: "must not cross a route" },
+    };
+    await expect(
+      runtime.service.publish({
+        board: unsafeBoard,
+        route,
+        wardenRequest,
+        wardenDecision: allowDecision(),
+        ...publicationTimes,
+      }),
+    ).rejects.toThrow("header_board_field_classification_missing:unclassifiedNote");
+    expect(runtime.adapter.deliveryCount()).toBe(0);
+  });
+
+  it("rejects nested secret-like payload keys even when the top-level field is classified", async () => {
+    const runtime = service();
+    const unsafeBoard: HeaderBoardV1 = {
+      ...board,
+      payload: {
+        ...board.payload,
+        metadata: { credentials: { accessToken: "do-not-publish" } },
+      },
+      fieldClassifications: { ...board.fieldClassifications, metadata: "PUBLIC" },
+    };
+    await expect(
+      runtime.service.publish({
+        board: unsafeBoard,
+        route,
+        wardenRequest,
+        wardenDecision: allowDecision(),
+        ...publicationTimes,
+      }),
+    ).rejects.toThrow("projection_secret_field_forbidden:metadata.credentials.accessToken");
+    expect(runtime.adapter.deliveryCount()).toBe(0);
   });
 
   it("sends only the transport envelope, not source/event/authority metadata", async () => {
-    const adapter = new SyntheticInMemoryRouteAdapterV1();
-    const service = new SyntheticChannelPublicationServiceV1(
-      new SyntheticRiverReservationServiceV1(),
-      new SyntheticRiverPublicationServiceV1(),
-      adapter,
-    );
-    await service.publish({
+    const runtime = service();
+    await runtime.service.publish({
       board,
       route,
       wardenRequest,
       wardenDecision: allowDecision(),
-      reservedAt: "2026-09-01T00:01:20Z",
-      observedAt: "2026-09-01T00:01:30Z",
+      ...publicationTimes,
     });
-    const delivered = adapter.deliveries()[0];
+    const delivered = runtime.adapter.deliveries()[0];
     expect(delivered.payload).toEqual(board.payload);
     expect(delivered).not.toHaveProperty("sourceEventRefs");
     expect(delivered).not.toHaveProperty("fieldClassifications");
@@ -196,25 +227,18 @@ describe("Channel publication service", () => {
   });
 
   it("is idempotent across duplicate publication attempts", async () => {
-    const adapter = new SyntheticInMemoryRouteAdapterV1();
-    const riverPublications = new SyntheticRiverPublicationServiceV1();
-    const service = new SyntheticChannelPublicationServiceV1(
-      new SyntheticRiverReservationServiceV1(),
-      riverPublications,
-      adapter,
-    );
+    const runtime = service();
     const input = {
       board,
       route,
       wardenRequest,
       wardenDecision: allowDecision(),
-      reservedAt: "2026-09-01T00:01:20Z",
-      observedAt: "2026-09-01T00:01:30Z",
+      ...publicationTimes,
     } as const;
-    const first = await service.publish(input);
-    const second = await service.publish(input);
-    expect(adapter.deliveryCount()).toBe(1);
-    expect(riverPublications.all()).toHaveLength(1);
+    const first = await runtime.service.publish(input);
+    const second = await runtime.service.publish(input);
+    expect(runtime.adapter.deliveryCount()).toBe(1);
+    expect(runtime.riverPublications.all()).toHaveLength(1);
     if (first.state !== "PUBLISHED" || second.state !== "PUBLISHED") {
       throw new Error("expected_published_outcomes");
     }
@@ -222,24 +246,17 @@ describe("Channel publication service", () => {
   });
 
   it("records route failure after reservation as River evidence", async () => {
-    const adapter = new SyntheticInMemoryRouteAdapterV1("DELIVERY_FAILED");
-    const riverPublications = new SyntheticRiverPublicationServiceV1();
-    const service = new SyntheticChannelPublicationServiceV1(
-      new SyntheticRiverReservationServiceV1(),
-      riverPublications,
-      adapter,
-    );
-    const outcome = await service.publish({
+    const runtime = service(new SyntheticInMemoryRouteAdapterV1("DELIVERY_FAILED"));
+    const outcome = await runtime.service.publish({
       board,
       route,
       wardenRequest,
       wardenDecision: allowDecision(),
-      reservedAt: "2026-09-01T00:01:20Z",
-      observedAt: "2026-09-01T00:01:30Z",
+      ...publicationTimes,
     });
     expect(outcome.state).toBe("DELIVERY_FAILED");
-    expect(adapter.deliveryCount()).toBe(1);
-    expect(riverPublications.all()).toHaveLength(1);
-    expect(riverPublications.all()[0].state).toBe("DELIVERY_FAILED");
+    expect(runtime.adapter.deliveryCount()).toBe(1);
+    expect(runtime.riverPublications.all()).toHaveLength(1);
+    expect(runtime.riverPublications.all()[0].state).toBe("DELIVERY_FAILED");
   });
 });
