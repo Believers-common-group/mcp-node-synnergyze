@@ -1,4 +1,8 @@
-import { assertProjectionFieldNameSafe, classificationAllowed } from "./classification.ts";
+import {
+  assertProjectionFieldNameSafe,
+  assertProjectionValueSafe,
+  classificationAllowed,
+} from "./classification.ts";
 import type {
   ChannelClassification,
   ChannelV1,
@@ -19,6 +23,7 @@ export function prepareHeaderBoardV1(draft: HeaderBoardDraftV1, channel: Channel
   const fieldClassifications: Record<string, ChannelClassification> = {};
   for (const [fieldName, projected] of Object.entries(draft.fields)) {
     assertProjectionFieldNameSafe(fieldName);
+    assertProjectionValueSafe(projected.value, fieldName);
     if (classificationAllowed(projected.classification, channel.allowedClassifications)) {
       payload[fieldName] = structuredClone(projected.value);
       fieldClassifications[fieldName] = projected.classification;
