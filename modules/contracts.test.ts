@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { BnrReadinessStateV1 } from "./bnr/contracts.ts";
@@ -153,5 +154,10 @@ describe("VSR network contract types", () => {
   it("keeps Header Board projections separate from executable authority", () => {
     expect(preparedBoard.status).toBe("PREPARED");
     expect(preparedBoard.fieldClassifications.message).toBe("PUBLIC");
+  });
+
+  it("keeps River evidence contracts independent of Channel projection contracts", () => {
+    const riverContracts = readFileSync(new URL("./river/contracts.ts", import.meta.url), "utf8");
+    expect(riverContracts).not.toContain("../channels/");
   });
 });
