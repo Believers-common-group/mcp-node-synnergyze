@@ -1,3 +1,8 @@
+import type {
+  PublicationDeliveryStateV1,
+  PublicationReceiptV1 as RiverPublicationReceiptV1,
+} from "../river/contracts.ts";
+
 export type JsonPrimitive = string | number | boolean | null;
 export type JsonValue = JsonPrimitive | JsonValue[] | { [key: string]: JsonValue };
 
@@ -122,25 +127,8 @@ export interface PublicationAdmissionRequestV1 {
   correlationId: string;
 }
 
-export type PublicationDeliveryState =
-  | "DELIVERED"
-  | "DELIVERY_FAILED"
-  | "DELIVERY_UNCERTAIN";
-
-export interface PublicationReceiptV1 {
-  receiptRef: string;
-  headerBoardRef: string;
-  channelRef: string;
-  routeRef: string;
-  sourceEventRefs: readonly string[];
-  riverReservationRef: string;
-  wardenDecisionRef: string;
-  state: PublicationDeliveryState;
-  providerReceiptRef?: string;
-  payloadDigest: string;
-  observedAt: string;
-  correlationId: string;
-}
+export type PublicationDeliveryState = PublicationDeliveryStateV1;
+export type PublicationReceiptV1 = RiverPublicationReceiptV1;
 
 export interface ServiceRouteV1 {
   routeRef: string;
