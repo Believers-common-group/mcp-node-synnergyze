@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
-import type { PublicationReceiptV1 } from "../channels/contracts.ts";
-import type { PublicationEvidenceInputV1 } from "./contracts.ts";
+import type { PublicationEvidenceInputV1, PublicationReceiptV1 } from "./contracts.ts";
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
