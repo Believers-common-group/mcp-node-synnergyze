@@ -71,19 +71,18 @@ function stateAtFleetEvaluation(
 
 export function compileFleetHealthV1(input: FleetHealthInputV1): FleetHealthResultV1 {
   const childStateCounts: Partial<Record<HealthStateV1, number>> = {};
-  const evidenceRefs: string[] = [];
-  const seenEvidenceRefs = new Set<string>();
+  const evidenceRefSet = new Set<string>();
   const childStates: HealthStateV1[] = [];
+  const children = [...input.childProfiles].sort((left, right) =>
+    left.subject.subjectRef.localeCompare(right.subject.subjectRef)
+  );
 
-  for (const child of input.childProfiles) {
+  for (const child of children) {
     const childState = stateAtFleetEvaluation(child, input.evaluatedAt);
     childStates.push(childState);
     childStateCounts[childState] = (childStateCounts[childState] ?? 0) + 1;
     for (const evidenceRef of child.evidenceRefs) {
-      if (!seenEvidenceRefs.has(evidenceRef)) {
-        seenEvidenceRefs.add(evidenceRef);
-        evidenceRefs.push(evidenceRef);
-      }
+      evidenceRefSet.add(evidenceRef);
     }
   }
 
@@ -92,12 +91,12 @@ export function compileFleetHealthV1(input: FleetHealthInputV1): FleetHealthResu
     aggregateRef: input.aggregateRef,
     aggregateType: input.aggregateType,
     state: aggregateStates(childStates),
-    children: input.childProfiles,
+    children,
     childStateCounts,
-    confidence: input.childProfiles.length === 0
+    confidence: children.length === 0
       ? 0
-      : Math.min(...input.childProfiles.map((child) => child.confidence)),
-    evidenceRefs,
+      : Math.min(...children.map((child) => child.confidence)),
+    evidenceRefs: [...evidenceRefSet].sort((left, right) => left.localeCompare(right)),
     evaluatedAt: input.evaluatedAt,
     derived: true,
   };
