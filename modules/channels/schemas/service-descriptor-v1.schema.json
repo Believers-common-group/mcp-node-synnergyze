@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virtualsilkroad.local/schemas/service-descriptor-v1.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["serviceRef", "handle", "transport", "endpoint", "capabilityRefs", "publicKeyFingerprint", "signerRef", "validFrom", "validUntil", "version", "signature"],
+  "properties": {
+    "serviceRef": {"type": "string", "minLength": 1},
+    "handle": {"type": "string", "minLength": 1},
+    "transport": {"type": "string", "enum": ["IN_MEMORY", "WEB", "APP", "EMAIL", "SMS", "WHATSAPP", "SLACK", "MARKETPLACE_API", "MCP", "PRIVATE_SERVICE"]},
+    "endpoint": {"type": "string", "minLength": 1},
+    "capabilityRefs": {"type": "array", "items": {"type": "string", "minLength": 1}},
+    "publicKeyFingerprint": {"type": "string", "pattern": "^sha256:[a-f0-9]{64}$"},
+    "signerRef": {"type": "string", "minLength": 1},
+    "validFrom": {"type": "string"},
+    "validUntil": {"type": "string"},
+    "version": {"type": "integer", "minimum": 1},
+    "signature": {"type": "string", "minLength": 1}
+  }
+}
