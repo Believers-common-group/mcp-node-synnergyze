@@ -1,9 +1,7 @@
 import { createHash } from "node:crypto";
-import { SyntheticRiverPublicationServiceV1 } from "../river/publication-service.ts";
-import {
-  buildAuthorizedActionEnvelopeV1,
-  SyntheticRiverReservationServiceV1,
-} from "../river/reservation-service.ts";
+import type { SyntheticRiverPublicationServiceV1 } from "../river/publication-service.ts";
+import { buildAuthorizedActionEnvelopeV1 } from "../river/reservation-service.ts";
+import type { SyntheticRiverReservationServiceV1 } from "../river/reservation-service.ts";
 import type { WardenDecisionRequestV1, WardenDecisionV1 } from "../warden/contracts.ts";
 import { classificationAllowed } from "./classification.ts";
 import type {
