@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import type { BnrReadinessStateV1 } from "./bnr/contracts.ts";
+import type { HeaderBoardV1 } from "./channels/contracts.ts";
 import type { NormalizedIntentV1 } from "./qel/contracts.ts";
 import type { EvidenceSealV1 } from "./river/contracts.ts";
 import type { EconomicConsequenceDraftV1 } from "./silk-dam/contracts.ts";
@@ -106,6 +107,27 @@ const invalidFinalSettlement: SettlementStateV1 = {
 };
 void invalidFinalSettlement;
 
+const preparedBoard: HeaderBoardV1 = {
+  headerBoardRef: "HEADER:CONTRACT:001",
+  channelRef: "VSR-CHANNEL:CONTRACT:001",
+  publicationType: "BULLETIN",
+  subjectRef: "SUBJECT:001",
+  sourceEventRefs: ["EVENT:001"],
+  publisherPrincipalRef: "DIGITALME:001",
+  publisherCapacityRef: "CAPACITY:001",
+  audiencePolicyRef: "POLICY:001",
+  classification: "PUBLIC",
+  effectiveFrom: "2026-09-01T00:00:00Z",
+  status: "PREPARED",
+  actionCapabilities: [],
+  payload: { message: "public" },
+  fieldClassifications: { message: "PUBLIC" },
+  correlationId: "CORR:001",
+};
+
+// @ts-expect-error Publication projection cannot carry an executable token.
+preparedBoard.actionToken = "forbidden";
+
 describe("VSR network contract types", () => {
   it("keeps authorization outside QEL and inside an explicit Warden allow decision", () => {
     expect(normalizedIntent.authorized).toBe(false);
@@ -126,5 +148,10 @@ describe("VSR network contract types", () => {
     expect(finalSettlement.state).toBe("FINAL");
     expect(finalSettlement.settlementFinality).toBe(true);
     expect(finalSettlement.finalityEvidenceRef).toBe("FINALITY-EVIDENCE-001");
+  });
+
+  it("keeps Header Board projections separate from executable authority", () => {
+    expect(preparedBoard.status).toBe("PREPARED");
+    expect(preparedBoard.fieldClassifications.message).toBe("PUBLIC");
   });
 });
