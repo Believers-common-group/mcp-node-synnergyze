@@ -1,0 +1,22 @@
+name: channel-r0-1-ci
+
+on:
+  push:
+    branches:
+      - feat/vsr-channel-header-board-r0-1
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+          cache: npm
+      - name: Install dependencies
+        run: npm ci
+      - name: Type check
+        run: npm run type-check
+      - name: Channel tests
+        run: npm test -- modules/channels
