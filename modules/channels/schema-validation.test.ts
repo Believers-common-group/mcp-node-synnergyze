@@ -1,12 +1,12 @@
 import { readFileSync } from "node:fs";
-import Ajv2020 from "ajv/dist/2020.js";
+import { Ajv2020 as Ajv } from "ajv/dist/2020.js";
 import { describe, expect, it } from "vitest";
 
 function load(name: string): object {
   return JSON.parse(readFileSync(new URL(`./schemas/${name}`, import.meta.url), "utf8")) as object;
 }
 
-const ajv = new Ajv2020({ allErrors: true, strict: false });
+const ajv = new Ajv({ allErrors: true, strict: false });
 
 describe("Channel Fabric schemas", () => {
   it("accepts a valid Header Board and rejects authority-field injection", () => {
