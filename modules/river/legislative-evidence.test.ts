@@ -67,6 +67,7 @@ const brief: ImpactBriefV1 = {
   completeness: "DEGRADED",
   confidence: signal.confidence,
   evidenceRefs: event.evidenceRefs,
+  createdAt: "2026-09-02T00:00:00.000Z",
 };
 
 describe("buildLegislativeEvidenceReceiptV1", () => {

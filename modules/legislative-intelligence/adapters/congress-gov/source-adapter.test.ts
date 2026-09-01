@@ -40,7 +40,7 @@ class FakeClient {
   billBody: unknown = billDetail;
   pageNext = false;
 
-  async getJson(path: string, type: SourceEnvelopeV1["sourceObjectType"]): Promise<SourceEnvelopeV1> {
+  async getJson(path: string, _type: SourceEnvelopeV1["sourceObjectType"]): Promise<SourceEnvelopeV1> {
     this.paths.push(path);
     if (path === "/bill/119/hr/6048") return envelope(path, "bill", this.billBody);
     if (path === "/bill/119/hr/6048/actions") {
