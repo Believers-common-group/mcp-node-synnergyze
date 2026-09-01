@@ -4,6 +4,7 @@ export interface CongressBillDetailResponse {
     type?: string;
     number?: string;
     title?: string;
+    introducedDate?: string;
     updateDate?: string;
     originChamber?: string;
     sponsors?: Array<{
@@ -55,6 +56,7 @@ export interface CanonicalCongressBillBundle {
   objectType: "bill";
   objectId: string;
   title?: string;
+  introducedDate?: string;
   sourceUpdatedAt?: string;
   originChamber?: string;
   actions: Array<{ actionDate?: string; text: string }>;
