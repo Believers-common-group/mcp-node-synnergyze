@@ -12,9 +12,24 @@ import {
 
 function fixture(): LegislativeIntelligenceResultV1 {
   return {
-    signal: { signalRef: "PESTEL-SIGNAL:test" },
-    brief: { briefRef: "PESTEL-BRIEF:test", observedFacts: ["Lifecycle observed as PROPOSAL."], riskHypotheses: [], opportunityHypotheses: [] },
+    event: { eventRef: "LEG-EVENT:test" },
+    signal: {
+      signalRef: "PESTEL-SIGNAL:test",
+      legislativeEventRef: "LEG-EVENT:test",
+    },
+    brief: {
+      briefRef: "PESTEL-BRIEF:test",
+      signalRef: "PESTEL-SIGNAL:test",
+      observedFacts: ["Lifecycle observed as PROPOSAL."],
+      riskHypotheses: [],
+      opportunityHypotheses: [],
+    },
     registryCandidates: [{ candidateRef: "REGISTRY-IMPACT:test", relation: "MAY_AFFECT" }],
+    evidence: { evidenceRef: "RIVER-LEG-EVIDENCE:test" },
+    workCandidate: {
+      workRef: "SYNNERGYZE-PESTEL-WORK:test",
+      signalRef: "PESTEL-SIGNAL:test",
+    },
     privateMarker: "sentinel-secret",
   } as unknown as LegislativeIntelligenceResultV1;
 }
