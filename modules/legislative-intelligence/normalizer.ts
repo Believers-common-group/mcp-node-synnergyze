@@ -149,6 +149,10 @@ function mapSourceBundleV1(bundle: RelatedSourceBundleV1): CanonicalCongressBill
     objectType: "bill",
     objectId: canonicalBillObjectId(bill, bundle.bill.sourceObjectId),
     title: bill.title,
+    introducedDate:
+      typeof bill.introducedDate === "string" && bill.introducedDate.length > 0
+        ? bill.introducedDate
+        : undefined,
     sourceUpdatedAt: bill.updateDate,
     originChamber: bill.originChamber,
     actions,
@@ -175,7 +179,8 @@ export function normalizeCongressBillEventV1(
   normalizedAt: string,
 ): NormalizedLegislativeEventV1 {
   const actions = sortedActions(bundle.actions);
-  const introduced = actions.some((action) => /introduced in (house|senate)/i.test(action.text));
+  const authoritativeIntroducedAt = bundle.introducedDate ?? introducedAt(actions);
+  const introduced = Boolean(authoritativeIntroducedAt);
   const lifecycle = normalizeLegislativeLifecycleV1({
     introduced,
     actions: actions.map((action) => ({
@@ -204,7 +209,7 @@ export function normalizeCongressBillEventV1(
     lifecycle,
     title: bundle.title ?? null,
     summary: bundle.summary ?? null,
-    introducedAt: introducedAt(actions) ?? null,
+    introducedAt: authoritativeIntroducedAt ?? null,
     latestActionAt: latestActionAt(actions) ?? null,
     effectiveDate: bundle.lawState?.effectiveDate ?? null,
     subjects,
@@ -226,7 +231,7 @@ export function normalizeCongressBillEventV1(
     lifecycle,
     title: bundle.title,
     summary: bundle.summary,
-    introducedAt: introducedAt(actions),
+    introducedAt: authoritativeIntroducedAt,
     latestActionAt: latestActionAt(actions),
     effectiveDate: bundle.lawState?.effectiveDate,
     subjects,
