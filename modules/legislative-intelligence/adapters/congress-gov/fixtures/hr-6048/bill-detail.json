@@ -1,0 +1,14 @@
+{
+  "bill": {
+    "congress": 119,
+    "type": "HR",
+    "number": "6048",
+    "title": "NDO Fairness Act of 2025",
+    "introducedDate": "2025-11-03",
+    "updateDate": "2026-08-31",
+    "originChamber": "House",
+    "latestAction": { "actionDate": "2026-08-31", "text": "Passed House" },
+    "sponsors": [{ "bioguideId": "E000001" }],
+    "laws": []
+  }
+}

@@ -1,0 +1,10 @@
+{
+  "subjects": {
+    "legislativeSubjects": [
+      { "name": "Constitutional rights" },
+      { "name": "Electronic communications" },
+      { "name": "Law enforcement" }
+    ],
+    "policyArea": { "name": "Law" }
+  }
+}
