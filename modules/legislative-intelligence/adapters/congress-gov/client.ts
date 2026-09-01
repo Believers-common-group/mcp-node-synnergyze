@@ -12,6 +12,7 @@ import type {
 } from "./credential-provider.ts";
 
 const CONGRESS_BASE_URL = "https://api.congress.gov/v3";
+const CONGRESS_BASE_PATH = "/v3";
 const MAX_RETRIES = 2;
 
 export type CongressGovHttpErrorCode =
@@ -117,7 +118,7 @@ function validateSourcePath(sourcePath: string): URL {
   if (!sourcePath.startsWith("/")) throw new Error("congress_path_must_be_relative");
   const url = new URL(`${CONGRESS_BASE_URL}${sourcePath}`);
   const base = new URL(CONGRESS_BASE_URL);
-  if (url.origin !== base.origin || (url.pathname !== "/v3" && !url.pathname.startsWith("/v3/"))) {
+  if (url.origin !== base.origin || (url.pathname !== CONGRESS_BASE_PATH && !url.pathname.startsWith(`${CONGRESS_BASE_PATH}/`))) {
     throw new Error("congress_path_outside_api_base");
   }
   for (const key of url.searchParams.keys()) {
@@ -127,6 +128,11 @@ function validateSourcePath(sourcePath: string): URL {
     }
   }
   return url;
+}
+
+function dispatchedSourcePath(url: URL): string {
+  const path = url.pathname.slice(CONGRESS_BASE_PATH.length) || "/";
+  return `${path}${url.search}`;
 }
 
 function retryAfterMilliseconds(value: string | null, nowMs: number): number | undefined {
@@ -168,13 +174,18 @@ export class CongressGovClientV1 {
 
   async getSource(request: CongressGovSourceRequestV1, retrievedAt: string): Promise<SourceEnvelopeV1> {
     const url = validateSourcePath(request.sourcePath);
+    url.searchParams.set("format", "json");
+    const sourcePath = dispatchedSourcePath(url);
     let response: Response | undefined;
 
     for (let attempt = 0; attempt <= MAX_RETRIES; attempt += 1) {
       const credential = await this.credentials.getCredential();
       response = await this.fetchFn(url, {
         method: "GET",
-        headers: { "X-Api-Key": credential.apiKey },
+        headers: {
+          Accept: "application/json",
+          "X-Api-Key": credential.apiKey,
+        },
       });
 
       if (response.ok) {
@@ -193,7 +204,7 @@ export class CongressGovClientV1 {
           sourceSystem: "congress.gov",
           sourceObjectId: request.sourceObjectId,
           sourceObjectType: request.sourceObjectType,
-          sourcePath: request.sourcePath,
+          sourcePath,
           retrievedAt,
           httpStatus: response.status,
           rateLimitLimit: optionalInteger(response.headers.get("x-ratelimit-limit")),
