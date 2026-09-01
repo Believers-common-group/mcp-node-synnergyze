@@ -40,6 +40,8 @@ export interface CongressSummariesResponse {
   summaries?: Array<{
     actionDate?: string;
     actionDesc?: string;
+    updateDate?: string;
+    versionCode?: string;
     text?: string;
   }>;
 }
