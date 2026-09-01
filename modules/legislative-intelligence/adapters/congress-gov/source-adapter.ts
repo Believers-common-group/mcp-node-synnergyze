@@ -13,6 +13,11 @@ const MAX_PAGES = 100;
 
 type RelatedType = "actions" | "amendments" | "committees" | "subjects" | "summaries";
 
+interface CanonicalLawCandidate {
+  path: string;
+  sourceObjectId: string;
+}
+
 function canonicalBillId(ref: LegislativeObjectRefV1): string {
   return `${ref.congress}-${ref.billType.toLowerCase()}-${ref.number}`;
 }
@@ -83,13 +88,48 @@ function safeApiSourcePath(value: string): string | undefined {
 function declaredLawEntries(body: unknown): Record<string, unknown>[] {
   const bill = record(record(body)?.bill);
   const laws = bill?.laws;
-  return Array.isArray(laws) ? laws.map(record).filter((item): item is Record<string, unknown> => Boolean(item)) : [];
+  return Array.isArray(laws)
+    ? laws.map(record).filter((item): item is Record<string, unknown> => Boolean(item))
+    : [];
 }
 
-function lawSourceObjectId(ref: LegislativeObjectRefV1, entry: Record<string, unknown>): string {
-  const type = typeof entry.type === "string" ? entry.type.toLowerCase().replace(/\s+/g, "-") : "law";
-  const number = typeof entry.number === "string" || typeof entry.number === "number" ? String(entry.number) : "unknown";
-  return `${ref.congress}-${type}-${number}`;
+function canonicalLawType(value: unknown): "pub" | "priv" | undefined {
+  if (typeof value !== "string") return undefined;
+  const normalized = value.trim().toLowerCase().replace(/\s+/g, " ");
+  if (normalized === "public law") return "pub";
+  if (normalized === "private law") return "priv";
+  return undefined;
+}
+
+function canonicalLawCandidate(
+  ref: LegislativeObjectRefV1,
+  entry: Record<string, unknown>,
+): CanonicalLawCandidate | undefined {
+  const lawType = canonicalLawType(entry.type);
+  if (!lawType) return undefined;
+
+  const rawNumber =
+    typeof entry.number === "string" || typeof entry.number === "number"
+      ? String(entry.number).trim()
+      : "";
+  const match = /^(\d+)-(\d+)$/.exec(rawNumber);
+  if (!match) return undefined;
+
+  const declaredCongress = Number.parseInt(match[1] ?? "", 10);
+  const sequence = Number.parseInt(match[2] ?? "", 10);
+  if (
+    !Number.isInteger(declaredCongress) ||
+    declaredCongress !== ref.congress ||
+    !Number.isInteger(sequence) ||
+    sequence <= 0
+  ) {
+    return undefined;
+  }
+
+  return {
+    path: `/law/${ref.congress}/${lawType}/${sequence}`,
+    sourceObjectId: `${ref.congress}-${lawType}-${sequence}`,
+  };
 }
 
 export class CongressGovSourceAdapterV1 implements LegislativeSourceAdapterV1 {
@@ -162,12 +202,13 @@ export class CongressGovSourceAdapterV1 implements LegislativeSourceAdapterV1 {
     if (entries.length === 0) return undefined;
 
     const candidates = entries
-      .map((entry) => ({ entry, url: typeof entry.url === "string" ? safeApiSourcePath(entry.url) : undefined }))
-      .filter((candidate): candidate is { entry: Record<string, unknown>; url: string } => Boolean(candidate.url))
-      .sort((a, b) => a.url.localeCompare(b.url));
+      .map((entry) => canonicalLawCandidate(ref, entry))
+      .filter((candidate): candidate is CanonicalLawCandidate => Boolean(candidate))
+      .sort((a, b) => a.path.localeCompare(b.path));
 
     const selected = candidates[0];
     if (!selected) throw new Error("LAW_DETAIL_UNRESOLVABLE");
-    return this.client.getJson(selected.url, "law", lawSourceObjectId(ref, selected.entry));
+
+    return this.client.getJson(selected.path, "law", selected.sourceObjectId);
   }
 }
