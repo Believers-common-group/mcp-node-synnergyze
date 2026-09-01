@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virtualsilkroad.com/schemas/pestel/impact-brief.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion","briefRef","eventRef","signalRef","observedFacts","interpretations","impactCandidates","unknowns","evidenceRefs"],
+  "properties": {
+    "schemaVersion":{"const":"PESTEL-IMPACT-BRIEF:R0.1"},
+    "briefRef":{"type":"string"},
+    "eventRef":{"type":"string"},
+    "signalRef":{"type":"string"},
+    "observedFacts":{"type":"array","items":{"type":"string"}},
+    "interpretations":{"type":"array","items":{"type":"string"}},
+    "impactCandidates":{"type":"array","items":{"type":"string"}},
+    "unknowns":{"type":"array","items":{"type":"string"}},
+    "evidenceRefs":{"type":"array","items":{"type":"string"}}
+  }
+}

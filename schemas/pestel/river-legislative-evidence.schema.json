@@ -1,0 +1,20 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virtualsilkroad.com/schemas/pestel/river-legislative-evidence.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion","receiptRef","persistenceMode","sourceRefs","eventRef","rawDigests","normalizedDigest","versionRefs","observedAt","outputDigest"],
+  "properties": {
+    "schemaVersion":{"const":"RIVER-LEG-EVIDENCE:R0.1"},
+    "receiptRef":{"type":"string"},
+    "persistenceMode":{"const":"LOCAL_DOMAIN_RECEIPT"},
+    "sourceRefs":{"type":"array","items":{"type":"string"}},
+    "eventRef":{"type":"string"},
+    "signalRef":{"type":"string"},
+    "rawDigests":{"type":"array","items":{"type":"string","pattern":"^[a-f0-9]{64}$"}},
+    "normalizedDigest":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+    "versionRefs":{"type":"array","items":{"type":"string"}},
+    "observedAt":{"type":"string"},
+    "outputDigest":{"type":"string","pattern":"^[a-f0-9]{64}$"}
+  }
+}

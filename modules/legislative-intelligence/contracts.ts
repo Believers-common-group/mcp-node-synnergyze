@@ -76,6 +76,83 @@ export interface SourceHealth {
   status?: number;
 }
 
+export type LegislativeLifecycleStateV1 = LegislativeLifecycleState;
+
+export interface LegislativeObjectRefV1 {
+  jurisdiction: "US-FEDERAL";
+  objectType: "bill";
+  congress: number;
+  billType: string;
+  number: number;
+}
+
+export interface SourceEnvelopeV1 {
+  schemaVersion: "LEG-SOURCE:R0.1";
+  sourceRef: string;
+  sourceSystem: "congress.gov";
+  sourceObjectId: string;
+  sourceObjectType:
+    | "bill"
+    | "actions"
+    | "subjects"
+    | "committees"
+    | "amendments"
+    | "summaries"
+    | "law";
+  sourcePath: string;
+  retrievedAt: string;
+  sourceUpdatedAt?: string;
+  httpStatus: number;
+  rateLimitLimit?: number;
+  rateLimitRemaining?: number;
+  rawSha256: string;
+  credentialAdmissionRef: "CONGRESS-GOV-API-KEY-001";
+  credentialFingerprintPrefix?: string;
+  body: unknown;
+}
+
+export interface RelatedSourceBundleV1 {
+  bill: SourceEnvelopeV1;
+  actions: readonly SourceEnvelopeV1[];
+  subjects: readonly SourceEnvelopeV1[];
+  committees: readonly SourceEnvelopeV1[];
+  amendments: readonly SourceEnvelopeV1[];
+  summaries: readonly SourceEnvelopeV1[];
+  law?: SourceEnvelopeV1;
+}
+
+export interface NormalizedLegislativeEventV1 {
+  schemaVersion: "LEG-EVENT:R0.1";
+  eventRef: string;
+  sourceRefs: readonly string[];
+  jurisdiction: "US-FEDERAL";
+  objectType: "bill";
+  objectId: string;
+  lifecycle: LegislativeLifecycleStateV1;
+  title?: string;
+  summary?: string;
+  introducedAt?: string;
+  latestActionAt?: string;
+  effectiveDate?: string;
+  subjects: readonly string[];
+  committees: readonly string[];
+  actors: readonly string[];
+  actionRefs: readonly string[];
+  evidenceRefs: readonly string[];
+  normalizedAt: string;
+  normalizerVersion: "LEG-NORMALIZER:R0.1";
+}
+
+export interface SourceHealthV1 {
+  sourceSystem: "congress.gov";
+  ok: boolean;
+  checkedAt: string;
+  httpStatus?: number;
+  errorCode?: string;
+  credentialAdmissionRef: "CONGRESS-GOV-API-KEY-001";
+  credentialFingerprintPrefix?: string;
+}
+
 function canonical(value: unknown): unknown {
   if (Array.isArray(value)) return value.map(canonical);
   if (value && typeof value === "object") {

@@ -1,0 +1,19 @@
+{
+  "schemaVersion": "PESTEL-CLASSIFICATION-POLICY:R0.1",
+  "deterministicConfidenceCap": 0.75,
+  "termGroups": {
+    "tax": ["tax", "duty", "levy", "credit"],
+    "subsidy": ["subsidy", "grant", "incentive"],
+    "trade": ["trade", "tariff", "import", "export", "supply chain"],
+    "labour": ["labor", "labour", "worker", "employment", "wage"],
+    "reporting": ["report", "reporting", "recordkeeping", "disclosure"],
+    "technology": ["technology", "digital", "software", "artificial intelligence", "cyber"],
+    "privacy_data": ["privacy", "personal data", "data protection", "consumer data"],
+    "environment": ["environment", "emission", "climate", "waste", "energy efficiency"],
+    "health_safety": ["health", "safety", "hazard", "public health"],
+    "infrastructure": ["infrastructure", "transport", "broadband", "grid", "facility"],
+    "enforcement": ["enforcement", "penalty", "fine", "violation", "compliance"],
+    "courts": ["court", "judicial", "litigation", "appeal"],
+    "public_administration": ["agency", "department", "administration", "public program"]
+  }
+}

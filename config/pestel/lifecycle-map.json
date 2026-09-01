@@ -1,23 +1,11 @@
 {
-  "version": "PESTEL-LIFECYCLE-0.1.0",
-  "precedence": [
-    "law_enforced",
-    "law_effective_date",
-    "authoritative_law_number",
-    "withdrawal_action",
-    "failed_action",
-    "advancing_action",
-    "introduced_action",
-    "no_defensible_match"
-  ],
-  "rules": {
-    "law_enforced": "ENFORCED",
-    "law_effective_date": "EFFECTIVE",
-    "authoritative_law_number": "ADOPTED",
-    "withdrawal_action": "WITHDRAWN",
-    "failed_action": "FAILED",
-    "advancing_action": "ADVANCING",
-    "introduced_action": "PROPOSAL",
-    "no_defensible_match": "UNKNOWN"
-  }
+  "schemaVersion": "PESTEL-LIFECYCLE-MAP:R0.1",
+  "advancingEvidenceFamilies": {
+    "committee_reported": ["reported by committee", "ordered to be reported"],
+    "chamber_passed": ["passed house", "passed senate"],
+    "conference": ["conference report", "conference committee"],
+    "enrolled": ["enrolled bill"],
+    "presented_to_president": ["presented to president"]
+  },
+  "adoptedEvidence": ["public law", "became law", "law number"]
 }

@@ -1,0 +1,28 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virtualsilkroad.com/schemas/pestel/legislative-event.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion","eventRef","sourceRefs","jurisdiction","objectType","objectId","lifecycle","subjects","committees","actors","actionRefs","evidenceRefs","normalizedAt","normalizerVersion"],
+  "properties": {
+    "schemaVersion": {"const":"LEG-EVENT:R0.1"},
+    "eventRef": {"type":"string","minLength":1},
+    "sourceRefs": {"type":"array","items":{"type":"string"}},
+    "jurisdiction": {"const":"US-FEDERAL"},
+    "objectType": {"const":"bill"},
+    "objectId": {"type":"string","minLength":1},
+    "lifecycle": {"enum":["SIGNAL","PROPOSAL","ADVANCING","ADOPTED","EFFECTIVE","ENFORCED","SUPERSEDED","WITHDRAWN","FAILED","UNKNOWN"]},
+    "title": {"type":"string"},
+    "summary": {"type":"string"},
+    "introducedAt": {"type":"string"},
+    "latestActionAt": {"type":"string"},
+    "effectiveDate": {"type":"string"},
+    "subjects": {"type":"array","items":{"type":"string"}},
+    "committees": {"type":"array","items":{"type":"string"}},
+    "actors": {"type":"array","items":{"type":"string"}},
+    "actionRefs": {"type":"array","items":{"type":"string"}},
+    "evidenceRefs": {"type":"array","items":{"type":"string"}},
+    "normalizedAt": {"type":"string"},
+    "normalizerVersion": {"const":"LEG-NORMALIZER:R0.1"}
+  }
+}
