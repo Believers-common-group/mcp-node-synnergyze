@@ -1,0 +1,6 @@
+{
+  "actions": [
+    {"actionDate":"2026-08-31","text":"Introduced in House","type":"IntroReferral"},
+    {"actionDate":"2026-09-01","text":"Referred to the House Committee on Energy and Commerce.","type":"IntroReferral"}
+  ]
+}
