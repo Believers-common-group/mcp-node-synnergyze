@@ -51,11 +51,11 @@ export function buildImpactBriefV1(
     completeness,
     confidence: signal.confidence,
     evidenceRefs,
-    createdAt,
   };
 
   return {
     briefRef: `PESTEL-BRIEF:${sha256CanonicalV1(identity)}`,
     ...identity,
+    createdAt,
   };
 }
