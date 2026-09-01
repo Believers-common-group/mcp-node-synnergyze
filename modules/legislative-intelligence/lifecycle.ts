@@ -1,6 +1,11 @@
-import type { LegislativeLifecycleState } from "./contracts.ts";
+import lifecycleMap from "../../config/pestel/lifecycle-map.json" with { type: "json" };
+import type {
+  LegislativeLifecycleState,
+  LegislativeLifecycleStateV1,
+} from "./contracts.ts";
 
 export const LIFECYCLE_NORMALIZER_VERSION = "PESTEL-LIFECYCLE-0.1.0";
+export const LIFECYCLE_NORMALIZER_VERSION_V1 = "LEG-NORMALIZER:R0.1" as const;
 
 export interface LifecycleActionInput {
   text: string;
@@ -17,6 +22,23 @@ export interface LifecycleNormalizationResult {
   state: LegislativeLifecycleState;
   matchedRule: string;
   version: string;
+}
+
+export interface LifecycleActionEvidenceV1 {
+  code?: string;
+  text: string;
+  actionDate?: string;
+}
+
+export interface LifecycleEvidenceV1 {
+  introduced: boolean;
+  actions: readonly LifecycleActionEvidenceV1[];
+  lawNumber?: string;
+  effectiveDate?: string;
+  enforced?: boolean;
+  superseded?: boolean;
+  withdrawn?: boolean;
+  failed?: boolean;
 }
 
 function result(state: LegislativeLifecycleState, matchedRule: string): LifecycleNormalizationResult {
@@ -47,4 +69,25 @@ export function normalizeLegislativeLifecycle(
   }
 
   return result("UNKNOWN", "no_defensible_match");
+}
+
+function matchesConfiguredAdvancingEvidence(text: string): boolean {
+  const terms = Object.values(lifecycleMap.advancingEvidenceFamilies).flat();
+  return terms.some((term) => text.includes(term.toLowerCase()));
+}
+
+export function normalizeLegislativeLifecycleV1(
+  evidence: LifecycleEvidenceV1,
+): LegislativeLifecycleStateV1 {
+  if (evidence.enforced) return "ENFORCED";
+  if (evidence.effectiveDate) return "EFFECTIVE";
+  if (evidence.lawNumber) return "ADOPTED";
+  if (evidence.superseded) return "SUPERSEDED";
+  if (evidence.withdrawn) return "WITHDRAWN";
+  if (evidence.failed) return "FAILED";
+
+  const actionText = evidence.actions.map((action) => action.text.toLowerCase()).join("\n");
+  if (matchesConfiguredAdvancingEvidence(actionText)) return "ADVANCING";
+  if (evidence.introduced) return "PROPOSAL";
+  return "UNKNOWN";
 }
