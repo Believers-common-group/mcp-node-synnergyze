@@ -18,6 +18,7 @@
     "test:adapters": "vitest run modules/rc1-adapters.test.ts",
     "test:qel": "vitest run modules/qel/normalizer.test.ts",
     "test:program-bridge": "vitest run modules/synnergyze/program-bridge.test.ts",
+    "test:cde-execution-plan-bridge": "vitest run modules/synnergyze/cde-execution-plan-bridge.test.ts",
     "test:warden-request": "vitest run modules/synnergyze/warden-request-bridge.test.ts",
     "test:warden-decision": "vitest run modules/warden/decision-service.test.ts",
     "test:warden-mcp": "vitest run modules/warden/decision-service.test.ts src/tools/registerWardenConformanceDecision.test.ts src/commands/start-server.warden.test.ts",
