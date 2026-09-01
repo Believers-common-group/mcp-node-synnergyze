@@ -138,5 +138,6 @@ dist
 # Local credential material — never commit plaintext or DPAPI blobs.
 .alpha/credentials/
 *.dpapi
+*.secret
 
 .idea/
