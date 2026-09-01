@@ -55,15 +55,41 @@ function bodies<T>(envelopes: readonly SourceEnvelopeV1[]): T[] {
   return envelopes.map((envelope) => envelope.body as T);
 }
 
+function record(value: unknown): Record<string, unknown> | undefined {
+  return value && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
+}
+
 function lawState(bundle: RelatedSourceBundleV1): CongressLawState | undefined {
-  if (!bundle.law || !bundle.law.body || typeof bundle.law.body !== "object") return undefined;
-  const body = bundle.law.body as Record<string, unknown>;
-  const nested = body.law && typeof body.law === "object" ? body.law as Record<string, unknown> : body;
-  const lawNumber = typeof nested.lawNumber === "string" ? nested.lawNumber : undefined;
+  if (!bundle.law) return undefined;
+  const body = record(bundle.law.body);
+  const nested = record(body?.law) ?? body;
+  if (!nested) return undefined;
+
+  const explicitLawNumber = typeof nested.lawNumber === "string" ? nested.lawNumber : undefined;
+  const type = typeof nested.type === "string" ? nested.type.trim() : undefined;
+  const number = typeof nested.number === "string" || typeof nested.number === "number" ? String(nested.number) : undefined;
+  const lawNumber = explicitLawNumber ?? (type && number ? `${type} ${number}` : bundle.law.sourceObjectId);
   const effectiveDate = typeof nested.effectiveDate === "string" ? nested.effectiveDate : undefined;
   const enforced = typeof nested.enforced === "boolean" ? nested.enforced : undefined;
-  if (!lawNumber && !effectiveDate && enforced === undefined) return undefined;
   return { lawNumber, effectiveDate, enforced };
+}
+
+function canonicalBillObjectId(
+  bill: NonNullable<CongressBillDetailResponse["bill"]>,
+  fallback: string,
+): string {
+  if (
+    typeof bill.congress === "number" &&
+    typeof bill.type === "string" &&
+    typeof bill.number === "string" &&
+    bill.type.length > 0 &&
+    bill.number.length > 0
+  ) {
+    return `${bill.congress}-${bill.type.toLowerCase()}-${bill.number}`;
+  }
+  return fallback.replace(/:bill$/i, "");
 }
 
 function mapSourceBundleV1(bundle: RelatedSourceBundleV1): CanonicalCongressBillBundle {
@@ -121,7 +147,7 @@ function mapSourceBundleV1(bundle: RelatedSourceBundleV1): CanonicalCongressBill
     sourceRef: bundle.bill.sourceRef,
     jurisdiction: "US-FEDERAL",
     objectType: "bill",
-    objectId: bundle.bill.sourceObjectId,
+    objectId: canonicalBillObjectId(bill, bundle.bill.sourceObjectId),
     title: bill.title,
     sourceUpdatedAt: bill.updateDate,
     originChamber: bill.originChamber,
