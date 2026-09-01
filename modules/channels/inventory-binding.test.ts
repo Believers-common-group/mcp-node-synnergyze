@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type {
   InventoryTransferSpecV1,
+  InventoryTransferProofV1,
   ObjectiveAuthorityEnvelopeV1,
   ObjectiveRefV1,
 } from "../objective/contracts.ts";
@@ -69,7 +70,7 @@ const timeline: SyntheticInventoryTransferTimelineV1 = {
   acceptedAt: "2026-08-15T05:10:09.000Z",
 };
 
-function proof() {
+function proof(): InventoryTransferProofV1 {
   return runSyntheticInventoryTransferProof({
     objective: objective(),
     authority: authority(),
@@ -80,20 +81,24 @@ function proof() {
   });
 }
 
+function bindingInput(transferProof: InventoryTransferProofV1) {
+  return {
+    proof: transferProof,
+    channelRef: "VSR-CHANNEL:INVENTORY:MANAGEMENT",
+    headerBoardRef: "HEADER:INVENTORY:001",
+    publisherPrincipalRef: "DIGITALME-ALPHA-TEST-001",
+    publisherCapacityRef: "CAPACITY:LAB-OPERATOR-001",
+    audiencePolicyRef: "POLICY:INVENTORY:MANAGEMENT",
+    classification: "MANAGEMENT" as const,
+    effectiveFrom: "2026-08-15T05:10:10.000Z",
+    correlationId: "CORR:INVENTORY:001",
+  };
+}
+
 describe("Inventory proof → Header Board binding", () => {
   it("projects only an accepted sealed inventory proof into a canonical Header Board draft", () => {
     const accepted = proof();
-    const draft = bindAcceptedInventoryProofToHeaderBoardDraftV1({
-      proof: accepted,
-      channelRef: "VSR-CHANNEL:INVENTORY:MANAGEMENT",
-      headerBoardRef: "HEADER:INVENTORY:001",
-      publisherPrincipalRef: "DIGITALME:ALPHA-TEST-001",
-      publisherCapacityRef: "CAPACITY:LAB-OPERATOR-001",
-      audiencePolicyRef: "POLICY:INVENTORY:MANAGEMENT",
-      classification: "MANAGEMENT",
-      effectiveFrom: "2026-08-15T05:10:10.000Z",
-      correlationId: "CORR:INVENTORY:001",
-    });
+    const draft = bindAcceptedInventoryProofToHeaderBoardDraftV1(bindingInput(accepted));
 
     const acceptanceEvent = accepted.bundle.events.find((event) => event.eventType === "ACCEPTANCE_CHECK");
     expect(acceptanceEvent).toBeDefined();
@@ -109,5 +114,27 @@ describe("Inventory proof → Header Board binding", () => {
     expect(draft.fields).not.toHaveProperty("riverSealRef");
     expect(draft.fields).not.toHaveProperty("wardenDecisionRef");
     expect(draft.fields).not.toHaveProperty("actionToken");
+  });
+
+  it("fails closed when inventory acceptance did not pass", () => {
+    const accepted = proof();
+    const failed: InventoryTransferProofV1 = {
+      ...accepted,
+      acceptance: { ...accepted.acceptance, result: "FAIL", reasonCodes: ["SYNTHETIC_FAILURE"] },
+    };
+    expect(() => bindAcceptedInventoryProofToHeaderBoardDraftV1(bindingInput(failed))).toThrow(
+      "inventory_publication_acceptance_required",
+    );
+  });
+
+  it("fails closed when the acceptance record does not include the River seal", () => {
+    const accepted = proof();
+    const mismatched: InventoryTransferProofV1 = {
+      ...accepted,
+      acceptance: { ...accepted.acceptance, checkedEvidenceRefs: ["OTHER-SEAL"] },
+    };
+    expect(() => bindAcceptedInventoryProofToHeaderBoardDraftV1(bindingInput(mismatched))).toThrow(
+      "inventory_publication_acceptance_evidence_mismatch",
+    );
   });
 });
