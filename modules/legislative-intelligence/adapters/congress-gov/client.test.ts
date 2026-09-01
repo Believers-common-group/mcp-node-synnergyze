@@ -16,6 +16,7 @@ const secret = "SENTINEL_CONGRESS_SECRET_12345";
 const baseUrl = "https://api.congress.gov/v3";
 
 let observedHeader: string | null = null;
+let retryCount = 0;
 
 const server = setupServer(
   http.get(`${baseUrl}/bill/119/hr/1001`, ({ request }) => {
@@ -25,13 +26,24 @@ const server = setupServer(
       { headers: { "x-ratelimit-limit": "5000", "x-ratelimit-remaining": "4999" } },
     );
   }),
+  http.get(`${baseUrl}/bill/119/hr/retry`, ({ request }) => {
+    observedHeader = request.headers.get("x-api-key");
+    retryCount += 1;
+    if (retryCount === 1) return new HttpResponse(null, { status: 429, headers: { "Retry-After": "0" } });
+    return HttpResponse.json({ bill: { congress: 119, type: "HR", number: "999" } });
+  }),
+  http.get(`${baseUrl}/congress`, ({ request }) => {
+    observedHeader = request.headers.get("x-api-key");
+    return HttpResponse.json({ congresses: [{ number: 119 }] });
+  }),
   http.get(`${baseUrl}/bill/119/hr/401`, () => new HttpResponse(null, { status: 401 })),
-  http.get(`${baseUrl}/bill/119/hr/429`, () => new HttpResponse(null, { status: 429 })),
+  http.get(`${baseUrl}/bill/119/hr/429`, () => new HttpResponse(null, { status: 429, headers: { "Retry-After": "0" } })),
 );
 
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   observedHeader = null;
+  retryCount = 0;
   server.resetHandlers();
 });
 afterAll(() => server.close());
@@ -99,10 +111,10 @@ describe("CongressGovClient", () => {
 });
 
 describe("CongressGovClientV1", () => {
+  const provider = () => new StaticCongressGovCredentialProviderV1(secret, "0123456789abcdef");
+
   it("returns a versioned source envelope with only non-secret credential metadata", async () => {
-    const client = new CongressGovClientV1(
-      new StaticCongressGovCredentialProviderV1(secret, "0123456789abcdef"),
-    );
+    const client = new CongressGovClientV1(provider());
 
     const result = await client.getSource(
       {
@@ -121,5 +133,36 @@ describe("CongressGovClientV1", () => {
     expect(result.rateLimitLimit).toBe(5000);
     expect(result.rateLimitRemaining).toBe(4999);
     expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
+  it("rejects both api_key and apikey query transport", async () => {
+    const client = new CongressGovClientV1(provider());
+    await expect(client.getJson(`/bill/119/hr/1001?api_key=${secret}`, "bill", "119-hr-1001")).rejects.toThrow(
+      "congress_api_key_query_prohibited",
+    );
+    await expect(client.getJson(`/bill/119/hr/1001?apikey=${secret}`, "bill", "119-hr-1001")).rejects.toThrow(
+      "congress_api_key_query_prohibited",
+    );
+  });
+
+  it("retries a safe GET after a bounded 429", async () => {
+    const client = new CongressGovClientV1(provider(), fetch, () => "2026-09-02T00:00:00.000Z");
+    const result = await client.getJson("/bill/119/hr/retry", "bill", "119-hr-retry");
+    expect(result.httpStatus).toBe(200);
+    expect(retryCount).toBe(2);
+    expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
+  it("returns bounded health metadata without credential material", async () => {
+    const client = new CongressGovClientV1(provider(), fetch, () => "2026-09-02T00:00:00.000Z");
+    const health = await client.health();
+    expect(health).toMatchObject({
+      sourceSystem: "congress.gov",
+      ok: true,
+      httpStatus: 200,
+      credentialAdmissionRef: "CONGRESS-GOV-API-KEY-001",
+      checkedAt: "2026-09-02T00:00:00.000Z",
+    });
+    expect(JSON.stringify(health)).not.toContain(secret);
   });
 });

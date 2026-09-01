@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   StaticCongressGovCredentialProviderV1,
@@ -6,43 +6,87 @@ import {
 } from "./credential-provider.ts";
 
 const secret = "SENTINEL_CONGRESS_SECRET_12345";
+const fingerprintPrefix = "308734f19cb4077c";
+const validReceipt = {
+  request_id: "CONGRESS-GOV-API-KEY-001",
+  http_status: 200,
+  sha256_fingerprint_prefix: fingerprintPrefix,
+  receipt_sha256: "a".repeat(64),
+};
 
 describe("Congress.gov V1 credential providers", () => {
   it("keeps static test credentials out of provider serialization", async () => {
-    const provider = new StaticCongressGovCredentialProviderV1(secret, "0123456789abcdef");
+    const provider = new StaticCongressGovCredentialProviderV1(secret, fingerprintPrefix);
     const credential = await provider.getCredential();
 
     expect(credential.apiKey).toBe(secret);
     expect(credential.credentialAdmissionRef).toBe("CONGRESS-GOV-API-KEY-001");
-    expect(credential.credentialFingerprintPrefix).toBe("0123456789abcdef");
+    expect(credential.credentialFingerprintPrefix).toBe(fingerprintPrefix);
     expect(JSON.stringify(provider)).not.toContain(secret);
   });
 
-  it("uses the DPAPI seam only on Windows and returns non-secret receipt metadata", async () => {
+  it("validates admission receipt before decrypting and binds the fingerprint", async () => {
     const observedPaths: string[] = [];
     const provider = new WindowsDpapiCongressGovCredentialProviderV1({
       platform: "win32",
       secretPath: "C:\\Users\\alpha\\.alpha\\credentials\\congress-gov\\api-key.dpapi",
       receiptPath: "C:\\Users\\alpha\\.alpha\\credentials\\congress-gov\\admission-receipt.json",
-      decrypt: async (path) => {
-        observedPaths.push(path);
-        return secret;
-      },
       readReceipt: async (path) => {
-        observedPaths.push(path);
-        return { sha256_fingerprint_prefix: "fedcba9876543210" };
+        observedPaths.push(`receipt:${path}`);
+        return validReceipt;
+      },
+      decrypt: async (path) => {
+        observedPaths.push(`secret:${path}`);
+        return secret;
       },
     });
 
     const credential = await provider.getCredential();
     expect(credential.apiKey).toBe(secret);
-    expect(credential.credentialFingerprintPrefix).toBe("fedcba9876543210");
-    expect(observedPaths).toHaveLength(2);
+    expect(credential.credentialFingerprintPrefix).toBe(fingerprintPrefix);
+    expect(observedPaths[0]).toMatch(/^receipt:/);
+    expect(observedPaths[1]).toMatch(/^secret:/);
     expect(JSON.stringify(provider)).not.toContain(secret);
   });
 
-  it("refuses DPAPI use on non-Windows hosts", async () => {
-    const provider = new WindowsDpapiCongressGovCredentialProviderV1({ platform: "linux" });
-    await expect(provider.getCredential()).rejects.toThrow("congress_dpapi_windows_only");
+  it("fails closed on an invalid admission receipt without attempting decryption", async () => {
+    const decrypt = vi.fn(async () => secret);
+    const provider = new WindowsDpapiCongressGovCredentialProviderV1({
+      platform: "win32",
+      decrypt,
+      readReceipt: async () => ({ ...validReceipt, request_id: "WRONG-REQUEST" }),
+    });
+
+    await expect(provider.getCredential()).rejects.toThrow("CREDENTIAL_ADMISSION_RECEIPT_INVALID");
+    expect(decrypt).not.toHaveBeenCalled();
+  });
+
+  it("fails closed when decrypted secret does not match the admitted fingerprint", async () => {
+    const provider = new WindowsDpapiCongressGovCredentialProviderV1({
+      platform: "win32",
+      decrypt: async () => "different-secret",
+      readReceipt: async () => validReceipt,
+    });
+
+    await expect(provider.getCredential()).rejects.toThrow("CREDENTIAL_FINGERPRINT_MISMATCH");
+  });
+
+  it("permits the Windows PowerShell boundary from WSL", async () => {
+    const provider = new WindowsDpapiCongressGovCredentialProviderV1({
+      platform: "linux",
+      wslInterop: "/run/WSL/1_interop",
+      decrypt: async () => secret,
+      readReceipt: async () => validReceipt,
+    });
+
+    await expect(provider.getCredential()).resolves.toMatchObject({
+      credentialAdmissionRef: "CONGRESS-GOV-API-KEY-001",
+      credentialFingerprintPrefix: fingerprintPrefix,
+    });
+  });
+
+  it("refuses DPAPI use on unsupported non-Windows hosts", async () => {
+    const provider = new WindowsDpapiCongressGovCredentialProviderV1({ platform: "linux", wslInterop: "" });
+    await expect(provider.getCredential()).rejects.toThrow("CREDENTIAL_PLATFORM_UNSUPPORTED");
   });
 });
