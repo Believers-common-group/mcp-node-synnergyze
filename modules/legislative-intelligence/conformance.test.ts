@@ -141,4 +141,31 @@ describe("PESTEL legislative intelligence conformance", () => {
     expect(material).not.toContain(sentinelSecret);
     expect(collectForbiddenKeys([first, second])).toEqual([]);
   });
+
+  it("keeps substantive identities stable when only observation time changes", async () => {
+    const service = new LegislativeIntelligenceServiceV1(new FakeSource());
+    const ref: LegislativeObjectRefV1 = {
+      jurisdiction: "US-FEDERAL",
+      objectType: "bill",
+      congress: 119,
+      billType: "hr",
+      number: 1001,
+    };
+    const registryIndex = [{ registryEntityRef: "SECTOR:SUPPLY-CHAIN", terms: ["supply chain"] }];
+
+    const first = await service.ingestBill(ref, {
+      observedAt: "2026-09-02T00:00:00.000Z",
+      registryIndex,
+    });
+    const second = await service.ingestBill(ref, {
+      observedAt: "2026-09-03T00:00:00.000Z",
+      registryIndex,
+    });
+
+    expect(first.event.eventRef).toBe(second.event.eventRef);
+    expect(first.signal.signalRef).toBe(second.signal.signalRef);
+    expect(first.brief.briefRef).toBe(second.brief.briefRef);
+    expect(first.evidence.evidenceRef).toBe(second.evidence.evidenceRef);
+    expect(first.workCandidate.workRef).toBe(second.workCandidate.workRef);
+  });
 });
