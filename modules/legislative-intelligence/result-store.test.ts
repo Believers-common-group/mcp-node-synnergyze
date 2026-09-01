@@ -19,11 +19,11 @@ describe("InMemoryLegislativeIntelligenceResultStoreV1", () => {
     expect(await store.getBySignalRef("PESTEL-SIGNAL:one")).toBe(result);
   });
 
-  it("fails closed on conflicting material for the same signalRef", async () => {
+  it("fails closed with the canonical collision code for conflicting material", async () => {
     const store = new InMemoryLegislativeIntelligenceResultStoreV1();
     await store.put(fixture("PESTEL-SIGNAL:one", "first"));
     await expect(store.put(fixture("PESTEL-SIGNAL:one", "conflict"))).rejects.toThrow(
-      "legislative_result_store_conflict",
+      "RESULT_STORE_IDENTITY_COLLISION",
     );
   });
 });
