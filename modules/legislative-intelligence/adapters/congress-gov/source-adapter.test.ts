@@ -51,7 +51,14 @@ class FakeClient {
     if (path === "/bill/119/hr/6048/committees") return envelope(path, "committees", committees);
     if (path === "/bill/119/hr/6048/subjects") return envelope(path, "subjects", subjects);
     if (path === "/bill/119/hr/6048/summaries") return envelope(path, "summaries", summaries);
-    if (path === "/law/119/public/12") return envelope(path, "law", { law: { type: "Public Law", number: "12" } });
+    if (path === "/law/119/pub/12") {
+      return envelope(path, "law", {
+        congress: 119,
+        lawType: "Public Law",
+        lawNumber: "119-12",
+        title: "Synthetic Public Law",
+      });
+    }
     throw new Error(`unexpected_path:${path}`);
   }
 
@@ -89,26 +96,41 @@ describe("CongressGovSourceAdapterV1", () => {
     ]);
   });
 
-  it("retrieves official same-base law detail when a law is declared", async () => {
+  it("constructs official law detail from declared Public Law type and NARA number", async () => {
     const client = new FakeClient();
     client.billBody = {
       ...(billDetail as object),
       bill: {
         ...billDetail.bill,
-        laws: [{ type: "Public Law", number: "12", url: "https://api.congress.gov/v3/law/119/public/12" }],
+        laws: [{ type: "Public Law", number: "119-12" }],
       },
     };
     const adapter = new CongressGovSourceAdapterV1(client as unknown as CongressGovClientV1);
     const bundle = await adapter.getRelated(ref);
     expect(bundle.law?.sourceObjectType).toBe("law");
-    expect(client.paths).toContain("/law/119/public/12");
+    expect(client.paths).toContain("/law/119/pub/12");
   });
 
-  it("fails closed when declared law detail cannot be resolved to the Congress.gov API base", async () => {
+  it("does not trust a declared law URL over canonical type and NARA number", async () => {
     const client = new FakeClient();
     client.billBody = {
       ...(billDetail as object),
-      bill: { ...billDetail.bill, laws: [{ type: "Public Law", number: "12", url: "https://example.com/law/12" }] },
+      bill: {
+        ...billDetail.bill,
+        laws: [{ type: "Public Law", number: "119-12", url: "https://example.com/law/12" }],
+      },
+    };
+    const adapter = new CongressGovSourceAdapterV1(client as unknown as CongressGovClientV1);
+    const bundle = await adapter.getRelated(ref);
+    expect(bundle.law?.sourcePath).toBe("/law/119/pub/12");
+    expect(client.paths).not.toContain("https://example.com/law/12");
+  });
+
+  it("fails closed when a declared law type or NARA number is not canonical", async () => {
+    const client = new FakeClient();
+    client.billBody = {
+      ...(billDetail as object),
+      bill: { ...billDetail.bill, laws: [{ type: "Unknown Law", number: "119-12" }] },
     };
     const adapter = new CongressGovSourceAdapterV1(client as unknown as CongressGovClientV1);
     await expect(adapter.getRelated(ref)).rejects.toThrow("LAW_DETAIL_UNRESOLVABLE");
