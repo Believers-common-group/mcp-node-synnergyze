@@ -16,6 +16,13 @@ export interface InventoryHeaderBoardBindingInputV1 {
   correlationId: string;
 }
 
+function sameRefs(left: readonly string[], right: readonly string[]): boolean {
+  if (left.length !== right.length) return false;
+  const a = [...left].sort();
+  const b = [...right].sort();
+  return a.every((value, index) => value === b[index]);
+}
+
 export function bindAcceptedInventoryProofToHeaderBoardDraftV1(
   input: InventoryHeaderBoardBindingInputV1,
 ): HeaderBoardDraftV1 {
@@ -23,14 +30,40 @@ export function bindAcceptedInventoryProofToHeaderBoardDraftV1(
   if (proof.acceptance.result !== "PASS") throw new Error("inventory_publication_acceptance_required");
   if (proof.closedObjective.status !== "CLOSED") throw new Error("inventory_publication_closed_objective_required");
   if (!proof.riverSealRef) throw new Error("inventory_publication_river_seal_required");
+
+  const objectiveRef = proof.objective.objectiveRef;
+  if (
+    proof.closedObjective.objectiveRef !== objectiveRef ||
+    proof.acceptance.objectiveRef !== objectiveRef ||
+    proof.bundle.program.objectiveRef !== objectiveRef ||
+    proof.frontProjection.objectiveRef !== objectiveRef ||
+    proof.backProjection.objectiveRef !== objectiveRef
+  ) {
+    throw new Error("inventory_publication_objective_lineage_mismatch");
+  }
+  if (
+    proof.frontProjection.programRef !== proof.bundle.program.programRef ||
+    proof.backProjection.programRef !== proof.bundle.program.programRef
+  ) {
+    throw new Error("inventory_publication_program_lineage_mismatch");
+  }
+  if (
+    !proof.frontProjection.evidenceRefs.includes(proof.riverSealRef) ||
+    !proof.backProjection.evidenceRefs.includes(proof.riverSealRef)
+  ) {
+    throw new Error("inventory_publication_projection_evidence_mismatch");
+  }
   if (!proof.acceptance.checkedEvidenceRefs.includes(proof.riverSealRef)) {
     throw new Error("inventory_publication_acceptance_evidence_mismatch");
   }
   if (proof.effects.length === 0 || proof.effects.some((effect) => effect.evidenceRef !== proof.riverSealRef)) {
     throw new Error("inventory_publication_effect_evidence_mismatch");
   }
-  const checkedEffects = new Set(proof.acceptance.checkedEffectRefs);
-  if (proof.effects.some((effect) => !checkedEffects.has(effect.effectRef))) {
+  const effectRefs = proof.effects.map((effect) => effect.effectRef);
+  if (!sameRefs(proof.frontProjection.effectRefs, effectRefs) || !sameRefs(proof.backProjection.effectRefs, effectRefs)) {
+    throw new Error("inventory_publication_projection_effect_mismatch");
+  }
+  if (!sameRefs(proof.acceptance.checkedEffectRefs, effectRefs)) {
     throw new Error("inventory_publication_acceptance_effect_mismatch");
   }
   if (JSON.stringify(proof.frontProjection) !== JSON.stringify(proof.backProjection)) {
