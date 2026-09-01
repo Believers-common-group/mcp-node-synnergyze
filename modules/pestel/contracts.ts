@@ -1,3 +1,5 @@
+import type { NormalizedLegislativeEventV1 } from "../legislative-intelligence/contracts.ts";
+
 export type PestelDimensionV1 =
   | "political"
   | "economic"
@@ -30,7 +32,7 @@ export interface PestelSignalV1 {
 }
 
 export interface PestelClassifierAssistV1 {
-  classify(event: import("../legislative-intelligence/contracts.ts").NormalizedLegislativeEventV1): Promise<{
+  classify(event: NormalizedLegislativeEventV1): Promise<{
     vector: Partial<Record<PestelDimensionV1, number>>;
     rationale: readonly PestelRationaleV1[];
     confidence: number;
