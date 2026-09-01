@@ -6,6 +6,51 @@ export interface LegislativeIntelligenceResultStoreV1 {
   getBySignalRef(signalRef: string): Promise<LegislativeIntelligenceResultV1 | undefined>;
 }
 
+function requiredRef(value: unknown, code: string): string {
+  if (typeof value !== "string" || value.length === 0) throw new Error(code);
+  return value;
+}
+
+function stableResultDigest(result: LegislativeIntelligenceResultV1): string {
+  const signalRef = requiredRef(
+    result.signal.signalRef,
+    "legislative_result_store_signal_ref_required",
+  );
+  const eventRef = requiredRef(
+    result.event.eventRef,
+    "legislative_result_store_event_ref_required",
+  );
+  const briefRef = requiredRef(
+    result.brief.briefRef,
+    "legislative_result_store_brief_ref_required",
+  );
+  const evidenceRef = requiredRef(
+    result.evidence.evidenceRef,
+    "legislative_result_store_evidence_ref_required",
+  );
+  const workRef = requiredRef(
+    result.workCandidate.workRef,
+    "legislative_result_store_work_ref_required",
+  );
+  const registryCandidateRefs = result.registryCandidates
+    .map((candidate) =>
+      requiredRef(
+        candidate.candidateRef,
+        "legislative_result_store_registry_candidate_ref_required",
+      ),
+    )
+    .sort((a, b) => a.localeCompare(b));
+
+  return sha256CanonicalV1({
+    eventRef,
+    signalRef,
+    briefRef,
+    registryCandidateRefs,
+    evidenceRef,
+    workRef,
+  });
+}
+
 export class InMemoryLegislativeIntelligenceResultStoreV1
   implements LegislativeIntelligenceResultStoreV1
 {
@@ -15,7 +60,7 @@ export class InMemoryLegislativeIntelligenceResultStoreV1
   async put(result: LegislativeIntelligenceResultV1): Promise<void> {
     const signalRef = result.signal.signalRef;
     if (!signalRef) throw new Error("legislative_result_store_signal_ref_required");
-    const digest = sha256CanonicalV1(result);
+    const digest = stableResultDigest(result);
     const existingDigest = this.digestBySignalRef.get(signalRef);
     if (existingDigest !== undefined && existingDigest !== digest) {
       throw new Error("RESULT_STORE_IDENTITY_COLLISION");
