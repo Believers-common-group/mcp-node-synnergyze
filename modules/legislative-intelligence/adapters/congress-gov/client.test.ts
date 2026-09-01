@@ -2,8 +2,15 @@ import { afterAll, afterEach, beforeAll, describe, expect, it } from "vitest";
 import { http, HttpResponse } from "msw";
 import { setupServer } from "msw/node";
 
-import { CongressGovClient, CongressGovHttpError } from "./client.ts";
-import { StaticTestCredentialProvider } from "./credential-provider.ts";
+import {
+  CongressGovClient,
+  CongressGovClientV1,
+  CongressGovHttpError,
+} from "./client.ts";
+import {
+  StaticCongressGovCredentialProviderV1,
+  StaticTestCredentialProvider,
+} from "./credential-provider.ts";
 
 const secret = "SENTINEL_CONGRESS_SECRET_12345";
 const baseUrl = "https://api.congress.gov/v3";
@@ -88,5 +95,31 @@ describe("CongressGovClient", () => {
     expect((caught as CongressGovHttpError).code).toBe(code);
     expect(JSON.stringify(caught)).not.toContain(secret);
     expect(String(caught)).not.toContain(secret);
+  });
+});
+
+describe("CongressGovClientV1", () => {
+  it("returns a versioned source envelope with only non-secret credential metadata", async () => {
+    const client = new CongressGovClientV1(
+      new StaticCongressGovCredentialProviderV1(secret, "0123456789abcdef"),
+    );
+
+    const result = await client.getSource(
+      {
+        sourcePath: "/bill/119/hr/1001?format=json",
+        sourceObjectType: "bill",
+        sourceObjectId: "119-hr-1001",
+      },
+      "2026-09-02T00:00:00.000Z",
+    );
+
+    expect(observedHeader).toBe(secret);
+    expect(result.schemaVersion).toBe("LEG-SOURCE:R0.1");
+    expect(result.rawSha256).toMatch(/^[a-f0-9]{64}$/);
+    expect(result.credentialAdmissionRef).toBe("CONGRESS-GOV-API-KEY-001");
+    expect(result.credentialFingerprintPrefix).toBe("0123456789abcdef");
+    expect(result.rateLimitLimit).toBe(5000);
+    expect(result.rateLimitRemaining).toBe(4999);
+    expect(JSON.stringify(result)).not.toContain(secret);
   });
 });
