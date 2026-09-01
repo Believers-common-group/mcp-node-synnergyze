@@ -47,7 +47,7 @@ export class CongressGovClient {
       throw new Error("congress_path_must_be_relative");
     }
 
-    const url = new URL(request.path, CONGRESS_BASE_URL);
+    const url = new URL(`${CONGRESS_BASE_URL}${request.path}`);
     if (url.searchParams.has("api_key")) {
       throw new Error("congress_api_key_query_prohibited");
     }
