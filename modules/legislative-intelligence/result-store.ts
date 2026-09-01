@@ -18,7 +18,7 @@ export class InMemoryLegislativeIntelligenceResultStoreV1
     const digest = sha256CanonicalV1(result);
     const existingDigest = this.digestBySignalRef.get(signalRef);
     if (existingDigest !== undefined && existingDigest !== digest) {
-      throw new Error("legislative_result_store_conflict");
+      throw new Error("RESULT_STORE_IDENTITY_COLLISION");
     }
     if (existingDigest === undefined) {
       this.bySignalRef.set(signalRef, result);
