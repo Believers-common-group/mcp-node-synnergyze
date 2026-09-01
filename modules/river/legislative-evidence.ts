@@ -47,6 +47,14 @@ function assertEvidenceLinkage(input: BuildLegislativeEvidenceReceiptInputV1): v
   }
 }
 
+function eventDigestMaterial(event: NormalizedLegislativeEventV1): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(event).filter(([key]) => key !== "normalizedAt"));
+}
+
+function briefDigestMaterial(brief: ImpactBriefV1): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(brief).filter(([key]) => key !== "createdAt"));
+}
+
 export function buildLegislativeEvidenceReceiptV1(
   input: BuildLegislativeEvidenceReceiptInputV1,
 ): LegislativeEvidenceReceiptV1 {
@@ -80,8 +88,8 @@ export function buildLegislativeEvidenceReceiptV1(
     }))
     .sort((a, b) => `${a.limit ?? ""}:${a.remaining ?? ""}`.localeCompare(`${b.limit ?? ""}:${b.remaining ?? ""}`));
   const rawSourceDigests = uniqueSorted(input.sources.map((source) => source.rawSha256));
-  const normalizedEventDigest = sha256CanonicalV1(input.event);
-  const outputBriefDigest = sha256CanonicalV1(input.brief);
+  const normalizedEventDigest = sha256CanonicalV1(eventDigestMaterial(input.event));
+  const outputBriefDigest = sha256CanonicalV1(briefDigestMaterial(input.brief));
 
   const substantive = {
     schemaVersion: "RIVER-LEG-EVIDENCE:R0.1" as const,
