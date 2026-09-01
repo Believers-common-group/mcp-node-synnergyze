@@ -35,6 +35,8 @@ export interface LifecycleEvidenceV1 {
   actions: readonly LifecycleActionEvidenceV1[];
   lawNumber?: string;
   effectiveDate?: string;
+  evaluatedAt?: string;
+  enforcementEvidence?: boolean;
   enforced?: boolean;
   superseded?: boolean;
   withdrawn?: boolean;
@@ -76,15 +78,22 @@ function matchesConfiguredAdvancingEvidence(text: string): boolean {
   return terms.some((term) => text.includes(term.toLowerCase()));
 }
 
+function effectiveByEvaluation(evidence: LifecycleEvidenceV1): boolean {
+  if (!evidence.lawNumber || !evidence.effectiveDate || !evidence.evaluatedAt) return false;
+  const effectiveAt = Date.parse(evidence.effectiveDate);
+  const evaluatedAt = Date.parse(evidence.evaluatedAt);
+  return Number.isFinite(effectiveAt) && Number.isFinite(evaluatedAt) && effectiveAt <= evaluatedAt;
+}
+
 export function normalizeLegislativeLifecycleV1(
   evidence: LifecycleEvidenceV1,
 ): LegislativeLifecycleStateV1 {
-  if (evidence.enforced) return "ENFORCED";
-  if (evidence.effectiveDate) return "EFFECTIVE";
-  if (evidence.lawNumber) return "ADOPTED";
   if (evidence.superseded) return "SUPERSEDED";
   if (evidence.withdrawn) return "WITHDRAWN";
   if (evidence.failed) return "FAILED";
+  if (evidence.enforcementEvidence || evidence.enforced) return "ENFORCED";
+  if (effectiveByEvaluation(evidence)) return "EFFECTIVE";
+  if (evidence.lawNumber) return "ADOPTED";
 
   const actionText = evidence.actions.map((action) => action.text.toLowerCase()).join("\n");
   if (matchesConfiguredAdvancingEvidence(actionText)) return "ADVANCING";
