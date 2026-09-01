@@ -12,12 +12,27 @@ import {
 
 function fixture(): LegislativeIntelligenceResultV1 {
   return {
-    event: { lifecycle: "PROPOSAL", sourceRefs: ["LEG-SOURCE:test"] },
-    signal: { signalRef: "PESTEL-SIGNAL:test", evidenceRefs: ["LEG-SOURCE:test"] },
-    brief: { briefRef: "PESTEL-BRIEF:test" },
+    event: {
+      eventRef: "LEG-EVENT:test",
+      lifecycle: "PROPOSAL",
+      sourceRefs: ["LEG-SOURCE:test"],
+    },
+    signal: {
+      signalRef: "PESTEL-SIGNAL:test",
+      legislativeEventRef: "LEG-EVENT:test",
+      evidenceRefs: ["LEG-SOURCE:test"],
+    },
+    brief: {
+      briefRef: "PESTEL-BRIEF:test",
+      signalRef: "PESTEL-SIGNAL:test",
+    },
     registryCandidates: [{ candidateRef: "REGISTRY-IMPACT:test" }],
     evidence: { evidenceRef: "RIVER-LEG-EVIDENCE:test" },
-    workCandidate: { workRef: "SYNNERGYZE-PESTEL-WORK:test", authorized: false },
+    workCandidate: {
+      workRef: "SYNNERGYZE-PESTEL-WORK:test",
+      signalRef: "PESTEL-SIGNAL:test",
+      authorized: false,
+    },
     privateMarker: "sentinel-secret",
   } as unknown as LegislativeIntelligenceResultV1;
 }
