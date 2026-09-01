@@ -51,4 +51,5 @@ export interface ImpactBriefV1 {
   completeness: "COMPLETE" | "DEGRADED";
   confidence: number;
   evidenceRefs: readonly string[];
+  createdAt: string;
 }

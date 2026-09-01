@@ -3,18 +3,19 @@
   "$id": "https://virtualsilkroad.com/schemas/pestel/impact-brief.schema.json",
   "type": "object",
   "additionalProperties": false,
-  "required": ["schemaVersion","briefRef","signalRef","lifecycle","observedFacts","riskHypotheses","opportunityHypotheses","obligationCandidate","completeness","confidence","evidenceRefs"],
+  "required": ["schemaVersion","briefRef","signalRef","lifecycle","observedFacts","riskHypotheses","opportunityHypotheses","obligationCandidate","completeness","confidence","evidenceRefs","createdAt"],
   "properties": {
     "schemaVersion":{"const":"PESTEL-BRIEF:R0.1"},
     "briefRef":{"type":"string"},
     "signalRef":{"type":"string"},
     "lifecycle":{"type":"string"},
     "observedFacts":{"type":"array","items":{"type":"string"}},
-    "riskHypotheses":{"type":"array","items":{"type":"string"}},
-    "opportunityHypotheses":{"type":"array","items":{"type":"string"}},
+    "riskHypotheses":{"type":"array","items":{"type":"string","pattern":"^Hypothesis:"}},
+    "opportunityHypotheses":{"type":"array","items":{"type":"string","pattern":"^Hypothesis:"}},
     "obligationCandidate":{"type":"boolean"},
     "completeness":{"enum":["COMPLETE","DEGRADED"]},
     "confidence":{"type":"number","minimum":0,"maximum":1},
-    "evidenceRefs":{"type":"array","items":{"type":"string"}}
+    "evidenceRefs":{"type":"array","items":{"type":"string"}},
+    "createdAt":{"type":"string","format":"date-time"}
   }
 }

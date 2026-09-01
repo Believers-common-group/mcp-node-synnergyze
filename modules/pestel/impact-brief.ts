@@ -9,9 +9,13 @@ function uniqueSorted(values: readonly string[]): string[] {
 export function buildImpactBriefV1(
   event: NormalizedLegislativeEventV1,
   signal: PestelSignalV1,
+  createdAt: string,
 ): ImpactBriefV1 {
   if (signal.legislativeEventRef !== event.eventRef) {
     throw new Error("pestel_signal_event_mismatch");
+  }
+  if (!createdAt || !Number.isFinite(Date.parse(createdAt))) {
+    throw new Error("pestel_brief_created_at_invalid");
   }
 
   const observedFacts = uniqueSorted([
@@ -25,12 +29,12 @@ export function buildImpactBriefV1(
   const riskHypotheses = uniqueSorted(
     Object.entries(signal.vector)
       .filter(([, score]) => score >= 0.35)
-      .map(([dimension, score]) => `Potential ${dimension} impact warrants review (signal ${score.toFixed(2)}).`),
+      .map(([dimension, score]) => `Hypothesis: Potential ${dimension} impact warrants review (signal ${score.toFixed(2)}).`),
   );
   const opportunityHypotheses = uniqueSorted(
     Object.entries(signal.vector)
       .filter(([dimension, score]) => score >= 0.35 && ["economic", "technological", "political"].includes(dimension))
-      .map(([dimension, score]) => `Potential ${dimension} opportunity warrants review (signal ${score.toFixed(2)}).`),
+      .map(([dimension, score]) => `Hypothesis: Potential ${dimension} opportunity warrants review (signal ${score.toFixed(2)}).`),
   );
   const evidenceRefs = uniqueSorted(signal.evidenceRefs);
   const completeness: ImpactBriefV1["completeness"] =
@@ -47,6 +51,7 @@ export function buildImpactBriefV1(
     completeness,
     confidence: signal.confidence,
     evidenceRefs,
+    createdAt,
   };
 
   return {

@@ -57,7 +57,7 @@ export class LegislativeIntelligenceServiceV1 {
     const signal = await classifyPestelV1(event, {
       ...(this.classifierAssist ? { assist: this.classifierAssist } : {}),
     });
-    const brief = buildImpactBriefV1(event, signal);
+    const brief = buildImpactBriefV1(event, signal, options.observedAt);
     const registryCandidates = mapRegistryImpactCandidatesV1(signal, options.registryIndex);
     const sources = allSources(bundle);
     const runRef = `PESTEL-RUN:${sha256CanonicalV1({
