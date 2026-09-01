@@ -1,10 +1,17 @@
 import { createHash } from "node:crypto";
 
+import type { WardenDecisionRequestV1 } from "../warden/contracts.ts";
 import type {
+  ResolvedDeviceSecurityContextV1,
   SynnergyzeEventDraftV1,
   SynnergyzeProgramDraftV1,
   SynnergyzeProgramEventDraftBundleV1,
 } from "./contracts.ts";
+import {
+  buildWardenDecisionRequestV1,
+  type ResolvedRepresentationContextV1,
+  type WardenRequestBridgeErrorCodeV1,
+} from "./warden-request-bridge.ts";
 
 export type CdeExecutionEnvironmentV1 = "PRODUCTION" | "STAGING" | "TEST_FIXTURE";
 export type CdeConnectorV1 =
@@ -255,6 +262,15 @@ export function compileCdeExecutionPlanToSynnergyzeDraftsV1(
       targetRef: step.target_ref,
       action: step.action,
       capabilityRef: CAPABILITY_BY_CONNECTOR[connector],
+      requestedEffect: `CDE-STEP-EFFECT:sha256:${digest(
+        JSON.stringify({
+          connector: step.connector,
+          action: step.action,
+          targetRef: step.target_ref,
+          payloadDigestSha256: step.payload_digest_sha256 ?? null,
+          rollback: step.rollback,
+        }),
+      )}`,
       dependencyRefs,
       requirementRefs,
       state: "DRAFT",
@@ -307,5 +323,120 @@ export function compileCdeExecutionPlanToSynnergyzeDraftsV1(
     sourceCommercialWardenDecisionRef: plan.warden_decision_ref,
     environment: plan.environment,
     productionEffectAllowed: plan.production_effect_allowed,
+  };
+}
+
+export interface CdeStepWardenDecisionRequestInputV1 {
+  plan: CdeExecutionPlanV1;
+  stepId: string;
+  representation: ResolvedRepresentationContextV1;
+  deviceSecurity?: ResolvedDeviceSecurityContextV1;
+  requestedAt: string;
+  correlationId: string;
+}
+
+export type CdeStepWardenDecisionRequestErrorCodeV1 =
+  | CdeExecutionPlanCompileErrorCodeV1
+  | WardenRequestBridgeErrorCodeV1
+  | "STEP_NOT_FOUND";
+
+export interface CdeStepWardenDecisionRequestFailureV1 {
+  ok: false;
+  stage: "CDE_PLAN" | "WARDEN_REQUEST";
+  code: CdeStepWardenDecisionRequestErrorCodeV1;
+  reason: string;
+  planRef: string;
+  stepId: string;
+  correlationId: string;
+}
+
+export interface CdeStepWardenDecisionRequestSuccessV1 {
+  ok: true;
+  request: WardenDecisionRequestV1;
+  program: SynnergyzeProgramDraftV1;
+  event: SynnergyzeEventDraftV1;
+  binding: CdeSynnergyzeStepBindingV1;
+  sourceCommercialDecisionRef: string;
+  sourceCommercialWardenDecisionRef: string;
+}
+
+export type CdeStepWardenDecisionRequestResultV1 =
+  | CdeStepWardenDecisionRequestFailureV1
+  | CdeStepWardenDecisionRequestSuccessV1;
+
+function cdeStepRequestFail(
+  input: CdeStepWardenDecisionRequestInputV1,
+  stage: CdeStepWardenDecisionRequestFailureV1["stage"],
+  code: CdeStepWardenDecisionRequestErrorCodeV1,
+  reason: string,
+): CdeStepWardenDecisionRequestFailureV1 {
+  return {
+    ok: false,
+    stage,
+    code,
+    reason,
+    planRef: input.plan.plan_id,
+    stepId: input.stepId,
+    correlationId: input.correlationId,
+  };
+}
+
+/**
+ * Re-validates the CDE plan at the exact Warden-request time, then routes the
+ * selected non-authoritative Synnergyze event through the canonical Warden
+ * request bridge. This prevents a previously compiled plan from being used
+ * outside its commercial validity window and still never mints authority.
+ */
+export function buildCdeStepWardenDecisionRequestV1(
+  input: CdeStepWardenDecisionRequestInputV1,
+): CdeStepWardenDecisionRequestResultV1 {
+  const compiled = compileCdeExecutionPlanToSynnergyzeDraftsV1({
+    plan: input.plan,
+    actorRef: input.representation.actorRef,
+    contextRef: input.representation.contextRef,
+    correlationId: input.correlationId,
+    compiledAt: input.requestedAt,
+  });
+
+  if (!compiled.ok) {
+    return cdeStepRequestFail(input, "CDE_PLAN", compiled.code, compiled.reason);
+  }
+
+  const binding = compiled.bindings.find((candidate) => candidate.sourceStepRef === input.stepId);
+  const event = compiled.bundle.events.find((candidate) => candidate.sourceStepRef === input.stepId);
+  if (!binding || !event) {
+    return cdeStepRequestFail(
+      input,
+      "CDE_PLAN",
+      "STEP_NOT_FOUND",
+      `cde_step_not_found:${input.stepId}`,
+    );
+  }
+
+  const wardenRequest = buildWardenDecisionRequestV1({
+    program: compiled.bundle.program,
+    event,
+    representation: input.representation,
+    deviceSecurity: input.deviceSecurity,
+    requestedAt: input.requestedAt,
+  });
+
+  if (!wardenRequest.ok) {
+    return cdeStepRequestFail(
+      input,
+      "WARDEN_REQUEST",
+      wardenRequest.code,
+      wardenRequest.reason,
+    );
+  }
+
+  return {
+    ok: true,
+    request: wardenRequest.request,
+    program: compiled.bundle.program,
+    event,
+    binding,
+    sourceCommercialDecisionRef: compiled.sourceCommercialDecisionRef,
+    sourceCommercialWardenDecisionRef: compiled.sourceCommercialWardenDecisionRef,
   };
 }
