@@ -50,7 +50,6 @@ export function buildImpactBriefV1(
   };
 
   return {
-    schemaVersion: "PESTEL-BRIEF:R0.1",
     briefRef: `PESTEL-BRIEF:${sha256CanonicalV1(identity)}`,
     ...identity,
   };

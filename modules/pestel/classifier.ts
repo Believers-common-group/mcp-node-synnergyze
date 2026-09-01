@@ -67,7 +67,7 @@ export async function classifyPestelV1(
   options: ClassifyPestelOptionsV1 = {},
 ): Promise<PestelSignalV1> {
   const deterministic = applyDeterministicPestelRulesV1(event);
-  let vector = { ...deterministic.vector };
+  const vector = { ...deterministic.vector };
   let rationale = [...deterministic.rationale];
   let confidence = deterministic.confidence;
 
@@ -118,7 +118,6 @@ export async function classifyPestelV1(
   };
 
   return {
-    schemaVersion: "PESTEL-SIGNAL:R0.1",
     signalRef: `PESTEL-SIGNAL:${sha256CanonicalV1(identity)}`,
     ...identity,
   };
