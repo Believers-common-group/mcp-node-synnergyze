@@ -234,7 +234,7 @@ modules:
   - module_id: MOD-VSR-CHANNEL-001
     network_object: VSR-CHANNEL-001
     role: governed-publication-participation-fabric
-    state: conformance_implemented_r0_1
+    state: conformance_implemented_r0_2
     intended_path: modules/channels
     implementation_file: modules/channels/publication-service.ts
     canonical_design: SynergyzeGovernance:docs/superpowers/specs/2026-09-01-vsr-channel-header-board-fabric-design.md
@@ -250,6 +250,13 @@ modules:
         - PublicationReceiptV1
         - ServiceDescriptorV1
       type_file: modules/channels/contracts.ts
+    integration_profiles:
+      - profile_id: VSR-CHANNEL-INVENTORY-R0-2
+        source_owner: CMP-SYNNERGYZE-OBJECTIVE-INVENTORY-001
+        source_contract: InventoryTransferProofV1
+        adapter: modules/channels/inventory-binding.ts
+        output_contract: HeaderBoardDraftV1
+        publication_gate: accepted-sealed-inventory-proof-only
     depends_on:
       - CANONICAL-REGISTRY-REFS
       - DIGITALME-CONTEXT
@@ -270,7 +277,10 @@ modules:
       - implicit-cross-audience-classification-inheritance
       - service-identity-as-authority
       - embed-secret-or-action-token-in-header-board
-    activation_gate: r0_1-contract-leakage-and-fail-closed-acceptance
+      - publish-inventory-intent-before-acceptance
+      - mutate-inventory-from-channel-binding
+      - embed-river-seal-or-warden-token-in-inventory-header-board-payload
+    activation_gate: r0_2-inventory-binding-plus-r0_1-core-acceptance
     tests:
       - modules/channels/contracts.test.ts
       - modules/channels/schema-validation.test.ts
@@ -279,6 +289,8 @@ modules:
       - modules/channels/publication-service.test.ts
       - modules/channels/service-descriptor.test.ts
       - modules/channels/r0-1-acceptance.test.ts
+      - modules/channels/inventory-binding.test.ts
+      - modules/channels/inventory-r0-2-acceptance.test.ts
       - modules/river/publication-service.test.ts
 
 cross_boundary_tests:
@@ -288,6 +300,8 @@ cross_boundary_tests:
   - unverified-effect-means-no-silk-dam-obligation-preparation
   - silk-cannot-mark-final-without-reconciliation-finality-evidence
   - bnr-cannot-bypass-registry-warden-river
+  - unaccepted-inventory-proof-means-no-channel-publication
+  - inventory-channel-binding-cannot-mutate-inventory
 
 promotion_lifecycle:
   - SPECIFIED
