@@ -92,6 +92,27 @@ function canonicalBillObjectId(
   return fallback.replace(/:bill$/i, "");
 }
 
+function latestSummaryText(
+  payloads: readonly CongressSummariesResponse[],
+): string | undefined {
+  const summaries = payloads
+    .flatMap((payload) => payload.summaries ?? [])
+    .filter(
+      (summary): summary is NonNullable<CongressSummariesResponse["summaries"]>[number] & { text: string } =>
+        typeof summary.text === "string" && summary.text.length > 0,
+    )
+    .sort((a, b) => {
+      const byActionDate = (a.actionDate ?? "").localeCompare(b.actionDate ?? "");
+      if (byActionDate !== 0) return byActionDate;
+      const byUpdateDate = (a.updateDate ?? "").localeCompare(b.updateDate ?? "");
+      if (byUpdateDate !== 0) return byUpdateDate;
+      const byVersion = (a.versionCode ?? "").localeCompare(b.versionCode ?? "");
+      if (byVersion !== 0) return byVersion;
+      return a.text.localeCompare(b.text);
+    });
+  return summaries.at(-1)?.text;
+}
+
 function mapSourceBundleV1(bundle: RelatedSourceBundleV1): CanonicalCongressBillBundle {
   const billPayload = bundle.bill.body as CongressBillDetailResponse;
   const bill = billPayload.bill;
@@ -128,10 +149,7 @@ function mapSourceBundleV1(bundle: RelatedSourceBundleV1): CanonicalCongressBill
       .map((id) => `BIOGUIDE:${id}`),
   );
 
-  const summaries = bodies<CongressSummariesResponse>(bundle.summaries)
-    .flatMap((payload) => payload.summaries ?? [])
-    .map((summary) => summary.text)
-    .filter((text): text is string => typeof text === "string" && text.length > 0);
+  const summary = latestSummaryText(bodies<CongressSummariesResponse>(bundle.summaries));
 
   const envelopes = [
     bundle.bill,
@@ -159,7 +177,7 @@ function mapSourceBundleV1(bundle: RelatedSourceBundleV1): CanonicalCongressBill
     subjects,
     committees,
     actors,
-    summary: summaries[0],
+    summary,
     lawState: lawState(bundle),
     evidenceRefs: uniqueSorted(envelopes.map((envelope) => envelope.sourceRef)),
     completeness: {
