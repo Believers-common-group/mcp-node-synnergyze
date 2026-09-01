@@ -137,4 +137,28 @@ describe("Inventory proof → Header Board binding", () => {
       "inventory_publication_acceptance_evidence_mismatch",
     );
   });
+
+  it("fails closed when the accepted projection is not bound to the River seal", () => {
+    const accepted = proof();
+    const forged: InventoryTransferProofV1 = {
+      ...accepted,
+      frontProjection: { ...accepted.frontProjection, evidenceRefs: ["OTHER-SEAL"] },
+      backProjection: { ...accepted.backProjection, evidenceRefs: ["OTHER-SEAL"] },
+    };
+    expect(() => bindAcceptedInventoryProofToHeaderBoardDraftV1(bindingInput(forged))).toThrow(
+      "inventory_publication_projection_evidence_mismatch",
+    );
+  });
+
+  it("fails closed when the projection objective lineage is forged", () => {
+    const accepted = proof();
+    const forged: InventoryTransferProofV1 = {
+      ...accepted,
+      frontProjection: { ...accepted.frontProjection, objectiveRef: "OBJ-OTHER" },
+      backProjection: { ...accepted.backProjection, objectiveRef: "OBJ-OTHER" },
+    };
+    expect(() => bindAcceptedInventoryProofToHeaderBoardDraftV1(bindingInput(forged))).toThrow(
+      "inventory_publication_objective_lineage_mismatch",
+    );
+  });
 });
