@@ -1,6 +1,14 @@
-import type { LegislativeSourceRecord, SourceEnvelope } from "../../contracts.ts";
+import type {
+  LegislativeSourceRecord,
+  SourceEnvelope,
+  SourceEnvelopeV1,
+} from "../../contracts.ts";
 import { sha256Ref } from "../../contracts.ts";
-import type { CongressGovCredentialProvider } from "./credential-provider.ts";
+import { sha256CanonicalV1 } from "../../canonical.ts";
+import type {
+  CongressGovCredentialProvider,
+  CongressGovCredentialProviderV1,
+} from "./credential-provider.ts";
 
 const CONGRESS_BASE_URL = "https://api.congress.gov/v3";
 
@@ -85,6 +93,65 @@ export class CongressGovClient {
         limit: response.headers.get("x-ratelimit-limit") ?? undefined,
         remaining: response.headers.get("x-ratelimit-remaining") ?? undefined,
       },
+    };
+  }
+}
+
+export interface CongressGovSourceRequestV1 {
+  sourcePath: string;
+  sourceObjectType: SourceEnvelopeV1["sourceObjectType"];
+  sourceObjectId: string;
+}
+
+function optionalInteger(value: string | null): number | undefined {
+  if (value === null) return undefined;
+  const parsed = Number.parseInt(value, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+export class CongressGovClientV1 {
+  constructor(
+    private readonly credentials: CongressGovCredentialProviderV1,
+    private readonly fetchFn: typeof fetch = fetch,
+  ) {}
+
+  async getSource(request: CongressGovSourceRequestV1, retrievedAt: string): Promise<SourceEnvelopeV1> {
+    if (!request.sourcePath.startsWith("/")) throw new Error("congress_path_must_be_relative");
+
+    const url = new URL(`${CONGRESS_BASE_URL}${request.sourcePath}`);
+    if (url.searchParams.has("api_key")) throw new Error("congress_api_key_query_prohibited");
+
+    const credential = await this.credentials.getCredential();
+    const response = await this.fetchFn(url, {
+      method: "GET",
+      headers: { "X-Api-Key": credential.apiKey },
+    });
+    if (!response.ok) throw CongressGovHttpError.fromStatus(response.status, url.pathname);
+
+    const body = (await response.json()) as unknown;
+    const rawSha256 = sha256CanonicalV1(body);
+    const sourceRef = `LEG-SOURCE:${sha256CanonicalV1({
+      sourceSystem: "congress.gov",
+      sourceObjectId: request.sourceObjectId,
+      sourceObjectType: request.sourceObjectType,
+      rawSha256,
+    })}`;
+
+    return {
+      schemaVersion: "LEG-SOURCE:R0.1",
+      sourceRef,
+      sourceSystem: "congress.gov",
+      sourceObjectId: request.sourceObjectId,
+      sourceObjectType: request.sourceObjectType,
+      sourcePath: request.sourcePath,
+      retrievedAt,
+      httpStatus: response.status,
+      rateLimitLimit: optionalInteger(response.headers.get("x-ratelimit-limit")),
+      rateLimitRemaining: optionalInteger(response.headers.get("x-ratelimit-remaining")),
+      rawSha256,
+      credentialAdmissionRef: credential.credentialAdmissionRef,
+      credentialFingerprintPrefix: credential.credentialFingerprintPrefix,
+      body,
     };
   }
 }
