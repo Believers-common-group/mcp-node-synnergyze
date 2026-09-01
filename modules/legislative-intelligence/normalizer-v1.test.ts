@@ -93,16 +93,16 @@ describe("normalizeCongressGovBillV1", () => {
         [{ actionDate: "2026-08-30", text: "Introduced in House" }],
         [
           {
-            actionDate: "2026-09-02",
-            updateDate: "2026-09-02T12:00:00Z",
-            actionDesc: "Passed House",
-            text: "Latest action-associated summary.",
-          },
-          {
             actionDate: "2026-08-30",
             updateDate: "2026-08-31T12:00:00Z",
             actionDesc: "Introduced in House",
             text: "Earlier introduced summary.",
+          },
+          {
+            actionDate: "2026-09-02",
+            updateDate: "2026-09-02T12:00:00Z",
+            actionDesc: "Passed House",
+            text: "Latest action-associated summary.",
           },
         ],
       ),
