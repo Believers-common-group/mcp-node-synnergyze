@@ -16,11 +16,13 @@ const secret = "SENTINEL_CONGRESS_SECRET_12345";
 const baseUrl = "https://api.congress.gov/v3";
 
 let observedHeader: string | null = null;
+let observedUrl: string | null = null;
 let retryCount = 0;
 
 const server = setupServer(
   http.get(`${baseUrl}/bill/119/hr/1001`, ({ request }) => {
     observedHeader = request.headers.get("x-api-key");
+    observedUrl = request.url;
     return HttpResponse.json(
       { bill: { congress: 119, type: "HR", number: "1001", title: "Synthetic Bill" } },
       { headers: { "x-ratelimit-limit": "5000", "x-ratelimit-remaining": "4999" } },
@@ -28,12 +30,14 @@ const server = setupServer(
   }),
   http.get(`${baseUrl}/bill/119/hr/retry`, ({ request }) => {
     observedHeader = request.headers.get("x-api-key");
+    observedUrl = request.url;
     retryCount += 1;
     if (retryCount === 1) return new HttpResponse(null, { status: 429, headers: { "Retry-After": "0" } });
     return HttpResponse.json({ bill: { congress: 119, type: "HR", number: "999" } });
   }),
   http.get(`${baseUrl}/congress`, ({ request }) => {
     observedHeader = request.headers.get("x-api-key");
+    observedUrl = request.url;
     return HttpResponse.json({ congresses: [{ number: 119 }] });
   }),
   http.get(`${baseUrl}/bill/119/hr/401`, () => new HttpResponse(null, { status: 401 })),
@@ -43,6 +47,7 @@ const server = setupServer(
 beforeAll(() => server.listen({ onUnhandledRequest: "error" }));
 afterEach(() => {
   observedHeader = null;
+  observedUrl = null;
   retryCount = 0;
   server.resetHandlers();
 });
@@ -133,6 +138,14 @@ describe("CongressGovClientV1", () => {
     expect(result.rateLimitLimit).toBe(5000);
     expect(result.rateLimitRemaining).toBe(4999);
     expect(JSON.stringify(result)).not.toContain(secret);
+  });
+
+  it("forces format=json at dispatch when the caller omits format", async () => {
+    const client = new CongressGovClientV1(provider());
+    await client.getJson("/bill/119/hr/1001", "bill", "119-hr-1001");
+
+    expect(observedUrl).not.toBeNull();
+    expect(new URL(observedUrl ?? baseUrl).searchParams.get("format")).toBe("json");
   });
 
   it("rejects both api_key and apikey query transport", async () => {
