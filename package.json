@@ -11,6 +11,8 @@
     "test:channels": "vitest run modules/channels",
     "test:channel-r0-1": "vitest run modules/channels/r0-1-acceptance.test.ts modules/river/publication-service.test.ts",
     "test:channel-r0-2": "vitest run modules/channels/inventory-binding.test.ts modules/channels/inventory-r0-2-acceptance.test.ts modules/objective/inventory-transfer.test.ts",
+    "test:commerce-events": "vitest run modules/commerce-events",
+    "test:channel-r0-3": "vitest run modules/commerce-events modules/channels/commerce-profiles.test.ts modules/channels/commerce-binding.test.ts modules/channels/commerce-r0-3-acceptance.test.ts",
     "test:node-builder": "vitest run modules/genesis-node-builder",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
     "test:rc1": "vitest run rc1/runtime.test.ts",

@@ -2,7 +2,8 @@ import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 
 import type { BnrReadinessStateV1 } from "./bnr/contracts.ts";
-import type { HeaderBoardV1 } from "./channels/contracts.ts";
+import type { ChannelClassification, HeaderBoardV1 } from "./channels/contracts.ts";
+import type { CommerceFieldClassificationV1 } from "./commerce-events/contracts.ts";
 import type { NormalizedIntentV1 } from "./qel/contracts.ts";
 import type { EvidenceSealV1 } from "./river/contracts.ts";
 import type { EconomicConsequenceDraftV1 } from "./silk-dam/contracts.ts";
@@ -129,6 +130,24 @@ const preparedBoard: HeaderBoardV1 = {
 // @ts-expect-error Publication projection cannot carry an executable token.
 preparedBoard.actionToken = "forbidden";
 
+const commerceProductionFiles = [
+  "contracts.ts",
+  "event-grammar.ts",
+  "source-ownership.ts",
+  "normalizer.ts",
+  "transition-integrity.ts",
+  "order-closure.ts",
+] as const;
+
+const forbiddenCommerceBindingMutationIdentifiers = [
+  "updateOrder",
+  "reserveInventory",
+  "markDelivered",
+  "createRefund",
+  "postInvoice",
+  "writeTally",
+] as const;
+
 describe("VSR network contract types", () => {
   it("keeps authorization outside QEL and inside an explicit Warden allow decision", () => {
     expect(normalizedIntent.authorized).toBe(false);
@@ -154,6 +173,29 @@ describe("VSR network contract types", () => {
   it("keeps Header Board projections separate from executable authority", () => {
     expect(preparedBoard.status).toBe("PREPARED");
     expect(preparedBoard.fieldClassifications.message).toBe("PUBLIC");
+  });
+
+  it("keeps Commerce classifications exactly compatible with Channel classifications", () => {
+    const commerce: CommerceFieldClassificationV1 = "MANAGEMENT";
+    const channel: ChannelClassification = commerce;
+    const roundTrip: CommerceFieldClassificationV1 = channel;
+    expect(roundTrip).toBe("MANAGEMENT");
+  });
+
+  it("keeps all Commerce production modules independent of Channel projection contracts", () => {
+    for (const fileName of commerceProductionFiles) {
+      const source = readFileSync(new URL(`./commerce-events/${fileName}`, import.meta.url), "utf8");
+      expect(source, fileName).not.toContain("../channels/");
+      expect(source, fileName).not.toContain("./channels/");
+    }
+  });
+
+  it("keeps the Commerce Channel binding free of source mutation and inventory-objective coupling", () => {
+    const source = readFileSync(new URL("./channels/commerce-binding.ts", import.meta.url), "utf8");
+    expect(source).not.toContain("../objective/inventory-transfer.ts");
+    for (const identifier of forbiddenCommerceBindingMutationIdentifiers) {
+      expect(source, identifier).not.toContain(identifier);
+    }
   });
 
   it("keeps River evidence contracts independent of Channel projection contracts", () => {

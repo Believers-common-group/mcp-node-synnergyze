@@ -231,6 +231,44 @@ modules:
     tests:
       - modules/contracts.test.ts
 
+  - module_id: MOD-VSR-COMMERCE-EVENT-001
+    network_object: VSR-COMMERCE-EVENT-001
+    role: source-bound-operational-event-observation
+    state: conformance_implemented_r0_3
+    intended_path: modules/commerce-events
+    implementation_file: modules/commerce-events/normalizer.ts
+    canonical_design: SynergyzeGovernance:docs/superpowers/specs/2026-09-02-vsr-commerce-event-binding-fabric-r0-3-design.md
+    public_contracts:
+      input:
+        - CommerceSourceEventV1
+        - CommerceSourcePolicyV1
+      output:
+        - CommerceEventObservationV1
+        - CommerceTransitionResultV1
+      type_file: modules/commerce-events/contracts.ts
+    depends_on:
+      - CANONICAL-REGISTRY-REFS
+      - SOURCE-SYSTEM-EVIDENCE-REFS
+    consumers:
+      - SYNNERGYZE-RUNTIME-001
+      - VSR-CHANNEL-001
+    forbidden:
+      - mutate-source-system-record
+      - infer-or-manufacture-warden-authority
+      - elevate-observer-or-proof-source-to-authoritative-origin
+      - fuzzy-or-model-inferred-event-alias
+      - fabricate-missing-predecessor-event
+      - store-unrestricted-source-payload-as-commerce-truth
+      - treat-observation-as-source-record
+    activation_gate: r0_3-source-role-transition-and-leakage-conformance
+    tests:
+      - modules/commerce-events/contracts.test.ts
+      - modules/commerce-events/event-grammar.test.ts
+      - modules/commerce-events/source-ownership.test.ts
+      - modules/commerce-events/normalizer.test.ts
+      - modules/commerce-events/transition-integrity.test.ts
+      - modules/commerce-events/order-closure.test.ts
+
   - module_id: MOD-VSR-CHANNEL-001
     network_object: VSR-CHANNEL-001
     role: governed-publication-participation-fabric
@@ -257,6 +295,13 @@ modules:
         adapter: modules/channels/inventory-binding.ts
         output_contract: HeaderBoardDraftV1
         publication_gate: accepted-sealed-inventory-proof-only
+      - profile_id: VSR-CHANNEL-COMMERCE-R0-3
+        source_owner: VSR-COMMERCE-EVENT-001
+        source_contract: CommerceEventObservationV1
+        adapter: modules/channels/commerce-binding.ts
+        profile_registry: modules/channels/commerce-profiles.ts
+        output_contract: HeaderBoardDraftV1
+        publication_gate: admitted-commerce-transition-plus-r0_1-publication-rail
     depends_on:
       - CANONICAL-REGISTRY-REFS
       - DIGITALME-CONTEXT
@@ -280,6 +325,10 @@ modules:
       - publish-inventory-intent-before-acceptance
       - mutate-inventory-from-channel-binding
       - embed-river-seal-or-warden-token-in-inventory-header-board-payload
+      - publish-commerce-event-before-transition-admission
+      - mutate-source-system-from-commerce-binding
+      - cross-marketplace-or-cross-order-projection-widening
+      - management-summary-as-operational-truth
     activation_gate: r0_2-inventory-binding-plus-r0_1-core-acceptance
     tests:
       - modules/channels/contracts.test.ts
@@ -291,6 +340,9 @@ modules:
       - modules/channels/r0-1-acceptance.test.ts
       - modules/channels/inventory-binding.test.ts
       - modules/channels/inventory-r0-2-acceptance.test.ts
+      - modules/channels/commerce-profiles.test.ts
+      - modules/channels/commerce-binding.test.ts
+      - modules/channels/commerce-r0-3-acceptance.test.ts
       - modules/river/publication-service.test.ts
 
 cross_boundary_tests:
@@ -302,6 +354,11 @@ cross_boundary_tests:
   - bnr-cannot-bypass-registry-warden-river
   - unaccepted-inventory-proof-means-no-channel-publication
   - inventory-channel-binding-cannot-mutate-inventory
+  - source-role-elevation-means-no-commerce-observation
+  - missing-predecessor-means-no-commerce-header-board
+  - cross-marketplace-scope-mismatch-means-no-publication
+  - cross-order-correlation-mismatch-means-no-publication
+  - commerce-channel-binding-cannot-mutate-source-systems
 
 promotion_lifecycle:
   - SPECIFIED
