@@ -1,5 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
+import { existsSync } from "node:fs";
 import { platform as hostPlatform, release as hostRelease } from "node:os";
 import { promisify } from "node:util";
 
@@ -24,10 +25,20 @@ export function resolveWindowsPowerShellExecutableV1(
   platform: NodeJS.Platform = hostPlatform(),
   wslInterop = process.env.WSL_INTEROP ?? "",
   kernelRelease = hostRelease(),
+  pathEnvironment = process.env.PATH ?? "",
+  pathExists: (path: string) => boolean = existsSync,
 ): string {
-  return platform === "linux" && hasWindowsPowerShellBoundaryV1(platform, wslInterop, kernelRelease)
-    ? WSL_POWERSHELL_EXECUTABLE
-    : "powershell.exe";
+  if (platform !== "linux" || !hasWindowsPowerShellBoundaryV1(platform, wslInterop, kernelRelease)) {
+    return "powershell.exe";
+  }
+
+  for (const entry of pathEnvironment.split(":").filter(Boolean)) {
+    const candidate = `${entry.replace(/\/+$/, "")}/powershell.exe`;
+    if (pathExists(candidate)) return candidate;
+  }
+
+  if (pathExists(WSL_POWERSHELL_EXECUTABLE)) return WSL_POWERSHELL_EXECUTABLE;
+  return "powershell.exe";
 }
 
 export interface CongressGovCredentialProvider {
