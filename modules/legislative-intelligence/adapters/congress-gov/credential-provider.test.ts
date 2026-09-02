@@ -86,6 +86,21 @@ describe("Congress.gov V1 credential providers", () => {
     });
   });
 
+  it("permits WSL PowerShell when the service omits WSL_INTEROP", async () => {
+    const provider = new WindowsDpapiCongressGovCredentialProviderV1({
+      platform: "linux",
+      wslInterop: "",
+      kernelRelease: "6.18.33.2-microsoft-standard-WSL2",
+      decrypt: async () => secret,
+      readReceipt: async () => validReceipt,
+    });
+
+    await expect(provider.getCredential()).resolves.toMatchObject({
+      credentialAdmissionRef: "CONGRESS-GOV-API-KEY-001",
+      credentialFingerprintPrefix: fingerprintPrefix,
+    });
+  });
+
   it("falls back to the existing SentinelX LocalAppData admission store", async () => {
     const observedPaths: string[] = [];
     const legacyReceipt = {
@@ -122,11 +137,18 @@ describe("Congress.gov V1 credential providers", () => {
     expect(resolveWindowsPowerShellExecutableV1("linux", "/run/WSL/1_interop")).toBe(
       "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
     );
+    expect(
+      resolveWindowsPowerShellExecutableV1("linux", "", "6.18.33.2-microsoft-standard-WSL2"),
+    ).toBe("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe");
     expect(resolveWindowsPowerShellExecutableV1("win32", "")).toBe("powershell.exe");
   });
 
   it("refuses DPAPI use on unsupported non-Windows hosts", async () => {
-    const provider = new WindowsDpapiCongressGovCredentialProviderV1({ platform: "linux", wslInterop: "" });
+    const provider = new WindowsDpapiCongressGovCredentialProviderV1({
+      platform: "linux",
+      wslInterop: "",
+      kernelRelease: "6.8.0-generic",
+    });
     await expect(provider.getCredential()).rejects.toThrow("CREDENTIAL_PLATFORM_UNSUPPORTED");
   });
 });
