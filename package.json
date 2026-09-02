@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "main": "src/app.ts",
   "scripts": {
-    "start": "node --experimental-strip-types --no-warnings=ExperimentalWarnings src/app.ts",
+    "start": "node --experimental-transform-types --no-warnings=ExperimentalWarnings src/app.ts",
     "type-check": "tsc --noEmit",
     "lint": "eslint --ext .ts src api rc1 compute agent-fabric site-handoff modules",
     "test": "vitest",
@@ -37,7 +37,7 @@
     "test:pestel:congress": "vitest run modules/legislative-intelligence/adapters/congress-gov",
     "test:pestel:conformance": "vitest run modules/legislative-intelligence/conformance.test.ts",
     "test:pestel:mcp": "vitest run src/tools/registerPestelLegislativeIngest.test.ts src/tools/registerPestelImpactBrief.test.ts",
-    "validate:pestel:congress": "node --experimental-strip-types scripts/validate-congress-gov-runtime.ts",
+    "validate:pestel:congress": "node --experimental-transform-types scripts/validate-congress-gov-runtime.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
     "debug": "mcp-inspector npm start"
