@@ -72,7 +72,7 @@ describe("Vercel Eve transport boundary R0.2", () => {
     expect(result.riverReceipt.wardenDecisionRef).toBe("WARDEN-EVE-DENY-TRANSPORT-001");
   });
 
-  it("starts one idempotent Eve session only after Warden admission", async () => {
+  it("starts one Eve session only after Warden admission", async () => {
     const implementation = await loadImplementation();
     expect(implementation, "Vercel Eve transport adapter must exist").toBeDefined();
     if (!implementation) return;
@@ -91,15 +91,17 @@ describe("Vercel Eve transport boundary R0.2", () => {
       requestedAt: "2026-09-02T06:31:00.000Z",
     });
 
+    let calls = 0;
     let observedUrl = "";
     let observedInit: RequestInit | undefined;
     const fetchImpl: typeof fetch = async (input, init) => {
+      calls += 1;
       observedUrl = String(input);
       observedInit = init;
-      return new Response(
-        JSON.stringify({ ok: true, sessionId: "wrun_EVE_001", status: "accepted" }),
-        { status: 202, headers: { "content-type": "application/json" } },
-      );
+      return new Response(null, {
+        status: 200,
+        headers: { "x-eve-session-id": "wrun_EVE_001" },
+      });
     };
 
     const result = await implementation.startVercelEveSession({
@@ -111,6 +113,7 @@ describe("Vercel Eve transport boundary R0.2", () => {
       recordedAt: "2026-09-02T06:31:01.000Z",
     });
 
+    expect(calls).toBe(1);
     expect(observedUrl).toBe("https://eve.example.test/eve/v1/session");
     expect(observedInit?.method).toBe("POST");
     expect(observedInit?.headers).toEqual({
@@ -119,7 +122,6 @@ describe("Vercel Eve transport boundary R0.2", () => {
     });
     expect(JSON.parse(String(observedInit?.body))).toEqual({
       message: "Verify governed durable execution.",
-      operationId: "EVE-REQ-TRANSPORT-ALLOW-001",
     });
     expect(result.status).toBe("STARTED");
     expect(result.sessionId).toBe("wrun_EVE_001");
