@@ -1,0 +1,16 @@
+{
+  "bill": {
+    "congress": 119,
+    "type": "HR",
+    "number": "1001",
+    "title": "Supply Chain Transparency Demonstration Act",
+    "updateDate": "2026-08-31",
+    "originChamber": "House",
+    "sponsors": [
+      {
+        "fullName": "Rep. Example, Ada [D-CA]",
+        "bioguideId": "E000001"
+      }
+    ]
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "subjects": {
+    "legislativeSubjects": [
+      {"name":"Supply chain management"},
+      {"name":"Business records"}
+    ],
+    "policyArea": {"name":"Commerce"}
+  }
+}

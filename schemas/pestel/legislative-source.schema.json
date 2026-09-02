@@ -1,0 +1,24 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virtualsilkroad.com/schemas/pestel/legislative-source.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion","sourceRef","sourceSystem","sourceObjectId","sourceObjectType","sourcePath","retrievedAt","httpStatus","rawSha256","credentialAdmissionRef","body"],
+  "properties": {
+    "schemaVersion": {"const":"LEG-SOURCE:R0.1"},
+    "sourceRef": {"type":"string","minLength":1},
+    "sourceSystem": {"const":"congress.gov"},
+    "sourceObjectId": {"type":"string","minLength":1},
+    "sourceObjectType": {"enum":["bill","actions","subjects","committees","amendments","summaries","law"]},
+    "sourcePath": {"type":"string","pattern":"^/"},
+    "retrievedAt": {"type":"string"},
+    "sourceUpdatedAt": {"type":"string"},
+    "httpStatus": {"type":"integer","minimum":100,"maximum":599},
+    "rateLimitLimit": {"type":"integer","minimum":0},
+    "rateLimitRemaining": {"type":"integer","minimum":0},
+    "rawSha256": {"type":"string","pattern":"^[a-f0-9]{64}$"},
+    "credentialAdmissionRef": {"const":"CONGRESS-GOV-API-KEY-001"},
+    "credentialFingerprintPrefix": {"type":"string"},
+    "body": {}
+  }
+}

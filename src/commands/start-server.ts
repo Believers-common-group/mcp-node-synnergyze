@@ -16,6 +16,12 @@ import { maybeRegisterRiverWardenConformanceReservation } from "../tools/registe
 import { maybeRegisterWardenRiverSynnergyzeConformanceExecution } from "../tools/registerWardenRiverSynnergyzeConformanceExecution.ts";
 import { maybeRegisterWardenRiverEffectConformance } from "../tools/registerWardenRiverEffectConformance.ts";
 import { maybeRegisterWardenReconciliationConformance } from "../tools/registerWardenReconciliationConformance.ts";
+import {
+  createDefaultPestelLegislativeServiceV1,
+  maybeRegisterPestelLegislativeIngest,
+} from "../tools/registerPestelLegislativeIngest.ts";
+import { maybeRegisterPestelImpactBrief } from "../tools/registerPestelImpactBrief.ts";
+import { InMemoryLegislativeIntelligenceResultStoreV1 } from "../../modules/legislative-intelligence/result-store.ts";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type {
   ProcessCallbackArguments,
@@ -95,6 +101,11 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
   maybeRegisterWardenRiverSynnergyzeConformanceExecution(server, toolFilter);
   maybeRegisterWardenRiverEffectConformance(server, toolFilter);
   maybeRegisterWardenReconciliationConformance(server, toolFilter);
+
+  const pestelResultStore = new InMemoryLegislativeIntelligenceResultStoreV1();
+  const pestelService = createDefaultPestelLegislativeServiceV1();
+  maybeRegisterPestelLegislativeIngest(server, toolFilter, pestelService, pestelResultStore);
+  maybeRegisterPestelImpactBrief(server, toolFilter, pestelResultStore);
 
   const regionHotFixMiddlewares: RequestMiddleware[] = [];
   let processCallbackArguments: ProcessCallbackArguments;

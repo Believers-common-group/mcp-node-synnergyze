@@ -33,6 +33,11 @@
     "test:bag-lock-runtime": "vitest run modules/synnergyze/warden-request-bridge.test.ts modules/synnergyze/execution-gate.test.ts",
     "test:sites": "vitest run api/sites.test.ts",
     "test:site-handoff": "vitest run site-handoff",
+    "test:pestel": "vitest run modules/pestel modules/legislative-intelligence modules/river/legislative-evidence.test.ts modules/synnergyze/pestel-work-bridge.test.ts modules/warden/pestel-review-request.test.ts",
+    "test:pestel:congress": "vitest run modules/legislative-intelligence/adapters/congress-gov",
+    "test:pestel:conformance": "vitest run modules/legislative-intelligence/conformance.test.ts",
+    "test:pestel:mcp": "vitest run src/tools/registerPestelLegislativeIngest.test.ts src/tools/registerPestelImpactBrief.test.ts",
+    "validate:pestel:congress": "node --experimental-strip-types scripts/validate-congress-gov-runtime.ts",
     "probe:apple-mpp": "bash scripts/bootstrap-apple-mpp-runner.sh",
     "compile:apple-mpp": "bash native/apple-mpp/build-probe.sh",
     "debug": "mcp-inspector npm start"

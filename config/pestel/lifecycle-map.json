@@ -1,0 +1,11 @@
+{
+  "schemaVersion": "PESTEL-LIFECYCLE-MAP:R0.1",
+  "advancingEvidenceFamilies": {
+    "committee_reported": ["reported by committee", "ordered to be reported"],
+    "chamber_passed": ["passed house", "passed senate"],
+    "conference": ["conference report", "conference committee"],
+    "enrolled": ["enrolled bill"],
+    "presented_to_president": ["presented to president"]
+  },
+  "adoptedEvidence": ["public law", "became law", "law number"]
+}

@@ -1,0 +1,12 @@
+{
+  "schemaVersion": "PESTEL-SOURCES:R0.1",
+  "sources": [
+    {
+      "sourceSystem": "congress.gov",
+      "jurisdiction": "US-FEDERAL",
+      "apiBase": "https://api.congress.gov/v3",
+      "credentialAdmissionRef": "CONGRESS-GOV-API-KEY-001",
+      "transportHeader": "X-Api-Key"
+    }
+  ]
+}

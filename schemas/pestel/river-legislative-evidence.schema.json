@@ -1,0 +1,26 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://virtualsilkroad.com/schemas/pestel/river-legislative-evidence.schema.json",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["schemaVersion","evidenceRef","runRef","sourceSystem","sourceObjectIds","credentialAdmissionRef","requestStatuses","rateLimitObservations","rawSourceDigests","normalizedEventDigest","lifecycleNormalizerVersion","classifierVersion","mappingPolicyVersion","outputBriefDigest","observedAt","persistenceState"],
+  "properties": {
+    "schemaVersion":{"const":"RIVER-LEG-EVIDENCE:R0.1"},
+    "evidenceRef":{"type":"string"},
+    "runRef":{"type":"string"},
+    "sourceSystem":{"const":"congress.gov"},
+    "sourceObjectIds":{"type":"array","items":{"type":"string"}},
+    "credentialAdmissionRef":{"const":"CONGRESS-GOV-API-KEY-001"},
+    "credentialFingerprintPrefix":{"type":"string"},
+    "requestStatuses":{"type":"array","items":{"type":"integer","minimum":100,"maximum":599}},
+    "rateLimitObservations":{"type":"array","items":{"type":"object","additionalProperties":false,"properties":{"limit":{"type":"number"},"remaining":{"type":"number"}}}},
+    "rawSourceDigests":{"type":"array","items":{"type":"string","pattern":"^[a-f0-9]{64}$"}},
+    "normalizedEventDigest":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+    "lifecycleNormalizerVersion":{"const":"LEG-NORMALIZER:R0.1"},
+    "classifierVersion":{"type":"string"},
+    "mappingPolicyVersion":{"const":"REGISTRY-IMPACT:R0.1"},
+    "outputBriefDigest":{"type":"string","pattern":"^[a-f0-9]{64}$"},
+    "observedAt":{"type":"string"},
+    "persistenceState":{"const":"LOCAL_DOMAIN_RECEIPT"}
+  }
+}
