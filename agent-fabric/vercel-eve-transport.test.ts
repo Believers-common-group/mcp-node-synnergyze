@@ -117,6 +117,7 @@ describe("Vercel Eve transport boundary R0.2", () => {
     expect(observedUrl).toBe("https://eve.example.test/eve/v1/session");
     expect(observedInit?.method).toBe("POST");
     expect(observedInit?.headers).toEqual({
+      "authorization": "Bearer test-oidc-token",
       "content-type": "application/json",
       "x-vercel-trusted-oidc-idp-token": "test-oidc-token",
     });
