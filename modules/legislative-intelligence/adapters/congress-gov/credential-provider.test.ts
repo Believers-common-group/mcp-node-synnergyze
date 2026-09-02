@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 
 import {
+  resolveWindowsPowerShellExecutableV1,
   StaticCongressGovCredentialProviderV1,
   WindowsDpapiCongressGovCredentialProviderV1,
 } from "./credential-provider.ts";
@@ -83,6 +84,45 @@ describe("Congress.gov V1 credential providers", () => {
       credentialAdmissionRef: "CONGRESS-GOV-API-KEY-001",
       credentialFingerprintPrefix: fingerprintPrefix,
     });
+  });
+
+  it("falls back to the existing SentinelX LocalAppData admission store", async () => {
+    const observedPaths: string[] = [];
+    const legacyReceipt = {
+      request_id: "CONGRESS-GOV-API-KEY-001",
+      credential: { sha256_fingerprint_prefix: fingerprintPrefix },
+      admission: { http_status: 200 },
+      evidence: { receipt_sha256: "b".repeat(64) },
+    };
+    const provider = new WindowsDpapiCongressGovCredentialProviderV1({
+      platform: "win32",
+      readReceipt: async (path) => {
+        observedPaths.push(`receipt:${path}`);
+        if (path.startsWith("$HOME\\")) throw new Error("CREDENTIAL_FILE_MISSING");
+        return legacyReceipt;
+      },
+      decrypt: async (path) => {
+        observedPaths.push(`secret:${path}`);
+        return secret;
+      },
+    });
+
+    await expect(provider.getCredential()).resolves.toMatchObject({
+      credentialAdmissionRef: "CONGRESS-GOV-API-KEY-001",
+      credentialFingerprintPrefix: fingerprintPrefix,
+    });
+    expect(observedPaths).toEqual([
+      "receipt:$HOME\\.alpha\\credentials\\congress-gov\\admission-receipt.json",
+      "receipt:$LOCALAPPDATA\\SentinelX\\credential-intake\\congress-gov\\admission-receipt.json",
+      "secret:$LOCALAPPDATA\\SentinelX\\credential-intake\\congress-gov\\api-key.dpapi",
+    ]);
+  });
+
+  it("uses the absolute Windows PowerShell executable from WSL", () => {
+    expect(resolveWindowsPowerShellExecutableV1("linux", "/run/WSL/1_interop")).toBe(
+      "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+    );
+    expect(resolveWindowsPowerShellExecutableV1("win32", "")).toBe("powershell.exe");
   });
 
   it("refuses DPAPI use on unsupported non-Windows hosts", async () => {
