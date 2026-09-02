@@ -7,6 +7,16 @@ const execFileAsync = promisify(execFile);
 const CREDENTIAL_ADMISSION_REF = "CONGRESS-GOV-API-KEY-001" as const;
 const DEFAULT_SECRET_PATH = "$HOME\\.alpha\\credentials\\congress-gov\\api-key.dpapi";
 const DEFAULT_RECEIPT_PATH = "$HOME\\.alpha\\credentials\\congress-gov\\admission-receipt.json";
+const SENTINEL_SECRET_PATH = "$LOCALAPPDATA\\SentinelX\\credential-intake\\congress-gov\\api-key.dpapi";
+const SENTINEL_RECEIPT_PATH = "$LOCALAPPDATA\\SentinelX\\credential-intake\\congress-gov\\admission-receipt.json";
+const WSL_POWERSHELL_EXECUTABLE = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+
+export function resolveWindowsPowerShellExecutableV1(
+  platform: NodeJS.Platform = hostPlatform(),
+  wslInterop = process.env.WSL_INTEROP ?? "",
+): string {
+  return platform === "linux" && Boolean(wslInterop) ? WSL_POWERSHELL_EXECUTABLE : "powershell.exe";
+}
 
 export interface CongressGovCredentialProvider {
   getApiKey(): Promise<string>;
@@ -74,6 +84,15 @@ export interface CongressAdmissionReceiptV1 {
   http_status?: number;
   sha256_fingerprint_prefix?: string;
   receipt_sha256?: string;
+  credential?: {
+    sha256_fingerprint_prefix?: string;
+  };
+  admission?: {
+    http_status?: number;
+  };
+  evidence?: {
+    receipt_sha256?: string;
+  };
 }
 
 export interface WindowsDpapiProviderOptionsV1 {
@@ -88,11 +107,11 @@ export interface WindowsDpapiProviderOptionsV1 {
 function powershellPathResolver(): string {
   return [
     "$rawPath = $args[0];",
-    "if ($rawPath.StartsWith('$HOME\\')) { $path = Join-Path $HOME $rawPath.Substring(6) } else { $path = $rawPath };",
+    "if ($rawPath.StartsWith('$HOME\\')) { $path = Join-Path $HOME $rawPath.Substring(6) } elseif ($rawPath.StartsWith('$LOCALAPPDATA\\')) { $path = Join-Path $env:LOCALAPPDATA $rawPath.Substring(14) } else { $path = $rawPath };",
   ].join(" ");
 }
 
-async function defaultDpapiDecrypt(path: string): Promise<string> {
+async function defaultDpapiDecrypt(path: string, powershellExecutable: string): Promise<string> {
   const command = [
     powershellPathResolver(),
     "if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { [Console]::Error.Write('CREDENTIAL_FILE_MISSING'); exit 3 };",
@@ -125,7 +144,7 @@ async function defaultDpapiDecrypt(path: string): Promise<string> {
 
   try {
     const result = await execFileAsync(
-      "powershell.exe",
+      powershellExecutable,
       ["-NoProfile", "-NonInteractive", "-Command", command, path],
       { windowsHide: true, maxBuffer: 1024 * 1024 },
     );
@@ -144,7 +163,10 @@ async function defaultDpapiDecrypt(path: string): Promise<string> {
   }
 }
 
-async function defaultReceiptReader(path: string): Promise<CongressAdmissionReceiptV1> {
+async function defaultReceiptReader(
+  path: string,
+  powershellExecutable: string,
+): Promise<CongressAdmissionReceiptV1> {
   const command = [
     powershellPathResolver(),
     "if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { [Console]::Error.Write('CREDENTIAL_FILE_MISSING'); exit 3 };",
@@ -155,7 +177,7 @@ async function defaultReceiptReader(path: string): Promise<CongressAdmissionRece
 
   try {
     const result = await execFileAsync(
-      "powershell.exe",
+      powershellExecutable,
       ["-NoProfile", "-NonInteractive", "-Command", command, path],
       { windowsHide: true, maxBuffer: 1024 * 1024 },
     );
@@ -168,6 +190,16 @@ async function defaultReceiptReader(path: string): Promise<CongressAdmissionRece
     if (stderr.includes("CREDENTIAL_FILE_MISSING")) throw new Error("CREDENTIAL_FILE_MISSING");
     throw new Error("CREDENTIAL_ADMISSION_RECEIPT_INVALID");
   }
+}
+
+function normalizeAdmissionReceipt(receipt: CongressAdmissionReceiptV1): CongressAdmissionReceiptV1 {
+  return {
+    request_id: receipt.request_id,
+    http_status: receipt.http_status ?? receipt.admission?.http_status,
+    sha256_fingerprint_prefix:
+      receipt.sha256_fingerprint_prefix ?? receipt.credential?.sha256_fingerprint_prefix,
+    receipt_sha256: receipt.receipt_sha256 ?? receipt.evidence?.receipt_sha256,
+  };
 }
 
 function validateAdmissionReceipt(receipt: CongressAdmissionReceiptV1): string {
@@ -199,14 +231,18 @@ export class WindowsDpapiCongressGovCredentialProviderV1
   #receiptPath: string;
   #decrypt: (path: string) => Promise<string>;
   #readReceipt: (path: string) => Promise<CongressAdmissionReceiptV1>;
+  #allowSentinelFallback: boolean;
 
   constructor(options: WindowsDpapiProviderOptionsV1 = {}) {
     this.#platform = options.platform ?? hostPlatform();
     this.#wslInterop = options.wslInterop ?? process.env.WSL_INTEROP ?? "";
     this.#secretPath = options.secretPath ?? DEFAULT_SECRET_PATH;
     this.#receiptPath = options.receiptPath ?? DEFAULT_RECEIPT_PATH;
-    this.#decrypt = options.decrypt ?? defaultDpapiDecrypt;
-    this.#readReceipt = options.readReceipt ?? defaultReceiptReader;
+    this.#allowSentinelFallback = options.secretPath === undefined && options.receiptPath === undefined;
+    const powershellExecutable = resolveWindowsPowerShellExecutableV1(this.#platform, this.#wslInterop);
+    this.#decrypt = options.decrypt ?? ((path) => defaultDpapiDecrypt(path, powershellExecutable));
+    this.#readReceipt =
+      options.readReceipt ?? ((path) => defaultReceiptReader(path, powershellExecutable));
   }
 
   async getCredential(): Promise<CongressGovCredentialMaterialV1> {
@@ -215,15 +251,28 @@ export class WindowsDpapiCongressGovCredentialProviderV1
     }
 
     let receipt: CongressAdmissionReceiptV1;
+    let secretPath = this.#secretPath;
     try {
       receipt = await this.#readReceipt(this.#receiptPath);
     } catch (error) {
-      if (error instanceof Error && error.message === "CREDENTIAL_FILE_MISSING") throw error;
-      throw new Error("CREDENTIAL_ADMISSION_RECEIPT_INVALID");
+      const canonicalMissing = error instanceof Error && error.message === "CREDENTIAL_FILE_MISSING";
+      if (!canonicalMissing || !this.#allowSentinelFallback) {
+        if (canonicalMissing) throw error;
+        throw new Error("CREDENTIAL_ADMISSION_RECEIPT_INVALID");
+      }
+      try {
+        receipt = await this.#readReceipt(SENTINEL_RECEIPT_PATH);
+        secretPath = SENTINEL_SECRET_PATH;
+      } catch (fallbackError) {
+        if (fallbackError instanceof Error && fallbackError.message === "CREDENTIAL_FILE_MISSING") {
+          throw fallbackError;
+        }
+        throw new Error("CREDENTIAL_ADMISSION_RECEIPT_INVALID");
+      }
     }
-    const fingerprintPrefix = validateAdmissionReceipt(receipt);
+    const fingerprintPrefix = validateAdmissionReceipt(normalizeAdmissionReceipt(receipt));
 
-    const apiKey = (await this.#decrypt(this.#secretPath)).trim();
+    const apiKey = (await this.#decrypt(secretPath)).trim();
     if (!apiKey) throw new Error("CREDENTIAL_FILE_EMPTY");
     if (!fingerprintMatches(apiKey, fingerprintPrefix)) {
       throw new Error("CREDENTIAL_FINGERPRINT_MISMATCH");
