@@ -1,0 +1,145 @@
+name: eve-provision
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - feat/vercel-eve-admission-r0-1
+    paths:
+      - .github/workflows/eve-provision.yml
+      - eve-runtime/**
+
+permissions:
+  contents: read
+
+jobs:
+  provision:
+    runs-on: ubuntu-latest
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: team_n8NaVhoH0yLqUkBbjPj8gmAD
+      VERCEL_TEAM_SLUG: faizahmed29-5330s-projects
+      VERCEL_PROJECT_NAME: synnergyze-genesis-eve
+      VERCEL_REPOSITORY: Believers-common-group/mcp-node-synnergyze
+      VERCEL_ROOT_DIRECTORY: eve-runtime
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check provisioning credential
+        id: guard
+        shell: bash
+        run: |
+          if [ -z "${VERCEL_TOKEN:-}" ]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "VERCEL_TOKEN repository secret is not configured; provisioning skipped."
+          else
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or validate isolated Eve project
+        id: project
+        if: steps.guard.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          api="https://api.vercel.com"
+          auth_header="Authorization: Bearer ${VERCEL_TOKEN}"
+          project_url="${api}/v9/projects/${VERCEL_PROJECT_NAME}?teamId=${VERCEL_TEAM_ID}"
+
+          status="$(curl -sS -o /tmp/vercel-project.json -w '%{http_code}' \
+            -H "$auth_header" \
+            "$project_url")"
+
+          if [ "$status" = "200" ]; then
+            root="$(jq -r '.rootDirectory // ""' /tmp/vercel-project.json)"
+            project_id="$(jq -r '.id' /tmp/vercel-project.json)"
+            linked_repo="$(jq -r 'if .link and .link.org and .link.repo then (.link.org + "/" + .link.repo) else "" end' /tmp/vercel-project.json)"
+
+            if [ "$root" != "$VERCEL_ROOT_DIRECTORY" ]; then
+              echo "Existing project has rootDirectory='$root'; refusing to repoint it." >&2
+              exit 1
+            fi
+            if [ -n "$linked_repo" ] && [ "$linked_repo" != "$VERCEL_REPOSITORY" ]; then
+              echo "Existing project is linked to '$linked_repo'; refusing to relink it." >&2
+              exit 1
+            fi
+          elif [ "$status" = "404" ]; then
+            jq -n \
+              --arg name "$VERCEL_PROJECT_NAME" \
+              --arg repo "$VERCEL_REPOSITORY" \
+              --arg root "$VERCEL_ROOT_DIRECTORY" \
+              '{
+                name: $name,
+                framework: null,
+                gitRepository: {type: "github", repo: $repo},
+                rootDirectory: $root,
+                installCommand: "npm install",
+                buildCommand: "npm run build",
+                oidcTokenConfig: {enabled: true, issuerMode: "team"}
+              }' > /tmp/vercel-create.json
+
+            create_status="$(curl -sS -o /tmp/vercel-project.json -w '%{http_code}' \
+              -X POST \
+              -H "$auth_header" \
+              -H 'Content-Type: application/json' \
+              --data-binary @/tmp/vercel-create.json \
+              "${api}/v11/projects?teamId=${VERCEL_TEAM_ID}")"
+
+            if [ "$create_status" != "200" ] && [ "$create_status" != "201" ]; then
+              echo "Vercel project creation failed with HTTP ${create_status}." >&2
+              jq '{error, message, code}' /tmp/vercel-project.json 2>/dev/null || true
+              exit 1
+            fi
+            project_id="$(jq -r '.id' /tmp/vercel-project.json)"
+          else
+            echo "Unable to inspect Vercel project; HTTP ${status}." >&2
+            jq '{error, message, code}' /tmp/vercel-project.json 2>/dev/null || true
+            exit 1
+          fi
+
+          if [ -z "${project_id:-}" ] || [ "$project_id" = "null" ]; then
+            echo "Vercel project id missing." >&2
+            exit 1
+          fi
+
+          echo "project_id=$project_id" >> "$GITHUB_OUTPUT"
+          echo "Validated isolated Vercel project ${VERCEL_PROJECT_NAME}."
+
+      - name: Deploy Eve preview
+        id: deploy
+        if: steps.guard.outputs.enabled == 'true'
+        shell: bash
+        env:
+          VERCEL_PROJECT_ID: ${{ steps.project.outputs.project_id }}
+          VERCEL_ORG_ID: team_n8NaVhoH0yLqUkBbjPj8gmAD
+        run: |
+          set -euo pipefail
+          deploy_log="$(mktemp)"
+          npx --yes vercel@latest deploy \
+            --cwd eve-runtime \
+            --yes \
+            --token "$VERCEL_TOKEN" \
+            --scope "$VERCEL_TEAM_SLUG" \
+            2>&1 | tee "$deploy_log"
+
+          deployment_url="$(grep -Eo 'https://[^[:space:]]+\.vercel\.app' "$deploy_log" | tail -1 || true)"
+          if [ -z "$deployment_url" ]; then
+            echo "Deployment URL was not emitted by Vercel CLI." >&2
+            exit 1
+          fi
+          echo "deployment_url=$deployment_url" >> "$GITHUB_OUTPUT"
+          echo "Eve preview deployed."
+
+      - name: Verify Eve health route
+        if: steps.guard.outputs.enabled == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          url="${{ steps.deploy.outputs.deployment_url }}/eve/v1/health"
+          status="$(curl -sS -o /tmp/eve-health.json -w '%{http_code}' "$url")"
+          if [ "$status" != "200" ]; then
+            echo "Eve health check failed with HTTP ${status}." >&2
+            cat /tmp/eve-health.json >&2 || true
+            exit 1
+          fi
+          echo "Eve health route verified."
