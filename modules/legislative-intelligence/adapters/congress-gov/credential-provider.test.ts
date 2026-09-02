@@ -133,13 +133,46 @@ describe("Congress.gov V1 credential providers", () => {
     ]);
   });
 
-  it("uses the absolute Windows PowerShell executable from WSL", () => {
-    expect(resolveWindowsPowerShellExecutableV1("linux", "/run/WSL/1_interop")).toBe(
-      "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
-    );
+  it("resolves WSL PowerShell from PATH before assuming the default mount", () => {
+    const customPowerShell = "/windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+    const exists = (path: string) => path === customPowerShell;
+
     expect(
-      resolveWindowsPowerShellExecutableV1("linux", "", "6.18.33.2-microsoft-standard-WSL2"),
-    ).toBe("/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe");
+      resolveWindowsPowerShellExecutableV1(
+        "linux",
+        "/run/WSL/1_interop",
+        "6.18.33.2-microsoft-standard-WSL2",
+        "/usr/bin:/windows/System32/WindowsPowerShell/v1.0",
+        exists,
+      ),
+    ).toBe(customPowerShell);
+  });
+
+  it("uses the verified default WSL PowerShell path as a fallback", () => {
+    const defaultPowerShell = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
+    const exists = (path: string) => path === defaultPowerShell;
+
+    expect(
+      resolveWindowsPowerShellExecutableV1(
+        "linux",
+        "",
+        "6.18.33.2-microsoft-standard-WSL2",
+        "/usr/bin:/bin",
+        exists,
+      ),
+    ).toBe(defaultPowerShell);
+  });
+
+  it("falls back to the PATH-resolved PowerShell command when no known path exists", () => {
+    expect(
+      resolveWindowsPowerShellExecutableV1(
+        "linux",
+        "/run/WSL/1_interop",
+        "6.18.33.2-microsoft-standard-WSL2",
+        "/usr/bin:/bin",
+        () => false,
+      ),
+    ).toBe("powershell.exe");
     expect(resolveWindowsPowerShellExecutableV1("win32", "")).toBe("powershell.exe");
   });
 
