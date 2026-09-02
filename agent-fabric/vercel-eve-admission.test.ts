@@ -1,14 +1,44 @@
 import { describe, expect, it } from "vitest";
 
+interface AdmissionResult {
+  status: "ADMITTED" | "DENIED";
+  eveSessionRequest?: {
+    capabilities: readonly string[];
+  };
+  riverReceipt: {
+    eventType: "EVE_SESSION_ADMISSION_ACCEPTED" | "EVE_SESSION_ADMISSION_DENIED";
+    wardenDecisionRef: string;
+  };
+}
+
+interface EveAdmissionModule {
+  admitVercelEveSession(input: {
+    requestRef: string;
+    requesterRef: string;
+    representedEntityRef: string;
+    purpose: string;
+    requestedCapabilities: readonly string[];
+    wardenDecision: {
+      decisionRef: string;
+      decision: "ALLOW" | "DENY";
+      allowedCapabilities: readonly string[];
+    };
+    requestedAt: string;
+  }): AdmissionResult;
+}
+
+async function loadImplementation(): Promise<EveAdmissionModule | undefined> {
+  const specifier = "./vercel-eve-admission.js";
+  try {
+    return (await import(specifier)) as EveAdmissionModule;
+  } catch {
+    return undefined;
+  }
+}
+
 describe("Vercel Eve admission boundary R0.1", () => {
   it("requires Warden ALLOW before creating an Eve session", async () => {
-    let implementation: typeof import("./vercel-eve-admission.js") | undefined;
-
-    try {
-      implementation = await import("./vercel-eve-admission.js");
-    } catch {
-      implementation = undefined;
-    }
+    const implementation = await loadImplementation();
 
     expect(implementation, "Vercel Eve admission adapter must exist").toBeDefined();
     if (!implementation) return;
@@ -33,13 +63,7 @@ describe("Vercel Eve admission boundary R0.1", () => {
   });
 
   it("projects only Warden-authorized capabilities into the Eve session request", async () => {
-    let implementation: typeof import("./vercel-eve-admission.js") | undefined;
-
-    try {
-      implementation = await import("./vercel-eve-admission.js");
-    } catch {
-      implementation = undefined;
-    }
+    const implementation = await loadImplementation();
 
     expect(implementation, "Vercel Eve admission adapter must exist").toBeDefined();
     if (!implementation) return;
