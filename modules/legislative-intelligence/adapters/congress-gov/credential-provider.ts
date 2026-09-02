@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { platform as hostPlatform } from "node:os";
+import { platform as hostPlatform, release as hostRelease } from "node:os";
 import { promisify } from "node:util";
 
 const execFileAsync = promisify(execFile);
@@ -11,11 +11,23 @@ const SENTINEL_SECRET_PATH = "$LOCALAPPDATA\\SentinelX\\credential-intake\\congr
 const SENTINEL_RECEIPT_PATH = "$LOCALAPPDATA\\SentinelX\\credential-intake\\congress-gov\\admission-receipt.json";
 const WSL_POWERSHELL_EXECUTABLE = "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe";
 
+function hasWindowsPowerShellBoundaryV1(
+  platform: NodeJS.Platform,
+  wslInterop: string,
+  kernelRelease: string,
+): boolean {
+  if (platform === "win32") return true;
+  return platform === "linux" && (Boolean(wslInterop) || /microsoft|wsl/i.test(kernelRelease));
+}
+
 export function resolveWindowsPowerShellExecutableV1(
   platform: NodeJS.Platform = hostPlatform(),
   wslInterop = process.env.WSL_INTEROP ?? "",
+  kernelRelease = hostRelease(),
 ): string {
-  return platform === "linux" && Boolean(wslInterop) ? WSL_POWERSHELL_EXECUTABLE : "powershell.exe";
+  return platform === "linux" && hasWindowsPowerShellBoundaryV1(platform, wslInterop, kernelRelease)
+    ? WSL_POWERSHELL_EXECUTABLE
+    : "powershell.exe";
 }
 
 export interface CongressGovCredentialProvider {
@@ -98,6 +110,7 @@ export interface CongressAdmissionReceiptV1 {
 export interface WindowsDpapiProviderOptionsV1 {
   platform?: NodeJS.Platform;
   wslInterop?: string;
+  kernelRelease?: string;
   secretPath?: string;
   receiptPath?: string;
   decrypt?: (path: string) => Promise<string>;
@@ -227,6 +240,7 @@ export class WindowsDpapiCongressGovCredentialProviderV1
 {
   #platform: NodeJS.Platform;
   #wslInterop: string;
+  #kernelRelease: string;
   #secretPath: string;
   #receiptPath: string;
   #decrypt: (path: string) => Promise<string>;
@@ -236,17 +250,22 @@ export class WindowsDpapiCongressGovCredentialProviderV1
   constructor(options: WindowsDpapiProviderOptionsV1 = {}) {
     this.#platform = options.platform ?? hostPlatform();
     this.#wslInterop = options.wslInterop ?? process.env.WSL_INTEROP ?? "";
+    this.#kernelRelease = options.kernelRelease ?? hostRelease();
     this.#secretPath = options.secretPath ?? DEFAULT_SECRET_PATH;
     this.#receiptPath = options.receiptPath ?? DEFAULT_RECEIPT_PATH;
     this.#allowSentinelFallback = options.secretPath === undefined && options.receiptPath === undefined;
-    const powershellExecutable = resolveWindowsPowerShellExecutableV1(this.#platform, this.#wslInterop);
+    const powershellExecutable = resolveWindowsPowerShellExecutableV1(
+      this.#platform,
+      this.#wslInterop,
+      this.#kernelRelease,
+    );
     this.#decrypt = options.decrypt ?? ((path) => defaultDpapiDecrypt(path, powershellExecutable));
     this.#readReceipt =
       options.readReceipt ?? ((path) => defaultReceiptReader(path, powershellExecutable));
   }
 
   async getCredential(): Promise<CongressGovCredentialMaterialV1> {
-    if (this.#platform !== "win32" && !this.#wslInterop) {
+    if (!hasWindowsPowerShellBoundaryV1(this.#platform, this.#wslInterop, this.#kernelRelease)) {
       throw new Error("CREDENTIAL_PLATFORM_UNSUPPORTED");
     }
 
