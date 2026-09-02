@@ -71,6 +71,7 @@ export async function startVercelEveSession(
     "content-type": "application/json",
   };
   if (input.oidcToken) {
+    headers.authorization = `Bearer ${input.oidcToken}`;
     headers["x-vercel-trusted-oidc-idp-token"] = input.oidcToken;
   }
 
