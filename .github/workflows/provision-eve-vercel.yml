@@ -1,0 +1,108 @@
+name: provision-eve-vercel
+
+on:
+  push:
+    branches:
+      - feat/vercel-eve-admission-r0-1
+    paths:
+      - .github/workflows/provision-eve-vercel.yml
+      - eve-runtime/**
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: provision-synnergyze-genesis-eve
+  cancel-in-progress: false
+
+jobs:
+  provision:
+    runs-on: ubuntu-24.04
+    env:
+      VERCEL_TOKEN: ${{ secrets.VERCEL_TOKEN }}
+      VERCEL_TEAM_ID: team_n8NaVhoH0yLqUkBbjPj8gmAD
+      VERCEL_PROJECT_NAME: synnergyze-genesis-eve
+      EXPECTED_ROOT: eve-runtime
+      EXPECTED_GIT_ORG: Believers-common-group
+      EXPECTED_GIT_REPO: mcp-node-synnergyze
+    steps:
+      - name: Check credential admission
+        id: credential
+        shell: bash
+        run: |
+          set -euo pipefail
+          if [[ -z "${VERCEL_TOKEN:-}" ]]; then
+            echo "available=false" >> "$GITHUB_OUTPUT"
+            echo "VERCEL_TOKEN is not configured; no Vercel mutation will be attempted."
+            exit 0
+          fi
+          echo "available=true" >> "$GITHUB_OUTPUT"
+          echo "Vercel credential admitted without disclosure."
+
+      - name: Inspect or create isolated Eve project
+        if: steps.credential.outputs.available == 'true'
+        shell: bash
+        run: |
+          set -euo pipefail
+          project_url="https://api.vercel.com/v9/projects/${VERCEL_PROJECT_NAME}?teamId=${VERCEL_TEAM_ID}"
+          status="$(curl --silent --show-error \
+            --output /tmp/vercel-project.json \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${VERCEL_TOKEN}" \
+            "$project_url")"
+
+          if [[ "$status" == "200" ]]; then
+            root="$(jq -r '.rootDirectory // ""' /tmp/vercel-project.json)"
+            org="$(jq -r '.link.org // ""' /tmp/vercel-project.json)"
+            repo="$(jq -r '.link.repo // ""' /tmp/vercel-project.json)"
+            if [[ "$root" != "$EXPECTED_ROOT" || "$org" != "$EXPECTED_GIT_ORG" || "$repo" != "$EXPECTED_GIT_REPO" ]]; then
+              echo "Existing project does not match the governed Eve binding; refusing to repoint it."
+              echo "observed root=$root git=$org/$repo"
+              exit 1
+            fi
+            echo "Existing isolated Eve project matches the governed binding."
+            jq '{id,name,rootDirectory,link:{type,org,repo}}' /tmp/vercel-project.json
+            exit 0
+          fi
+
+          if [[ "$status" != "404" ]]; then
+            echo "Unable to inspect Vercel project (HTTP $status)."
+            jq '{error,code,message}' /tmp/vercel-project.json 2>/dev/null || true
+            exit 1
+          fi
+
+          jq -n \
+            --arg name "$VERCEL_PROJECT_NAME" \
+            --arg repo "$EXPECTED_GIT_ORG/$EXPECTED_GIT_REPO" \
+            --arg root "$EXPECTED_ROOT" \
+            '{
+              name: $name,
+              gitRepository: {type: "github", repo: $repo},
+              rootDirectory: $root
+            }' > /tmp/vercel-project-create.json
+
+          create_status="$(curl --silent --show-error \
+            --request POST \
+            --output /tmp/vercel-project-created.json \
+            --write-out '%{http_code}' \
+            --header "Authorization: Bearer ${VERCEL_TOKEN}" \
+            --header 'Content-Type: application/json' \
+            --data @/tmp/vercel-project-create.json \
+            "https://api.vercel.com/v11/projects?teamId=${VERCEL_TEAM_ID}")"
+
+          if [[ "$create_status" != "200" && "$create_status" != "201" ]]; then
+            echo "Vercel project creation failed (HTTP $create_status)."
+            jq '{error,code,message}' /tmp/vercel-project-created.json 2>/dev/null || true
+            exit 1
+          fi
+
+          root="$(jq -r '.rootDirectory // ""' /tmp/vercel-project-created.json)"
+          name="$(jq -r '.name // ""' /tmp/vercel-project-created.json)"
+          if [[ "$root" != "$EXPECTED_ROOT" || "$name" != "$VERCEL_PROJECT_NAME" ]]; then
+            echo "Created project response does not satisfy the governed binding."
+            exit 1
+          fi
+
+          echo "Created isolated Eve Vercel project."
+          jq '{id,name,rootDirectory,link:{type,org,repo}}' /tmp/vercel-project-created.json
