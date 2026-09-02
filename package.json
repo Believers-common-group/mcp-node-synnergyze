@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "main": "src/app.ts",
   "scripts": {
-    "start": "node --experimental-strip-types --no-warnings=ExperimentalWarnings src/app.ts",
+    "start": "node --experimental-transform-types --no-warnings=ExperimentalWarnings src/app.ts",
     "type-check": "tsc --noEmit",
     "schemas:channels": "node --experimental-strip-types --no-warnings=ExperimentalWarnings scripts/write-channel-schemas.ts",
     "lint": "eslint --ext .ts src api rc1 compute agent-fabric site-handoff modules",
@@ -13,6 +13,7 @@
     "test:channel-r0-2": "vitest run modules/channels/inventory-binding.test.ts modules/channels/inventory-r0-2-acceptance.test.ts modules/objective/inventory-transfer.test.ts",
     "test:commerce-events": "vitest run modules/commerce-events",
     "test:channel-r0-3": "vitest run modules/commerce-events modules/channels/commerce-profiles.test.ts modules/channels/commerce-binding.test.ts modules/channels/commerce-r0-3-acceptance.test.ts",
+    "test:easyecom-readonly": "vitest run modules/commerce-events/easyecom-readonly-adapter.test.ts api/easyecom-webhook.test.ts api/easyecom-backfill.test.ts",
     "test:node-builder": "vitest run modules/genesis-node-builder",
     "test:bridge": "vitest run api/registry-bridge.test.ts",
     "test:rc1": "vitest run rc1/runtime.test.ts",

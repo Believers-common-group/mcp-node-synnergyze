@@ -234,7 +234,7 @@ modules:
   - module_id: MOD-VSR-COMMERCE-EVENT-001
     network_object: VSR-COMMERCE-EVENT-001
     role: source-bound-operational-event-observation
-    state: conformance_implemented_r0_3
+    state: conformance_implemented_r0_3_2
     intended_path: modules/commerce-events
     implementation_file: modules/commerce-events/normalizer.ts
     canonical_design: SynergyzeGovernance:docs/superpowers/specs/2026-09-02-vsr-commerce-event-binding-fabric-r0-3-design.md
@@ -252,6 +252,19 @@ modules:
     consumers:
       - SYNNERGYZE-RUNTIME-001
       - VSR-CHANNEL-001
+    source_integration_profiles:
+      - profile_id: VSR-COMMERCE-EASYECOM-READONLY-R0-3-2
+        source_owner: EASYCOM_OMS
+        source_role: AUTHORITATIVE_ORIGIN
+        live_ingress: api/easyecom-webhook.ts
+        reconciliation_ingress: api/easyecom-backfill.ts
+        adapter: modules/commerce-events/easyecom-readonly-adapter.ts
+        live_event: ecom_order_created
+        reconciliation_api: getAllOrdersV2
+        write_capability: none
+        live_projection: header-board-preparation-only
+        reconciliation_projection: none
+        credential_contract: local-environment-only
     forbidden:
       - mutate-source-system-record
       - infer-or-manufacture-warden-authority
@@ -260,7 +273,11 @@ modules:
       - fabricate-missing-predecessor-event
       - store-unrestricted-source-payload-as-commerce-truth
       - treat-observation-as-source-record
-    activation_gate: r0_3-source-role-transition-and-leakage-conformance
+      - easyecom-write-api-from-readonly-adapter
+      - caller-supplied-easyecom-credentials
+      - backfill-header-board-publication
+      - project-easyecom-customer-pii-or-payment-payload
+    activation_gate: r0_3_2-source-role-transition-leakage-and-easyecom-readonly-conformance
     tests:
       - modules/commerce-events/contracts.test.ts
       - modules/commerce-events/event-grammar.test.ts
@@ -268,6 +285,9 @@ modules:
       - modules/commerce-events/normalizer.test.ts
       - modules/commerce-events/transition-integrity.test.ts
       - modules/commerce-events/order-closure.test.ts
+      - modules/commerce-events/easyecom-readonly-adapter.test.ts
+      - api/easyecom-webhook.test.ts
+      - api/easyecom-backfill.test.ts
 
   - module_id: MOD-VSR-CHANNEL-001
     network_object: VSR-CHANNEL-001
