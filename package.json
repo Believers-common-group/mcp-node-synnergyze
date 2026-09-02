@@ -12,6 +12,7 @@
     "test:rc1": "vitest run rc1/runtime.test.ts",
     "test:compute": "vitest run api/compute-plane.test.ts compute/runtime.test.ts",
     "test:compute-proof": "vitest run compute/runtime.test.ts",
+    "test:substrate-orchestrator": "vitest run modules/genesis-substrate-orchestrator",
     "test:agent": "vitest run agent-fabric/runtime.test.ts",
     "test:agent-action": "vitest run agent-fabric/action-gateway.test.ts",
     "test:contracts": "vitest run modules/contracts.test.ts",
