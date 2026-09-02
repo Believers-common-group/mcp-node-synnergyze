@@ -8,15 +8,15 @@ import {
   type SubstrateWardenBindingV1,
   type WorkloadRequirementV1,
 } from "./contracts.ts";
-import {
+import type {
+  SubstrateEvidenceEnvelopeV1,
   SubstrateEvidenceJournalV1,
-  type SubstrateEvidenceEnvelopeV1,
 } from "./evidence-journal.ts";
 import {
   compilePlacementV1,
   type CompilePlacementInputV1,
 } from "./placement-compiler.ts";
-import { CapacityReservationServiceV1 } from "./reservation-service.ts";
+import type { CapacityReservationServiceV1 } from "./reservation-service.ts";
 
 const KNOWN_DENIAL_REASONS = new Set<PlacementReasonCode>([
   "reservation_expired",
