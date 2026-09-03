@@ -1,0 +1,60 @@
+name: one-shot fast-uri lockfile remediation
+
+on:
+  push:
+    branches:
+      - fix/fast-uri-3-1-6-security-baseline
+
+permissions:
+  contents: write
+
+jobs:
+  regenerate-lockfile:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout remediation branch
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Use governed Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Regenerate only the fast-uri lock entry
+        run: npm update fast-uri --package-lock-only --ignore-scripts
+
+      - name: Prove package manifest is unchanged
+        run: git diff --exit-code -- package.json
+
+      - name: Prove only package-lock changed
+        shell: bash
+        run: |
+          changed="$(git diff --name-only)"
+          printf 'Generated changes:\n%s\n' "$changed"
+          test "$changed" = "package-lock.json"
+
+      - name: Prove patched fast-uri version
+        run: |
+          node - <<'NODE'
+          const lock = require('./package-lock.json');
+          const version = lock.packages?.['node_modules/fast-uri']?.version;
+          console.log(`fast-uri lock version: ${version}`);
+          if (version !== '3.1.6') process.exit(1);
+          NODE
+
+      - name: Verify production dependency audit
+        run: |
+          npm ci --omit=dev --ignore-scripts
+          npm audit --omit=dev --audit-level=high
+
+      - name: Commit generated lockfile and remove one-shot workflow
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          rm .github/workflows/one-shot-fast-uri-lockfile.yml
+          git add package-lock.json .github/workflows/one-shot-fast-uri-lockfile.yml
+          git commit -m "fix: update fast-uri security baseline"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
