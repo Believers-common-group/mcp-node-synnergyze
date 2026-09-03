@@ -1,0 +1,64 @@
+name: authority-transition
+
+on:
+  pull_request:
+    branches: [genesis]
+    paths:
+      - rights/authority-declaration.json
+      - rights/release-rights.json
+      - rights/launchpad-release-request.json
+      - scripts/verify-authority-transition.mjs
+      - .github/workflows/authority-transition.yml
+  push:
+    branches: [genesis]
+    paths:
+      - rights/authority-declaration.json
+      - rights/release-rights.json
+      - rights/launchpad-release-request.json
+      - scripts/verify-authority-transition.mjs
+      - .github/workflows/authority-transition.yml
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout exact candidate revision
+        uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          fetch-depth: 0
+
+      - name: Use governed Node toolchain
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: '.nvmrc'
+
+      - name: Capture R0.12 authority-transition evidence
+        run: |
+          mkdir -p authority-evidence
+          git rev-parse HEAD | tee authority-evidence/source-commit.txt
+          cp rights/authority-declaration.json authority-evidence/authority-declaration.json
+          cp rights/release-rights.json authority-evidence/release-rights.json
+          cp rights/launchpad-release-request.json authority-evidence/launchpad-release-request.json
+          cp scripts/verify-authority-transition.mjs authority-evidence/verify-authority-transition.mjs
+          sha256sum \
+            rights/authority-declaration.json \
+            rights/release-rights.json \
+            rights/launchpad-release-request.json \
+            scripts/verify-authority-transition.mjs \
+            > authority-evidence/authority-transition.sha256
+
+      - name: Upload R0.12 authority-transition evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authority-transition-${{ github.event.pull_request.head.sha || github.sha }}
+          path: authority-evidence/
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Enforce authority-to-Warden transition
+        run: node scripts/verify-authority-transition.mjs

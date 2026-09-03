@@ -1,0 +1,74 @@
+{
+  "schema": "VSR_AUTHORITY_DECLARATION/1.0",
+  "declaration_id": "AUTH-MCP-NODE-SYNNERGYZE-R0.12",
+  "status": "UNDECLARED",
+  "subject_repository": "Believers-common-group/mcp-node-synnergyze",
+  "code_snapshot": {
+    "engineering_boundary_base_commit": "f92becbbbc44f288077c303d4b66b6e5f7ff1702",
+    "r0_11_evidence_commit": "81b0e76ff7f92c15fee0d21ddc4f80b96b784234",
+    "classification": "R0_11_EXACT_HEAD_ENGINEERING_EVIDENCE",
+    "rebinding_rule": "Any substantive source change after the evidenced snapshot requires renewed authorship evidence and competent authority review before this declaration may clear a release."
+  },
+  "observed_authorship_evidence": {
+    "classification": "OBSERVED_GIT_AUTHORSHIP_NOT_COPYRIGHT_OWNERSHIP",
+    "workflow_run": 32811417528,
+    "artifact_id": 9549914154,
+    "artifact_digest": "sha256:bca4419e53ce4cce80ecbaa7f1765ce1294c7ba56011d1e72a65ecf514bf7890",
+    "human_author": {
+      "name": "Faiz Ahmed",
+      "email": "193629930+Esomoire-consultancy-Company@users.noreply.github.com",
+      "observed_commits": 227
+    },
+    "automation_author": {
+      "name": "github-actions[bot]",
+      "email": "41898282+github-actions[bot]@users.noreply.github.com",
+      "observed_commits": 4,
+      "substantive_commits": [
+        "99f43d51df3e7930ebc8a38c0e64893ca39891b1",
+        "ae72d2f5e194f849bdd5294494695c6ef946598f"
+      ]
+    }
+  },
+  "deciding_principal": null,
+  "principal_capacity": null,
+  "authority_basis": [],
+  "authority_evidence": [],
+  "rights_holders_or_authorized_licensors": [],
+  "automation_control": {
+    "controller_principal": null,
+    "controller_capacity": null,
+    "authority_basis": null,
+    "evidence": [],
+    "substantive_commits": [
+      "99f43d51df3e7930ebc8a38c0e64893ca39891b1",
+      "ae72d2f5e194f849bdd5294494695c6ef946598f"
+    ]
+  },
+  "license_disposition": {
+    "expression": null,
+    "distribution_authorized": false,
+    "permitted_scope": [],
+    "obligations": [
+      "PRESERVE_APPLICABLE_UPSTREAM_ALGOLIA_MIT_COPYRIGHT_AND_PERMISSION_NOTICE"
+    ],
+    "additional_copyright_notice": null
+  },
+  "attestations": {
+    "necessary_rights_owned_or_controlled": null,
+    "authority_to_license_post_fork_modifications": null,
+    "automation_output_attributable_to_authorized_controller": null,
+    "no_known_conflicting_grant_or_assignment": null,
+    "upstream_algolia_notice_preserved": true
+  },
+  "signed_at": null,
+  "signature_reference": null,
+  "reviewed_at": null,
+  "review_reference": null,
+  "machine_effect": "HOLD_UNTIL_EVIDENCED",
+  "related": {
+    "governance_decision": "SRD-MCP-NODE-SYNNERGYZE-R0.11",
+    "post_fork_decision": "PFAD-MCP-NODE-SYNNERGYZE-R0.11",
+    "governance_issue": "Believers-common-group/SynergyzeGovernance#80",
+    "runtime_pr": "Believers-common-group/mcp-node-synnergyze#93"
+  }
+}

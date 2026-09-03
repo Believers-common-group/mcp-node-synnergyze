@@ -1,0 +1,63 @@
+{
+  "schema": "VSR_LAUNCHPAD_RELEASE_REQUEST/1.0",
+  "request_id": "LPR-MCP-NODE-SYNNERGYZE-R0.12",
+  "status": "PREPARED_NOT_AUTHORIZED",
+  "subject_repository": "Believers-common-group/mcp-node-synnergyze",
+  "subject_pr": 93,
+  "intended_distribution": "LAUNCHPAD_ALPHA",
+  "provider": "Canonical",
+  "platform": "Launchpad",
+  "facility": "PPA",
+  "route": "OPEN_PUBLIC_PPA",
+  "visibility": "PUBLIC",
+  "source_binding": {
+    "mode": "EXACT_HEAD_AT_WARDEN_ADMISSION",
+    "authorized_source_commit": null,
+    "required_evidence_artifact": null,
+    "required_evidence_digest": null,
+    "rule": "Warden authorization must bind an immutable candidate SHA and exact-head evidence generated for that same SHA."
+  },
+  "rights_prerequisites": {
+    "authority_declaration": "rights/authority-declaration.json",
+    "release_rights": "rights/release-rights.json",
+    "required_authority_status": "EVIDENCED",
+    "required_rights_status": "CLEARED",
+    "required_governance_status": "CLEARED",
+    "required_platform_status": "NOT_REQUIRED"
+  },
+  "warden_g0": {
+    "status": "NOT_EVALUATED",
+    "decision_id": null,
+    "decision": null,
+    "principal": null,
+    "capability_grant_id": null,
+    "purpose": "LAUNCHPAD_ALPHA_BUILD_AND_PUBLIC_PPA",
+    "scope": "MCP_NODE_SYNNERGYZE_ALPHA",
+    "valid_from": null,
+    "valid_until": null,
+    "evidence_reference": null
+  },
+  "execution": {
+    "build_request_state": "NOT_REQUESTED",
+    "launchpad_project": null,
+    "ppa": null,
+    "recipe": null,
+    "ubuntu_series": null,
+    "architectures": [],
+    "external_request_reference": null
+  },
+  "invariants": [
+    "PREPARED_IS_NOT_AUTHORIZED",
+    "NO_LAUNCHPAD_UPLOAD_OR_BUILD_REQUEST_BEFORE_WARDEN_G0_ALLOW",
+    "WARDEN_G0_MUST_NOT_EXPAND_EFFECTIVE_LEGAL_RIGHTS",
+    "AUTHORIZED_SOURCE_COMMIT_MUST_MATCH_EXACT_HEAD_EVIDENCE",
+    "PUBLIC_PPA_ROUTE_REQUIRES_GOVERNED_OPEN_LICENSE_RESOLUTION",
+    "ANY_SOURCE_CHANGE_AFTER_AUTHORIZATION_INVALIDATES_THE_REQUEST"
+  ],
+  "machine_effect": "NO_EXTERNAL_ACTION",
+  "related": {
+    "governance_issue": "Believers-common-group/SynergyzeGovernance#80",
+    "governance_pr": "Believers-common-group/SynergyzeGovernance#81",
+    "runtime_pr": "Believers-common-group/mcp-node-synnergyze#93"
+  }
+}

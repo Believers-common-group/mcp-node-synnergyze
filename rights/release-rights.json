@@ -1,0 +1,82 @@
+{
+  "schema": "VSR_RELEASE_RIGHTS_STATUS/1.3",
+  "status": "HOLD",
+  "repository": "Believers-common-group/mcp-node-synnergyze",
+  "baseline_commit": "cfe1138db85ce9b5046d7805cdf60b6fd6a8e02c",
+  "historical_alpha_commit": "a8fdd34334a63d1cd15878b9c136adf8230362a7",
+  "intended_distribution": "LAUNCHPAD_ALPHA",
+  "declared_project_license": "MIT",
+  "upstream_rights": {
+    "status": "EVIDENCED",
+    "copyright_notice": "Copyright (c) 2025-present Algolia, Inc.",
+    "license_expression": "MIT",
+    "license_text_sha256": "f9a4418cac45d1dbc1bc2363a79b2b5f3fd2d3bf5f97cdfb05320c0ae22e8530",
+    "provenance_commit": "1e47cac84bcf13c589fa83a06d1838b87eb0e3bf",
+    "notice_rule": "PRESERVE_FOR_INHERITED_SUBSTANTIAL_PORTIONS"
+  },
+  "post_fork_rights": {
+    "status": "PENDING_AUTHORITY",
+    "license_expression": null,
+    "authority_basis": null,
+    "authority_declaration": {
+      "path": "rights/authority-declaration.json",
+      "declaration_id": "AUTH-MCP-NODE-SYNNERGYZE-R0.12",
+      "status": "UNDECLARED"
+    }
+  },
+  "dependency_lockfile": "package-lock.json",
+  "dependency_lockfile_state": "PRESENT",
+  "sbom_workflow": ".github/workflows/license-sbom.yml",
+  "sbom_capability_state": "EXACT_HEAD_EVIDENCE_REQUIRED_AFTER_R0_12_CONTRACT",
+  "governance": {
+    "decision_id": "SRD-MCP-NODE-SYNNERGYZE-R0.11",
+    "issue": "Believers-common-group/SynergyzeGovernance#80",
+    "draft_pr": "Believers-common-group/SynergyzeGovernance#81",
+    "status": "PENDING_AUTHORITY"
+  },
+  "platform": {
+    "grant_id": "LPG-MCP-NODE-SYNNERGYZE-R0.10",
+    "provider": "Canonical",
+    "platform": "Launchpad",
+    "candidate_path": "OPEN_PUBLIC_PPA",
+    "status": "ROUTE_PREPARED_NOT_AUTHORIZED",
+    "approval_reference": null
+  },
+  "launchpad_request": {
+    "path": "rights/launchpad-release-request.json",
+    "request_id": "LPR-MCP-NODE-SYNNERGYZE-R0.12",
+    "status": "PREPARED_NOT_AUTHORIZED"
+  },
+  "resolved_conditions": [
+    "ROOT_LICENSE_UPSTREAM_PROVENANCE_VERIFIED",
+    "UPSTREAM_MIT_GRANT_EVIDENCED",
+    "DEPENDENCY_LOCKFILE_PRESENT",
+    "R0_11_EXACT_HEAD_ENGINEERING_EVIDENCE_RECORDED",
+    "R0_12_AUTHORITY_DECLARATION_CONTRACT_PRESENT",
+    "R0_12_LAUNCHPAD_REQUEST_CONTRACT_PREPARED"
+  ],
+  "open_conditions": [
+    "COMPETENT_AUTHORITY_DECLARATION_REQUIRED",
+    "POST_FORK_MODIFICATION_COPYRIGHT_AUTHORITY_UNRESOLVED",
+    "POST_FORK_MODIFICATION_LICENSE_AUTHORITY_UNRESOLVED",
+    "AUTOMATION_CONTROLLER_AUTHORITY_UNRESOLVED",
+    "DERIVATIVE_NOTICE_COMPOSITION_DECISION_REQUIRED",
+    "EXACT_RELEASE_SBOM_RECEIPT_REQUIRED_FOR_CURRENT_HEAD",
+    "LAUNCHPAD_PLATFORM_ROUTE_AUTHORIZATION_REQUIRED",
+    "WARDEN_G0_ALLOW_REQUIRED"
+  ],
+  "clearance": {
+    "decision_reference": null,
+    "deciding_principal": null,
+    "authority_basis": null,
+    "cleared_at": null
+  },
+  "warden": {
+    "status": "NOT_EVALUATED",
+    "decision_id": null,
+    "decision": null
+  },
+  "warden_effect": "NON_ALLOW",
+  "launchpad_effect": "PREPARED_NO_EXTERNAL_ACTION",
+  "supersedes": "VSR_RELEASE_RIGHTS_STATUS/1.2; prior evidence remains preserved"
+}
