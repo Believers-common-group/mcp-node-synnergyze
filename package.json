@@ -28,6 +28,7 @@
     "test:reconciliation-conformance": "vitest run modules/warden/decision-service.test.ts modules/river/reservation-service.test.ts modules/synnergyze/execution-gate.test.ts modules/synnergyze/effect-verification.test.ts src/tools/registerWardenRiverEffectConformance.test.ts src/tools/registerWardenReconciliationConformance.test.ts src/tools/registerWardenReconciliationConformance.review.test.ts src/commands/start-server.reconciliation.test.ts",
     "test:controlled-execution": "vitest run modules/synnergyze/execution-gate.test.ts",
     "test:containment": "vitest run modules/synnergyze/containment-control.test.ts modules/synnergyze/execution-gate.test.ts",
+    "test:observatory": "vitest run modules/observatory",
     "test:effect-verification": "vitest run modules/synnergyze/effect-verification.test.ts",
     "test:objective": "vitest run modules/objective/inventory-transfer.test.ts",
     "test:bag-lock-runtime": "vitest run modules/synnergyze/warden-request-bridge.test.ts modules/synnergyze/execution-gate.test.ts",
