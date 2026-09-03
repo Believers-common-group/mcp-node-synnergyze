@@ -3,12 +3,6 @@ name: licence-sbom
 on:
   pull_request:
     branches: [genesis]
-    paths:
-      - package.json
-      - package-lock.json
-      - LICENSE
-      - README.md
-      - .github/workflows/license-sbom.yml
   push:
     branches: [genesis]
     paths:
@@ -24,6 +18,8 @@ permissions:
 jobs:
   verify:
     runs-on: ubuntu-24.04
+    env:
+      ASSURANCE_DIR: assurance/licence-sbom
     steps:
       - name: Checkout exact revision
         uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
@@ -56,18 +52,20 @@ jobs:
 
       - name: Generate CycloneDX SBOM
         run: |
-          npm sbom --sbom-format cyclonedx > /tmp/npm-sbom.cdx.json
+          mkdir -p "$ASSURANCE_DIR"
+          npm sbom --sbom-format cyclonedx > "$ASSURANCE_DIR/npm-sbom.cdx.json"
           node - <<'NODE'
           const fs = require('fs');
-          const sbom = JSON.parse(fs.readFileSync('/tmp/npm-sbom.cdx.json', 'utf8'));
+          const path = `${process.env.ASSURANCE_DIR}/npm-sbom.cdx.json`;
+          const sbom = JSON.parse(fs.readFileSync(path, 'utf8'));
           if (!Array.isArray(sbom.components) || sbom.components.length === 0) {
             throw new Error('CycloneDX SBOM contains no dependency components');
           }
           console.log(`CycloneDX components: ${sbom.components.length}`);
           NODE
-          sha256sum /tmp/npm-sbom.cdx.json
+          sha256sum "$ASSURANCE_DIR/npm-sbom.cdx.json" | tee "$ASSURANCE_DIR/npm-sbom.cdx.sha256"
 
-      - name: Emit dependency licence inventory
+      - name: Generate dependency licence inventory
         run: |
           node - <<'NODE'
           const fs = require('fs');
@@ -86,9 +84,22 @@ jobs:
           }
           inventory.sort((a, b) => `${a.name}@${a.version}`.localeCompare(`${b.name}@${b.version}`));
           const undeclared = inventory.filter(item => item.license === 'UNDECLARED');
+          fs.writeFileSync(
+            `${process.env.ASSURANCE_DIR}/dependency-licences.json`,
+            JSON.stringify({ generatedAt: new Date().toISOString(), packages: inventory }, null, 2)
+          );
           console.log(`Dependency packages inventoried: ${inventory.length}`);
           if (undeclared.length) {
             console.error('Undeclared dependency licences:', undeclared);
             process.exit(1);
           }
           NODE
+          sha256sum "$ASSURANCE_DIR/dependency-licences.json" | tee "$ASSURANCE_DIR/dependency-licences.sha256"
+
+      - name: Retain licence and SBOM assurance evidence
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: licence-sbom-${{ github.sha }}
+          path: ${{ env.ASSURANCE_DIR }}
+          if-no-files-found: error
+          retention-days: 30

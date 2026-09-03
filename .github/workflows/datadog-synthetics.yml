@@ -1,19 +1,26 @@
-# This workflow triggers Datadog Synthetic tests when repository credentials are configured.
-# Missing optional Datadog credentials must not fail an unrelated governed-runtime change.
+# PR runs remain optional because fork/automation contexts may not receive secrets.
+# Acceptance runs must use workflow_dispatch with require_execution=true.
 
-name: Run Datadog Synthetic tests
+name: Datadog Synthetic capability
 
 on:
   push:
     branches: [ "genesis" ]
   pull_request:
     branches: [ "genesis" ]
+  workflow_dispatch:
+    inputs:
+      require_execution:
+        description: Fail unless Datadog Synthetic tests actually execute
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  datadog-synthetics:
     runs-on: ubuntu-latest
     env:
       DD_API_KEY: ${{ secrets.DD_API_KEY }}
@@ -33,6 +40,7 @@ jobs:
           fi
 
       - name: Run Datadog Synthetic tests
+        id: datadog-synthetics
         if: steps.datadog-credentials.outputs.available == 'true'
         uses: DataDog/synthetics-ci-github-action@87b505388a22005bb8013481e3f73a367b9a53eb # v1.4.0
         with:
@@ -40,6 +48,24 @@ jobs:
           app_key: ${{ env.DD_APP_KEY }}
           test_search_query: 'tag:e2e-tests'
 
-      - name: Datadog synthetics not configured
-        if: steps.datadog-credentials.outputs.available != 'true'
-        run: echo "::notice::Skipping Datadog Synthetic tests because DD_API_KEY/DD_APP_KEY are not configured for this run."
+      - name: Record skipped PR capability check
+        if: steps.datadog-credentials.outputs.available != 'true' && github.event_name != 'workflow_dispatch'
+        run: |
+          echo "::notice::Datadog Synthetic tests were NOT EXECUTED because credentials are unavailable."
+          echo "## Datadog Synthetic acceptance" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Executed: **no**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Reason: DD_API_KEY/DD_APP_KEY unavailable to this run" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Acceptance status: **unverified**" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Enforce dispatched acceptance execution
+        if: github.event_name == 'workflow_dispatch' && inputs.require_execution && steps.datadog-credentials.outputs.available != 'true'
+        run: |
+          echo "::error::Acceptance execution required, but DD_API_KEY/DD_APP_KEY are unavailable."
+          exit 1
+
+      - name: Record executed acceptance check
+        if: steps.datadog-credentials.outputs.available == 'true'
+        run: |
+          echo "## Datadog Synthetic acceptance" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Executed: **yes**" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Result: **passed**" >> "$GITHUB_STEP_SUMMARY"
