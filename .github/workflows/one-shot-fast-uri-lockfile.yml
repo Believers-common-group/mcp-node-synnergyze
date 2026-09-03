@@ -41,7 +41,9 @@ jobs:
           const lock = require('./package-lock.json');
           const version = lock.packages?.['node_modules/fast-uri']?.version;
           console.log(`fast-uri lock version: ${version}`);
-          if (version !== '3.1.6') process.exit(1);
+          const parts = String(version ?? '').split('.').map(Number);
+          const patched = parts.length === 3 && (parts[0] > 3 || (parts[0] === 3 && (parts[1] > 1 || (parts[1] === 1 && parts[2] >= 6))));
+          if (!patched) process.exit(1);
           NODE
 
       - name: Verify production dependency audit
