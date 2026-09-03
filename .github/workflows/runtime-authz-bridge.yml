@@ -4,9 +4,13 @@ on:
   push:
     branches:
       - genesis
+      - gcs002-producer-signing
     paths:
       - 'modules/warden/runtime-authz-bridge.ts'
       - 'modules/warden/runtime-authz-bridge.test.ts'
+      - 'modules/warden/runtime-authz-signed-export.ts'
+      - 'modules/warden/runtime-authz-signed-export.test.ts'
+      - 'modules/warden/producer-signature.ts'
       - 'modules/warden/decision-service.ts'
       - 'modules/warden/contracts.ts'
       - '.github/workflows/runtime-authz-bridge.yml'
@@ -16,6 +20,9 @@ on:
     paths:
       - 'modules/warden/runtime-authz-bridge.ts'
       - 'modules/warden/runtime-authz-bridge.test.ts'
+      - 'modules/warden/runtime-authz-signed-export.ts'
+      - 'modules/warden/runtime-authz-signed-export.test.ts'
+      - 'modules/warden/producer-signature.ts'
       - 'modules/warden/decision-service.ts'
       - 'modules/warden/contracts.ts'
       - '.github/workflows/runtime-authz-bridge.yml'
@@ -38,4 +45,12 @@ jobs:
       - name: Existing Warden decision suite
         run: npm run test:warden-decision -- --run
       - name: Runtime AuthZ bridge suite
-        run: npx vitest run modules/warden/runtime-authz-bridge.test.ts
+        env:
+          RUNTIME_AUTHZ_FIXTURE_DIR: runtime-authz-fixture
+        run: npx vitest run modules/warden/runtime-authz-bridge.test.ts modules/warden/runtime-authz-signed-export.test.ts
+      - name: Upload signed Warden fixture
+        uses: actions/upload-artifact@v4
+        with:
+          name: warden-runtime-authz-fixture
+          path: runtime-authz-fixture
+          if-no-files-found: error
