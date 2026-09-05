@@ -186,7 +186,7 @@ Options:
        "algolia-mcp": {
          "command": "<PATH_TO_BIN>/node",
          "args": [
-           "--experimental-strip-types",
+           "--experimental-transform-types",
            "--no-warnings=ExperimentalWarning",
            "<PATH_TO_PROJECT>/src/app.ts"
          ]
