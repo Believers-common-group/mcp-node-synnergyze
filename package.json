@@ -8,7 +8,8 @@
     "lint": "eslint --ext .ts src",
     "test": "vitest",
     "build": "bun build ./src/app.ts --compile",
-    "debug": "mcp-inspector npm start"
+    "debug": "mcp-inspector npm start",
+    "test:coverage": "vitest run --coverage"
   },
   "type": "module",
   "keywords": [],
