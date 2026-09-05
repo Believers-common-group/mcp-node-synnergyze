@@ -1,4 +1,4 @@
-#!/usr/bin/env -S node --experimental-strip-types
+#!/usr/bin/env -S node --experimental-transform-types
 
 import { authenticate } from "../authentication.ts";
 import { AppStateManager } from "../appState.ts";

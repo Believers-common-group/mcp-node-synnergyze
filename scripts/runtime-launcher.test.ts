@@ -5,6 +5,7 @@ import { describe, expect, it } from "vitest";
 const packageJson = JSON.parse(
   readFileSync(new URL("../package.json", import.meta.url), "utf8"),
 ) as { scripts?: Record<string, string> };
+const startServer = readFileSync(new URL("../src/commands/start-server.ts", import.meta.url), "utf8");
 
 describe("Node TypeScript runtime launchers", () => {
   it("uses transform-types for MCP start and Congress runtime validation", () => {
@@ -15,5 +16,7 @@ describe("Node TypeScript runtime launchers", () => {
     expect(validate).toContain("--experimental-transform-types");
     expect(start).not.toContain("--experimental-strip-types");
     expect(validate).not.toContain("--experimental-strip-types");
+    expect(startServer).toContain("--experimental-transform-types");
+    expect(startServer).not.toContain("--experimental-strip-types");
   });
 });
