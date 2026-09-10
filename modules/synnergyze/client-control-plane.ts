@@ -1,3 +1,9 @@
+import type { GenesisDeviceResolutionV1 } from "../genesis-node-builder/device-registry.ts";
+import {
+  resolveGenesisDeviceContextV1,
+  type ResolvedGenesisDeviceContextV1,
+} from "./genesis-device-bridge.ts";
+
 export interface SynnergyzeClientRegistrationInputV1 {
   clientRef: string;
   contractRef: string;
@@ -57,6 +63,7 @@ export interface SynnergyzeClientReadinessV1 {
   systemCount: number;
   capabilityCount: number;
   workflowCount: number;
+  deviceCount: number;
 }
 
 export class InMemorySynnergyzeClientControlPlaneV1 {
@@ -64,6 +71,7 @@ export class InMemorySynnergyzeClientControlPlaneV1 {
   private readonly systems = new Map<string, SynnergyzeSystemAdmissionV1>();
   private readonly capabilities = new Map<string, SynnergyzeCapabilityDeclarationV1>();
   private readonly workflows = new Map<string, SynnergyzeWorkflowContractV1>();
+  private readonly devices = new Map<string, ResolvedGenesisDeviceContextV1>();
 
   registerClient(input: SynnergyzeClientRegistrationInputV1): SynnergyzeClientBootstrapV1 {
     if (this.clients.has(input.clientRef)) throw new Error("synnergyze_client_ref_conflict");
@@ -138,6 +146,20 @@ export class InMemorySynnergyzeClientControlPlaneV1 {
     return { ...record, capabilityRefs: [...record.capabilityRefs] };
   }
 
+  bindGenesisDevice(
+    clientRef: string,
+    resolution: GenesisDeviceResolutionV1,
+  ): ResolvedGenesisDeviceContextV1 {
+    const client = this.requireClient(clientRef);
+    const context = resolveGenesisDeviceContextV1(resolution, client.genesisEstateRef);
+    const existing = this.devices.get(context.deviceRef);
+    if (existing && existing.genesisResolutionRef !== context.genesisResolutionRef) {
+      throw new Error("synnergyze_genesis_device_resolution_conflict");
+    }
+    this.devices.set(context.deviceRef, context);
+    return { ...context, sourceEvidenceRefs: [...context.sourceEvidenceRefs] };
+  }
+
   readiness(clientRef: string): SynnergyzeClientReadinessV1 {
     this.requireClient(clientRef);
     return {
@@ -152,6 +174,9 @@ export class InMemorySynnergyzeClientControlPlaneV1 {
       ).length,
       workflowCount: [...this.workflows.values()].filter(
         (item) => item.clientRef === clientRef,
+      ).length,
+      deviceCount: [...this.devices.values()].filter(
+        (item) => item.estateRef === this.clients.get(clientRef)?.genesisEstateRef,
       ).length,
     };
   }

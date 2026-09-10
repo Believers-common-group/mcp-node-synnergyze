@@ -25,6 +25,7 @@ describe("Synnergyze client control plane R0.1", () => {
       systemCount: 0,
       capabilityCount: 0,
       workflowCount: 0,
+      deviceCount: 0,
     });
   });
 
@@ -116,6 +117,42 @@ describe("Synnergyze VSR module binding", () => {
     expect(bindings).toContain(
       "bootstrap_profile: config/synnergyze/client-bootstrap-r0.1.json",
     );
+    expect(bindings).toContain("module_id: MOD-GENESIS-DEVICE-001");
+    expect(bindings).toContain("GENESIS-DEVICE-RESOLUTION");
     expect(bindings).toContain("warden_binding: UNBOUND");
+  });
+});
+
+describe("Synnergyze client Genesis device dependency", () => {
+  const genesisResolution = {
+    resolutionRef: "GENESIS-DEVICE-RESOLUTION:abc123",
+    deviceRef: "GENESIS-DEVICE-ALPHA-LG-001",
+    bindingRef: "GENESIS-DEVICE-BINDING-001",
+    estateRef: "GENESIS-ESTATE-VOI-001",
+    locationRef: "GENESIS-LOCATION-ALPHA-001",
+    runtimeInstanceRef: "GENESIS-INSTANCE-ALPHA-001",
+    state: "ACTIVE" as const,
+    assuranceLevel: "L3" as const,
+    evidenceRefs: ["RIVER-DEVICE-ATTESTATION-001"],
+    attestationRef: "GENESIS-DEVICE-ATTESTATION-001",
+    resolvedAt: "2026-09-10T05:20:00Z",
+    validUntil: "2026-09-10T06:20:00Z",
+  };
+
+  it("binds a resolved Genesis device to the client plane", () => {
+    const plane = bootstrapPlane();
+    const context = plane.bindGenesisDevice("CLIENT-VOI-001", genesisResolution);
+    expect(context.deviceRef).toBe("GENESIS-DEVICE-ALPHA-LG-001");
+    expect(plane.readiness("CLIENT-VOI-001").deviceCount).toBe(1);
+  });
+
+  it("rejects a device resolution outside the client estate", () => {
+    const plane = bootstrapPlane();
+    expect(() =>
+      plane.bindGenesisDevice("CLIENT-VOI-001", {
+        ...genesisResolution,
+        estateRef: "GENESIS-ESTATE-OTHER-001",
+      }),
+    ).toThrow("SYNNERGYZE_GENESIS_DEVICE_ESTATE_MISMATCH");
   });
 });

@@ -4,7 +4,8 @@
   "state": "BOOTSTRAP_READY",
   "genesis": {
     "authority": "CANONICAL",
-    "binding": "REQUIRED"
+    "binding": "REQUIRED",
+    "device_resolution": "REQUIRED_FOR_DEVICE_BOUND_WORK"
   },
   "synnergyze": {
     "role": "CLIENT_CONTROL_AND_ORCHESTRATION",
