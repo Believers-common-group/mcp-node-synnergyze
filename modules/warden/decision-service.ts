@@ -1,5 +1,10 @@
 import { createHash } from "node:crypto";
 
+import {
+  evaluateEfomPolicyV1,
+  type EfomPolicyV1,
+} from "../osiris/policy.ts";
+import type { EfomPhysicalWorldContextV1 } from "../osiris/contracts.ts";
 import type { WardenDecisionRequestV1, WardenDecisionV1 } from "./contracts.ts";
 
 export type WardenPolicyLifecycleV1 = "ACTIVE" | "REVOKED";
@@ -20,6 +25,7 @@ export interface SyntheticWardenDecisionPolicyV1 {
   allowedCapabilityRefs: readonly string[];
   manualReviewCapabilityRefs: readonly string[];
   constraints: readonly string[];
+  efomPolicy?: EfomPolicyV1;
 }
 
 export interface WardenDecisionEvaluationV1 {
@@ -46,6 +52,46 @@ function timestamp(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function physicalWorldContextDigest(context: EfomPhysicalWorldContextV1): string {
+  return `sha256:${digest(JSON.stringify(context))}`;
+}
+
+function normalizedRequestForDecision(request: WardenDecisionRequestV1) {
+  return {
+    ...request,
+    physicalWorldContext: request.physicalWorldContext
+      ? physicalWorldContextDigest(request.physicalWorldContext)
+      : undefined,
+    authorityRefs: stableUnique(request.authorityRefs),
+    policyRefs: stableUnique(request.policyRefs),
+    representationSourceRefs: stableUnique(request.representationSourceRefs),
+    deviceSecuritySourceRefs: stableUnique(request.deviceSecuritySourceRefs ?? []),
+  };
+}
+
+function normalizedPolicyForDecision(policy: SyntheticWardenDecisionPolicyV1) {
+  return {
+    ...policy,
+    requiredAuthorityRefs: stableUnique(policy.requiredAuthorityRefs),
+    requiredPolicyRefs: stableUnique(policy.requiredPolicyRefs),
+    allowedCapabilityRefs: stableUnique(policy.allowedCapabilityRefs),
+    manualReviewCapabilityRefs: stableUnique(policy.manualReviewCapabilityRefs),
+    constraints: stableUnique(policy.constraints),
+    efomPolicy: policy.efomPolicy
+      ? {
+          ...policy.efomPolicy,
+          allowedOperationClasses: stableUnique(policy.efomPolicy.allowedOperationClasses),
+          requireCorroborationForOperationClasses: stableUnique(
+            policy.efomPolicy.requireCorroborationForOperationClasses,
+          ),
+          allowedVisibilityScopes: stableUnique(policy.efomPolicy.allowedVisibilityScopes),
+          allowedPurposeRefs: stableUnique(policy.efomPolicy.allowedPurposeRefs),
+          allowedJurisdictionRefs: stableUnique(policy.efomPolicy.allowedJurisdictionRefs),
+        }
+      : undefined,
+  };
+}
+
 function baseDecision(
   request: WardenDecisionRequestV1,
   policy: SyntheticWardenDecisionPolicyV1,
@@ -53,21 +99,8 @@ function baseDecision(
   reasonCodes: readonly string[],
 ) {
   const canonical = JSON.stringify({
-    request: {
-      ...request,
-      authorityRefs: stableUnique(request.authorityRefs),
-      policyRefs: stableUnique(request.policyRefs),
-      representationSourceRefs: stableUnique(request.representationSourceRefs),
-      deviceSecuritySourceRefs: stableUnique(request.deviceSecuritySourceRefs ?? []),
-    },
-    policy: {
-      ...policy,
-      requiredAuthorityRefs: stableUnique(policy.requiredAuthorityRefs),
-      requiredPolicyRefs: stableUnique(policy.requiredPolicyRefs),
-      allowedCapabilityRefs: stableUnique(policy.allowedCapabilityRefs),
-      manualReviewCapabilityRefs: stableUnique(policy.manualReviewCapabilityRefs),
-      constraints: stableUnique(policy.constraints),
-    },
+    request: normalizedRequestForDecision(request),
+    policy: normalizedPolicyForDecision(policy),
     decidedAt,
     reasonCodes: stableUnique(reasonCodes),
   });
@@ -108,6 +141,42 @@ function escalate(
     ...baseDecision(request, policy, decidedAt, [reason]),
     decision: "ESCALATE",
   };
+}
+
+function evaluateEfomContext(
+  request: WardenDecisionRequestV1,
+  policy: SyntheticWardenDecisionPolicyV1,
+  decidedAt: string,
+): { decision: "CONTINUE" } | { decision: "DENY" | "ESCALATE"; reason: string } {
+  const activated = Boolean(
+    request.operationClass || request.physicalWorldContext || request.physicalWorldContextDigest,
+  );
+  if (!activated) return { decision: "CONTINUE" };
+
+  if (
+    !request.operationClass ||
+    !request.physicalWorldContext ||
+    !request.physicalWorldContextDigest ||
+    !policy.efomPolicy
+  ) {
+    return { decision: "DENY", reason: "efom_context_missing" };
+  }
+  if (request.operationClass !== request.physicalWorldContext.operationClass) {
+    return { decision: "DENY", reason: "efom_operation_context_mismatch" };
+  }
+  if (request.physicalWorldContextDigest !== physicalWorldContextDigest(request.physicalWorldContext)) {
+    return { decision: "DENY", reason: "efom_context_digest_mismatch" };
+  }
+
+  const evaluation = evaluateEfomPolicyV1({
+    context: request.physicalWorldContext,
+    policy: policy.efomPolicy,
+    evaluatedAt: decidedAt,
+  });
+  const reason = evaluation.reasonCodes[0] ?? "efom_context_rejected";
+  if (evaluation.decision === "REJECTED") return { decision: "DENY", reason };
+  if (evaluation.decision === "REVIEW_REQUIRED") return { decision: "ESCALATE", reason };
+  return { decision: "CONTINUE" };
 }
 
 export function evaluateSyntheticWardenDecisionV1(
@@ -164,6 +233,10 @@ export function evaluateSyntheticWardenDecisionV1(
     return deny(request, policy, decidedAt, "required_policy_missing");
   }
 
+  const efom = evaluateEfomContext(request, policy, decidedAt);
+  if (efom.decision === "DENY") return deny(request, policy, decidedAt, efom.reason);
+  if (efom.decision === "ESCALATE") return escalate(request, policy, decidedAt, efom.reason);
+
   if (policy.manualReviewCapabilityRefs.includes(request.capabilityRef)) {
     return escalate(request, policy, decidedAt, "manual_review_required");
   }
@@ -179,6 +252,8 @@ export function evaluateSyntheticWardenDecisionV1(
     capabilityRef: request.capabilityRef,
     targetRef: request.targetRef,
     policySnapshotRef: policy.policySnapshotRef,
+    operationClass: request.operationClass ?? null,
+    physicalWorldContextDigest: request.physicalWorldContextDigest ?? null,
     validUntil: policy.validUntil,
   });
 
