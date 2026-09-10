@@ -74,3 +74,24 @@ export interface CausalTraceV1 {
   sealRef?: string;
   sealed: boolean;
 }
+
+export type GovernedEvidenceArtifactTypeV1 =
+  | "OBSERVATION"
+  | "FINDING"
+  | "DISCREPANCY"
+  | "ATTESTATION"
+  | "DECISION";
+
+export interface GovernedEvidenceArtifactV1 {
+  artifactRef: string;
+  artifactType: GovernedEvidenceArtifactTypeV1;
+  sourceRefs: readonly string[];
+  evidenceRefs: readonly string[];
+  contentDigest: string;
+  observedAt?: string;
+  derivedAt?: string;
+  issuedAt?: string;
+  validUntil?: string;
+  correlationId: string;
+  supersedesArtifactRef?: string;
+}
