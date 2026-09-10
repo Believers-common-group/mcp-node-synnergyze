@@ -1,3 +1,5 @@
+import type { EfomOperationClassV1 } from "../osiris/contracts.ts";
+
 export interface ActionEnvelopeV1 {
   actionRef: string;
   requestRef: string;
@@ -14,6 +16,8 @@ export interface ActionEnvelopeV1 {
   executionDeviceRef?: string;
   deviceSecurityPolicyRef?: string;
   deviceSecurityRequestDigest?: string;
+  operationClass?: EfomOperationClassV1;
+  physicalWorldContextDigest?: string;
   wardenDecisionRef: string;
   actionToken: string;
   requestedAt: string;
