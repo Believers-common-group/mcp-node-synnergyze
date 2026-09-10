@@ -166,6 +166,13 @@ function assertDeviceSecurity(
   }
 }
 
+function assertEfomActuation(action: ActionEnvelopeV1): void {
+  const efomActivated = Boolean(action.operationClass || action.physicalWorldContextDigest);
+  if (efomActivated && action.operationClass !== "ACT") {
+    throw new Error("execution_efom_act_operation_required");
+  }
+}
+
 function executionFingerprint(
   input: ControlledExecutionRequestV1,
   adapterRef: string,
@@ -181,6 +188,8 @@ function executionFingerprint(
       capabilityRef: input.action.capabilityRef,
       targetRef: input.action.targetRef,
       correlationId: input.action.correlationId,
+      operationClass: input.action.operationClass ?? null,
+      physicalWorldContextDigest: input.action.physicalWorldContextDigest ?? null,
       executionDeviceRef: input.action.executionDeviceRef ?? null,
       deviceSecurityRequestDigest: input.action.deviceSecurityRequestDigest ?? null,
       executionDeviceSecurity: input.executionDeviceSecurity
@@ -253,6 +262,7 @@ export class ControlledExecutionGateV1 {
       input.executedAt,
     );
     assertDeviceSecurity(input.action, input.executionDeviceSecurity, input.executedAt);
+    assertEfomActuation(input.action);
 
     const adapter = this.adapters.get(input.action.capabilityRef);
     if (!adapter) throw new Error(`execution_capability_not_registered:${input.action.capabilityRef}`);
