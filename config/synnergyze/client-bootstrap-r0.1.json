@@ -1,0 +1,24 @@
+{
+  "profile_id": "SYNNERGYZE-CLIENT-BOOTSTRAP-001",
+  "version": "0.1.0",
+  "state": "BOOTSTRAP_READY",
+  "genesis": {
+    "authority": "CANONICAL",
+    "binding": "REQUIRED"
+  },
+  "synnergyze": {
+    "role": "CLIENT_CONTROL_AND_ORCHESTRATION",
+    "client_plane": "ENABLED"
+  },
+  "warden": {
+    "binding": "UNBOUND",
+    "fit_stage": "SYNNERGYZE-WARDEN-FIT-R0.1"
+  },
+  "execution": {
+    "state": "BLOCKED_WARDEN_UNBOUND",
+    "external_effects": false
+  },
+  "river": {
+    "execution_evidence": "DEFERRED_UNTIL_WARDEN_FIT"
+  }
+}

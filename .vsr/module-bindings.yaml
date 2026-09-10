@@ -227,6 +227,30 @@ modules:
     tests:
       - modules/contracts.test.ts
 
+  - module_id: MOD-SYNNERGYZE-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: client-control-orchestration
+    state: contract_typed_bootstrap
+    intended_path: modules/synnergyze
+    implementation_file: modules/synnergyze/client-control-plane.ts
+    bootstrap_profile: config/synnergyze/client-bootstrap-r0.1.json
+    genesis_binding: REQUIRED
+    warden_binding: UNBOUND
+    public_contracts:
+      output:
+        - SynnergyzeClientBootstrapV1
+        - SynnergyzeClientReadinessV1
+    depends_on:
+      - REGISTRY
+      - CANONICAL-GENESIS-REFS
+    forbidden:
+      - self-authorize-client-execution
+      - infer-authority-from-system-connection
+      - execute-before-warden-fit
+    activation_gate: SYNNERGYZE-WARDEN-FIT-R0.1
+    tests:
+      - modules/synnergyze/client-control-plane.test.ts
+
 cross_boundary_tests:
   - no-warden-decision-means-no-controlled-execution
   - failed-river-reservation-means-no-controlled-mutation
