@@ -159,10 +159,16 @@ function normalizedPolicyForDecision(policy: SyntheticWardenDecisionPolicyV1) {
 function effectiveDecisionValidUntil(
   request: WardenDecisionRequestV1,
   policy: SyntheticWardenDecisionPolicyV1,
+  decidedAt: string,
 ): string {
   const candidates: Array<{ raw: string; time: number }> = [];
+  const decidedAtTime = timestamp(decidedAt);
   const policyTime = timestamp(policy.validUntil);
   if (policyTime !== undefined) candidates.push({ raw: policy.validUntil, time: policyTime });
+
+  const freshnessBoundOperation = ["ACT", "ATTEST", "DISCLOSE"].includes(
+    request.operationClass ?? "",
+  );
 
   if (request.physicalWorldContext) {
     for (const raw of [
@@ -172,7 +178,10 @@ function effectiveDecisionValidUntil(
     ]) {
       if (!raw) continue;
       const time = timestamp(raw);
-      if (time !== undefined) candidates.push({ raw, time });
+      if (time === undefined) continue;
+      if (decidedAtTime === undefined || time > decidedAtTime || freshnessBoundOperation) {
+        candidates.push({ raw, time });
+      }
     }
   }
 
@@ -186,7 +195,7 @@ function baseDecision(
   decidedAt: string,
   reasonCodes: readonly string[],
 ) {
-  const validUntil = effectiveDecisionValidUntil(request, policy);
+  const validUntil = effectiveDecisionValidUntil(request, policy, decidedAt);
   const canonical = JSON.stringify({
     request: normalizedRequestForDecision(request),
     policy: normalizedPolicyForDecision(policy),
