@@ -28,6 +28,13 @@ export interface RuntimeDecisionBridgeInputV1 {
   consentRefs?: readonly string[];
 }
 
+const CONSEQUENTIAL_EFFECTS: readonly RuntimeEffectClass[] = [
+  "EXECUTE",
+  "FINANCIAL",
+  "PHYSICAL",
+  "EXTERNAL_PROVIDER",
+];
+
 function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
@@ -106,6 +113,8 @@ function canonicalRequestDigest(request: WardenDecisionRequestV1): string {
     deviceSecuritySourceRefs: stableUnique(request.deviceSecuritySourceRefs ?? []),
     deviceSecurityResolvedAt: request.deviceSecurityResolvedAt ?? null,
     deviceSecurityValidUntil: request.deviceSecurityValidUntil ?? null,
+    operationClass: request.operationClass ?? null,
+    physicalWorldContextDigest: request.physicalWorldContextDigest ?? null,
     authorityRefs: stableUnique(request.authorityRefs),
     policyRefs: stableUnique(request.policyRefs),
     representationSourceRefs: stableUnique(request.representationSourceRefs),
@@ -127,6 +136,12 @@ function assertDecisionMatchesRequest(
   if (decision.targetRef !== request.targetRef) throw new Error("decision/target mismatch");
   if (decision.correlationId !== request.correlationId) {
     throw new Error("decision/correlation mismatch");
+  }
+  if (decision.operationClass !== request.operationClass) {
+    throw new Error("decision/EFOM operation class mismatch");
+  }
+  if (decision.physicalWorldContextDigest !== request.physicalWorldContextDigest) {
+    throw new Error("decision/EFOM context digest mismatch");
   }
   if (!decision.validUntil) {
     throw new Error("decision validUntil is required for Runtime Stitcher");
@@ -153,6 +168,17 @@ export function buildRuntimeWardenDecisionReceipt(input: RuntimeDecisionBridgeIn
     throw new Error("non-READ Runtime Stitcher action requires requestedEffect binding");
   }
   if (!request.policyRefs.length) throw new Error("policyRefs are required");
+
+  const efomActivated = Boolean(
+    request.operationClass || request.physicalWorldContextDigest || request.physicalWorldContext,
+  );
+  if (
+    efomActivated &&
+    CONSEQUENTIAL_EFFECTS.includes(effectClass) &&
+    request.operationClass !== "ACT"
+  ) {
+    throw new Error("consequential runtime effect requires ACT operation class");
+  }
 
   const requestDigest = canonicalRequestDigest(request);
   const receiptDecision = decision.decision === "ALLOW" ? "ALLOW" : "DENY";

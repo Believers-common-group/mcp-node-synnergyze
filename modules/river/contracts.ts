@@ -1,3 +1,5 @@
+import type { EfomOperationClassV1 } from "../osiris/contracts.ts";
+
 export interface ActionEnvelopeV1 {
   actionRef: string;
   requestRef: string;
@@ -14,6 +16,8 @@ export interface ActionEnvelopeV1 {
   executionDeviceRef?: string;
   deviceSecurityPolicyRef?: string;
   deviceSecurityRequestDigest?: string;
+  operationClass?: EfomOperationClassV1;
+  physicalWorldContextDigest?: string;
   wardenDecisionRef: string;
   actionToken: string;
   requestedAt: string;
@@ -73,4 +77,25 @@ export interface CausalTraceV1 {
   effectRef?: string;
   sealRef?: string;
   sealed: boolean;
+}
+
+export type GovernedEvidenceArtifactTypeV1 =
+  | "OBSERVATION"
+  | "FINDING"
+  | "DISCREPANCY"
+  | "ATTESTATION"
+  | "DECISION";
+
+export interface GovernedEvidenceArtifactV1 {
+  artifactRef: string;
+  artifactType: GovernedEvidenceArtifactTypeV1;
+  sourceRefs: readonly string[];
+  evidenceRefs: readonly string[];
+  contentDigest: string;
+  observedAt?: string;
+  derivedAt?: string;
+  issuedAt?: string;
+  validUntil?: string;
+  correlationId: string;
+  supersedesArtifactRef?: string;
 }

@@ -1,3 +1,8 @@
+import type {
+  EfomOperationClassV1,
+  EfomPhysicalWorldContextV1,
+} from "../osiris/contracts.ts";
+
 export type WardenDecisionStatus = "ALLOW" | "ESCALATE" | "DENY";
 
 export interface WardenDecisionRequestV1 {
@@ -18,6 +23,9 @@ export interface WardenDecisionRequestV1 {
   deviceSecuritySourceRefs?: readonly string[];
   deviceSecurityResolvedAt?: string;
   deviceSecurityValidUntil?: string;
+  operationClass?: EfomOperationClassV1;
+  physicalWorldContext?: EfomPhysicalWorldContextV1;
+  physicalWorldContextDigest?: string;
   authorityRefs: readonly string[];
   policyRefs: readonly string[];
   representationSourceRefs: readonly string[];
@@ -32,6 +40,8 @@ interface WardenDecisionBaseV1 {
   wardenRef: string;
   action: string;
   targetRef: string;
+  operationClass?: EfomOperationClassV1;
+  physicalWorldContextDigest?: string;
   reasonCodes: readonly string[];
   constraints: readonly string[];
   decidedAt: string;
