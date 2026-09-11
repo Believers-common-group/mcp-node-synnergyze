@@ -137,6 +137,12 @@ function assertDecisionMatchesRequest(
   if (decision.correlationId !== request.correlationId) {
     throw new Error("decision/correlation mismatch");
   }
+  if (decision.operationClass !== request.operationClass) {
+    throw new Error("decision/EFOM operation class mismatch");
+  }
+  if (decision.physicalWorldContextDigest !== request.physicalWorldContextDigest) {
+    throw new Error("decision/EFOM context digest mismatch");
+  }
   if (!decision.validUntil) {
     throw new Error("decision validUntil is required for Runtime Stitcher");
   }

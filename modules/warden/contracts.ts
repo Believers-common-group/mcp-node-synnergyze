@@ -40,6 +40,8 @@ interface WardenDecisionBaseV1 {
   wardenRef: string;
   action: string;
   targetRef: string;
+  operationClass?: EfomOperationClassV1;
+  physicalWorldContextDigest?: string;
   reasonCodes: readonly string[];
   constraints: readonly string[];
   decidedAt: string;

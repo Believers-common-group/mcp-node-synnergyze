@@ -22,8 +22,13 @@ function sha256(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
-function stableUnique(values: readonly string[]): string[] {
-  return [...new Set(values)].sort((left, right) => left.localeCompare(right));
+function normalizeRefs(values: readonly string[], errorMessage: string): string[] {
+  if (values.length === 0 || values.some((value) => !value.trim())) {
+    throw new Error(errorMessage);
+  }
+  return [...new Set(values.map((value) => value.trim()))].sort((left, right) =>
+    left.localeCompare(right),
+  );
 }
 
 function assertTimestamp(value: string | undefined): void {
@@ -36,14 +41,11 @@ function assertTimestamp(value: string | undefined): void {
 export function buildGovernedEvidenceArtifactV1(
   input: GovernedEvidenceArtifactInputV1,
 ): GovernedEvidenceArtifactV1 {
-  const sourceRefs = stableUnique(input.sourceRefs);
-  const evidenceRefs = stableUnique(input.evidenceRefs);
-  if (sourceRefs.length === 0) {
-    throw new Error("governed evidence source refs are required");
-  }
-  if (evidenceRefs.length === 0) {
-    throw new Error("governed evidence evidence refs are required");
-  }
+  const sourceRefs = normalizeRefs(input.sourceRefs, "governed evidence source refs are required");
+  const evidenceRefs = normalizeRefs(
+    input.evidenceRefs,
+    "governed evidence evidence refs are required",
+  );
   if (!input.contentDigest.trim()) {
     throw new Error("governed evidence content digest is required");
   }

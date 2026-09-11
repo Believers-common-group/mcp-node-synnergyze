@@ -33,6 +33,10 @@ function instant(value: string | undefined): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
+function hasUsableRefs(values: readonly string[]): boolean {
+  return values.length > 0 && values.every((value) => value.trim().length > 0);
+}
+
 function evidenceRefs(context: EfomPhysicalWorldContextV1): string[] {
   return stableUnique([
     ...context.observations.flatMap((value) => value.sourceEvidenceRefs),
@@ -83,15 +87,25 @@ export function evaluateEfomPolicyV1(input: {
     return reject("efom_operation_not_permitted", context);
   }
 
+  const observationRefs = new Set(context.observations.map((value) => value.observationRef));
+  const corroborationRequired =
+    context.operationClass === "ACT" ||
+    policy.requireCorroborationForOperationClasses.includes(context.operationClass);
+
   for (const observation of context.observations) {
     if (
+      !observation.observationRef.trim() ||
       !observation.sourceRef.trim() ||
       !observation.contentDigest.trim() ||
-      observation.sourceEvidenceRefs.length === 0
+      !hasUsableRefs(observation.sourceEvidenceRefs)
     ) {
       return reject("efom_provenance_missing", context);
     }
-    if (!Number.isFinite(observation.confidence) || observation.confidence < 0 || observation.confidence > 1) {
+    if (
+      !Number.isFinite(observation.confidence) ||
+      observation.confidence < 0 ||
+      observation.confidence > 1
+    ) {
       return reject("efom_invalid_confidence", context);
     }
 
@@ -127,8 +141,18 @@ export function evaluateEfomPolicyV1(input: {
   }
 
   for (const finding of context.findings) {
-    if (!finding.statementDigest.trim() || finding.sourceEvidenceRefs.length === 0) {
+    if (
+      !finding.findingRef.trim() ||
+      !finding.statementDigest.trim() ||
+      !hasUsableRefs(finding.sourceEvidenceRefs)
+    ) {
       return reject("efom_provenance_missing", context);
+    }
+    if (
+      !hasUsableRefs(finding.observationRefs) ||
+      finding.observationRefs.some((ref) => !observationRefs.has(ref))
+    ) {
+      return reject("efom_finding_observation_not_bound", context);
     }
     if (!Number.isFinite(finding.confidence) || finding.confidence < 0 || finding.confidence > 1) {
       return reject("efom_invalid_confidence", context);
@@ -136,10 +160,19 @@ export function evaluateEfomPolicyV1(input: {
     const derivedAt = instant(finding.derivedAt);
     if (derivedAt === undefined) return reject("efom_invalid_time_context", context);
     if (derivedAt > evaluatedAt) return reject("efom_context_from_future", context);
+    if (finding.validUntil) {
+      const validUntil = instant(finding.validUntil);
+      if (validUntil === undefined || validUntil < derivedAt) {
+        return reject("efom_invalid_time_context", context);
+      }
+      if (corroborationRequired && finding.status === "CORROBORATED" && validUntil < evaluatedAt) {
+        return reject("efom_corroboration_expired", context);
+      }
+    }
   }
 
   for (const discrepancy of context.discrepancies) {
-    if (discrepancy.sourceEvidenceRefs.length === 0) {
+    if (!hasUsableRefs(discrepancy.sourceEvidenceRefs)) {
       return reject("efom_provenance_missing", context);
     }
     const openedAt = instant(discrepancy.openedAt);
@@ -151,14 +184,23 @@ export function evaluateEfomPolicyV1(input: {
     if (
       !attestation.attestorPrincipalRef.trim() ||
       !attestation.statementDigest.trim() ||
-      attestation.authorityRefs.length === 0 ||
-      attestation.evidenceRefs.length === 0
+      !hasUsableRefs(attestation.authorityRefs) ||
+      !hasUsableRefs(attestation.evidenceRefs)
     ) {
       return reject("efom_provenance_missing", context);
     }
     const issuedAt = instant(attestation.issuedAt);
     if (issuedAt === undefined) return reject("efom_invalid_time_context", context);
     if (issuedAt > evaluatedAt) return reject("efom_context_from_future", context);
+    if (attestation.validUntil) {
+      const validUntil = instant(attestation.validUntil);
+      if (validUntil === undefined || validUntil < issuedAt) {
+        return reject("efom_invalid_time_context", context);
+      }
+      if (corroborationRequired && validUntil < evaluatedAt) {
+        return reject("efom_corroboration_expired", context);
+      }
+    }
   }
 
   const lowConfidence = [
@@ -176,7 +218,7 @@ export function evaluateEfomPolicyV1(input: {
       : reject("efom_material_conflict", context);
   }
 
-  if (policy.requireCorroborationForOperationClasses.includes(context.operationClass)) {
+  if (corroborationRequired) {
     const corroborated =
       context.findings.some((value) => value.status === "CORROBORATED") ||
       context.attestations.length > 0;

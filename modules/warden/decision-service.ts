@@ -1,10 +1,10 @@
 import { createHash } from "node:crypto";
 
+import type { EfomPhysicalWorldContextV1 } from "../osiris/contracts.ts";
 import {
   evaluateEfomPolicyV1,
   type EfomPolicyV1,
 } from "../osiris/policy.ts";
-import type { EfomPhysicalWorldContextV1 } from "../osiris/contracts.ts";
 import type { WardenDecisionRequestV1, WardenDecisionV1 } from "./contracts.ts";
 
 export type WardenPolicyLifecycleV1 = "ACTIVE" | "REVOKED";
@@ -52,15 +52,79 @@ function timestamp(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : undefined;
 }
 
-function physicalWorldContextDigest(context: EfomPhysicalWorldContextV1): string {
-  return `sha256:${digest(JSON.stringify(context))}`;
+function canonicalPhysicalWorldContext(context: EfomPhysicalWorldContextV1) {
+  return {
+    operationClass: context.operationClass,
+    observations: [...context.observations]
+      .sort((left, right) => left.observationRef.localeCompare(right.observationRef))
+      .map((value) => ({
+        observationRef: value.observationRef,
+        sourceRef: value.sourceRef,
+        sourceType: value.sourceType,
+        subjectCandidateRef: value.subjectCandidateRef ?? null,
+        locationRef: value.locationRef ?? null,
+        terrainClass: value.terrainClass ?? null,
+        observedAt: value.observedAt,
+        validUntil: value.validUntil ?? null,
+        contentDigest: value.contentDigest,
+        sourceEvidenceRefs: stableUnique(value.sourceEvidenceRefs),
+        confidence: value.confidence,
+        assuranceLevel: value.assuranceLevel ?? null,
+        visibilityScope: value.visibilityScope,
+        jurisdictionRef: value.jurisdictionRef ?? null,
+        purposeRef: value.purposeRef,
+        synthetic: value.synthetic ?? null,
+      })),
+    findings: [...context.findings]
+      .sort((left, right) => left.findingRef.localeCompare(right.findingRef))
+      .map((value) => ({
+        findingRef: value.findingRef,
+        findingType: value.findingType,
+        observationRefs: stableUnique(value.observationRefs),
+        statementDigest: value.statementDigest,
+        confidence: value.confidence,
+        derivedAt: value.derivedAt,
+        validUntil: value.validUntil ?? null,
+        sourceEvidenceRefs: stableUnique(value.sourceEvidenceRefs),
+        status: value.status,
+        supersedesFindingRef: value.supersedesFindingRef ?? null,
+      })),
+    discrepancies: [...context.discrepancies]
+      .sort((left, right) => left.discrepancyRef.localeCompare(right.discrepancyRef))
+      .map((value) => ({
+        discrepancyRef: value.discrepancyRef,
+        discrepancyType: value.discrepancyType,
+        observationRefs: stableUnique(value.observationRefs),
+        findingRefs: stableUnique(value.findingRefs),
+        severity: value.severity,
+        material: value.material,
+        openedAt: value.openedAt,
+        sourceEvidenceRefs: stableUnique(value.sourceEvidenceRefs),
+      })),
+    attestations: [...context.attestations]
+      .sort((left, right) => left.attestationRef.localeCompare(right.attestationRef))
+      .map((value) => ({
+        attestationRef: value.attestationRef,
+        attestorPrincipalRef: value.attestorPrincipalRef,
+        authorityRefs: stableUnique(value.authorityRefs),
+        evidenceRefs: stableUnique(value.evidenceRefs),
+        statementDigest: value.statementDigest,
+        issuedAt: value.issuedAt,
+        validUntil: value.validUntil ?? null,
+        supersedesAttestationRef: value.supersedesAttestationRef ?? null,
+      })),
+  };
+}
+
+export function physicalWorldContextDigestV1(context: EfomPhysicalWorldContextV1): string {
+  return `sha256:${digest(JSON.stringify(canonicalPhysicalWorldContext(context)))}`;
 }
 
 function normalizedRequestForDecision(request: WardenDecisionRequestV1) {
   return {
     ...request,
     physicalWorldContext: request.physicalWorldContext
-      ? physicalWorldContextDigest(request.physicalWorldContext)
+      ? physicalWorldContextDigestV1(request.physicalWorldContext)
       : undefined,
     authorityRefs: stableUnique(request.authorityRefs),
     policyRefs: stableUnique(request.policyRefs),
@@ -92,16 +156,42 @@ function normalizedPolicyForDecision(policy: SyntheticWardenDecisionPolicyV1) {
   };
 }
 
+function effectiveDecisionValidUntil(
+  request: WardenDecisionRequestV1,
+  policy: SyntheticWardenDecisionPolicyV1,
+): string {
+  const candidates: Array<{ raw: string; time: number }> = [];
+  const policyTime = timestamp(policy.validUntil);
+  if (policyTime !== undefined) candidates.push({ raw: policy.validUntil, time: policyTime });
+
+  if (request.physicalWorldContext) {
+    for (const raw of [
+      ...request.physicalWorldContext.observations.map((value) => value.validUntil),
+      ...request.physicalWorldContext.findings.map((value) => value.validUntil),
+      ...request.physicalWorldContext.attestations.map((value) => value.validUntil),
+    ]) {
+      if (!raw) continue;
+      const time = timestamp(raw);
+      if (time !== undefined) candidates.push({ raw, time });
+    }
+  }
+
+  candidates.sort((left, right) => left.time - right.time || left.raw.localeCompare(right.raw));
+  return candidates[0]?.raw ?? policy.validUntil;
+}
+
 function baseDecision(
   request: WardenDecisionRequestV1,
   policy: SyntheticWardenDecisionPolicyV1,
   decidedAt: string,
   reasonCodes: readonly string[],
 ) {
+  const validUntil = effectiveDecisionValidUntil(request, policy);
   const canonical = JSON.stringify({
     request: normalizedRequestForDecision(request),
     policy: normalizedPolicyForDecision(policy),
     decidedAt,
+    validUntil,
     reasonCodes: stableUnique(reasonCodes),
   });
 
@@ -111,10 +201,14 @@ function baseDecision(
     wardenRef: policy.wardenRef,
     action: request.action,
     targetRef: request.targetRef,
+    ...(request.operationClass ? { operationClass: request.operationClass } : {}),
+    ...(request.physicalWorldContextDigest
+      ? { physicalWorldContextDigest: request.physicalWorldContextDigest }
+      : {}),
     reasonCodes: stableUnique(reasonCodes),
     constraints: stableUnique(policy.constraints),
     decidedAt,
-    validUntil: policy.validUntil,
+    validUntil,
     correlationId: request.correlationId,
   } as const;
 }
@@ -164,7 +258,7 @@ function evaluateEfomContext(
   if (request.operationClass !== request.physicalWorldContext.operationClass) {
     return { decision: "DENY", reason: "efom_operation_context_mismatch" };
   }
-  if (request.physicalWorldContextDigest !== physicalWorldContextDigest(request.physicalWorldContext)) {
+  if (request.physicalWorldContextDigest !== physicalWorldContextDigestV1(request.physicalWorldContext)) {
     return { decision: "DENY", reason: "efom_context_digest_mismatch" };
   }
 
@@ -254,7 +348,7 @@ export function evaluateSyntheticWardenDecisionV1(
     policySnapshotRef: policy.policySnapshotRef,
     operationClass: request.operationClass ?? null,
     physicalWorldContextDigest: request.physicalWorldContextDigest ?? null,
-    validUntil: policy.validUntil,
+    validUntil: base.validUntil,
   });
 
   return {

@@ -10,6 +10,7 @@ export function projectEfomClaimStateV1(input: {
   superseded?: boolean;
 }): CandidateClaimStateV1 {
   if (input.superseded || input.findingStatus === "SUPERSEDED") return "SUPERSEDED";
+  if (input.findingStatus === "REJECTED") return "REJECTED";
   if (input.kind === "DISCREPANCY" || input.findingStatus === "CONFLICTED") {
     return "DISPUTED";
   }
