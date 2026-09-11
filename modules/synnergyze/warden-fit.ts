@@ -71,12 +71,26 @@ export function buildSynnergyzeWardenDecisionRequestV1(
 }
 
 export function assertSynnergyzeExecutionCheckpointV1(
+  request: WardenDecisionRequestV1,
   decision: WardenDecisionV1,
   checkpoint: WardenExecutionCheckpointV1,
 ): void {
   if (decision.decision !== "ALLOW") {
     throw new Error(`synnergyze_warden_decision_not_allow:${decision.decision}`);
   }
+  if (decision.requestRef !== request.requestRef) {
+    throw new Error("synnergyze_warden_decision_request_mismatch");
+  }
+  if (decision.action !== request.action) {
+    throw new Error("synnergyze_warden_decision_action_mismatch");
+  }
+  if (decision.targetRef !== request.targetRef) {
+    throw new Error("synnergyze_warden_decision_target_mismatch");
+  }
+  if (decision.correlationId !== request.correlationId) {
+    throw new Error("synnergyze_warden_decision_correlation_mismatch");
+  }
+
   if (checkpoint.state !== "VALID") {
     throw new Error(`synnergyze_warden_checkpoint_not_valid:${checkpoint.state}`);
   }
