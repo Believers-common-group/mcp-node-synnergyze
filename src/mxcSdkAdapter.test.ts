@@ -104,18 +104,31 @@ describe("WARDEN-MXC-R0.1 SDK adapter", () => {
   });
 
   it("MXC-W-015: wraps SDK config-generation failure as a fail-closed adapter error", () => {
-    const c = contract();
-    (c.runtime as { mxcSchema: string }).mxcSchema = "99.0.0-alpha";
-    const ctx = context();
-    ctx.supportedSchema = true;
+    const failingFactory = () => {
+      throw new Error("synthetic SDK generation failure");
+    };
 
-    expect(() => prepareMxcExecutionConfigR01(c, ctx)).toThrow();
+    expect(() =>
+      prepareMxcExecutionConfigR01(contract(), context(), {
+        createConfigFromPolicy: failingFactory,
+      }),
+    ).toThrowError(MxcSdkAdapterError);
+
     try {
-      prepareMxcExecutionConfigR01(c, ctx);
+      prepareMxcExecutionConfigR01(contract(), context(), {
+        createConfigFromPolicy: failingFactory,
+      });
     } catch (error) {
-      expect(error).toBeInstanceOf(MxcSdkAdapterError);
       expect((error as MxcSdkAdapterError).code).toBe("MXC_CONFIG_GENERATION_FAILED");
     }
+  });
+
+  it("preserves Warden validation errors instead of relabeling them as SDK failures", () => {
+    const ctx = context();
+    ctx.resolvedWardenDecisionId = "WD-OTHER";
+    expect(() => prepareMxcExecutionConfigR01(contract(), ctx)).toThrowError(
+      /Warden decision/,
+    );
   });
 
   it("never populates a command line during qualification", () => {
