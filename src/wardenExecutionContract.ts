@@ -69,10 +69,14 @@ export interface ExecutionValidationContext {
   mxcAvailable: boolean;
   supportedSchema: boolean;
   supportedContainment: boolean;
+  resolvedWardenDecisionId?: string;
+  authorizedPermissions?: WardenExecutionContractR01["permissions"];
 }
 
 export type ExecutionValidationCode =
   | "INVALID_CONTRACT_VERSION"
+  | "WARDEN_DECISION_MISSING"
+  | "WARDEN_DECISION_UNKNOWN"
   | "DECISION_NOT_ALLOW"
   | "INVALID_DECISION_INTEGRITY"
   | "DECISION_NOT_EFFECTIVE"
@@ -83,6 +87,9 @@ export type ExecutionValidationCode =
   | "WORKSPACE_MISMATCH"
   | "ARTIFACT_DIGEST_MISMATCH"
   | "COMMAND_DIGEST_MISMATCH"
+  | "FILESYSTEM_PERMISSION_EXCEEDS_GRANT"
+  | "NETWORK_PERMISSION_EXCEEDS_GRANT"
+  | "TIMEOUT_EXCEEDS_GRANT"
   | "RIVER_RESERVATION_MISMATCH"
   | "INVALID_TIMEOUT"
   | "HOST_LOOPBACK_NOT_ALLOWED_R01"
@@ -108,6 +115,66 @@ function parseInstant(value: string, field: string): number {
   return parsed;
 }
 
+function everyStringInGrant(requested: string[], granted: string[]): boolean {
+  const allowed = new Set(granted);
+  return requested.every((value) => allowed.has(value));
+}
+
+function networkGrantKey(grant: NetworkGrant): string {
+  return `${grant.cidr}|${grant.protocol}|${grant.port}`;
+}
+
+function everyNetworkGrantInGrant(requested: NetworkGrant[], granted: NetworkGrant[]): boolean {
+  const allowed = new Set(granted.map(networkGrantKey));
+  return requested.every((grant) => allowed.has(networkGrantKey(grant)));
+}
+
+function validatePermissionSubset(
+  requested: WardenExecutionContractR01["permissions"],
+  granted: WardenExecutionContractR01["permissions"],
+): void {
+  if (
+    !everyStringInGrant(requested.filesystemRead, granted.filesystemRead) ||
+    !everyStringInGrant(requested.filesystemWrite, granted.filesystemWrite)
+  ) {
+    throw new ExecutionContractValidationError(
+      "FILESYSTEM_PERMISSION_EXCEEDS_GRANT",
+      "Requested filesystem access exceeds the authoritative Warden grant",
+    );
+  }
+
+  if (
+    !everyNetworkGrantInGrant(requested.networkEgress, granted.networkEgress) ||
+    !everyNetworkGrantInGrant(requested.networkIngress, granted.networkIngress)
+  ) {
+    throw new ExecutionContractValidationError(
+      "NETWORK_PERMISSION_EXCEEDS_GRANT",
+      "Requested network access exceeds the authoritative Warden grant",
+    );
+  }
+
+  if (requested.timeoutMs > granted.timeoutMs) {
+    throw new ExecutionContractValidationError(
+      "TIMEOUT_EXCEEDS_GRANT",
+      "Requested timeout exceeds the authoritative Warden grant",
+    );
+  }
+
+  if (requested.ui === "restricted" && granted.ui === "deny") {
+    throw new ExecutionContractValidationError(
+      "FILESYSTEM_PERMISSION_EXCEEDS_GRANT",
+      "Requested UI capability exceeds the authoritative Warden grant",
+    );
+  }
+
+  if (requested.hostLoopback && !granted.hostLoopback) {
+    throw new ExecutionContractValidationError(
+      "NETWORK_PERMISSION_EXCEEDS_GRANT",
+      "Requested host-loopback capability exceeds the authoritative Warden grant",
+    );
+  }
+}
+
 /**
  * Fail-closed pre-spawn validation for WARDEN-MXC-R0.1.
  *
@@ -123,6 +190,23 @@ export function validateExecutionContractPreSpawn(
     throw new ExecutionContractValidationError(
       "INVALID_CONTRACT_VERSION",
       "Unsupported Warden execution contract version",
+    );
+  }
+
+  if (!contract.authority) {
+    throw new ExecutionContractValidationError(
+      "WARDEN_DECISION_MISSING",
+      "Warden authority is required before MXC execution",
+    );
+  }
+
+  if (
+    context.resolvedWardenDecisionId !== undefined &&
+    contract.authority.wardenDecisionId !== context.resolvedWardenDecisionId
+  ) {
+    throw new ExecutionContractValidationError(
+      "WARDEN_DECISION_UNKNOWN",
+      "Execution contract references a Warden decision that was not authoritatively resolved",
     );
   }
 
@@ -203,17 +287,21 @@ export function validateExecutionContractPreSpawn(
     );
   }
 
-  if (contract.evidence.riverReservationId !== context.riverReservationId) {
-    throw new ExecutionContractValidationError(
-      "RIVER_RESERVATION_MISMATCH",
-      "River reservation is missing or mismatched",
-    );
-  }
-
   if (!Number.isSafeInteger(contract.permissions.timeoutMs) || contract.permissions.timeoutMs <= 0) {
     throw new ExecutionContractValidationError(
       "INVALID_TIMEOUT",
       "Execution timeout must be a positive safe integer",
+    );
+  }
+
+  if (context.authorizedPermissions) {
+    validatePermissionSubset(contract.permissions, context.authorizedPermissions);
+  }
+
+  if (contract.evidence.riverReservationId !== context.riverReservationId) {
+    throw new ExecutionContractValidationError(
+      "RIVER_RESERVATION_MISMATCH",
+      "River reservation is missing or mismatched",
     );
   }
 
