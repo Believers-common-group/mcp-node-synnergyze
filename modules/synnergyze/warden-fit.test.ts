@@ -13,7 +13,7 @@ const device: ResolvedGenesisDeviceContextV1 = {
   locationRef: "GENESIS-LOCATION-001",
   runtimeInstanceRef: "GENESIS-RUNTIME-001",
   state: "ACTIVE",
-  assuranceLevel: "A1",
+  assuranceLevel: "L1",
   sourceEvidenceRefs: ["RIVER-EVIDENCE:DEVICE-001"],
   attestationRef: "GENESIS-DEVICE-ATTESTATION:001",
   resolvedAt: "2026-09-11T03:30:00.000Z",
