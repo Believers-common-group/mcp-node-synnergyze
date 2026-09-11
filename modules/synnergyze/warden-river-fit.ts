@@ -1,7 +1,5 @@
-import {
-  buildAuthorizedActionEnvelopeV1,
-  SyntheticRiverReservationServiceV1,
-} from "../river/reservation-service.ts";
+import { buildAuthorizedActionEnvelopeV1 } from "../river/reservation-service.ts";
+import type { SyntheticRiverReservationServiceV1 } from "../river/reservation-service.ts";
 import type { ActionEnvelopeV1, EvidenceReservationV1 } from "../river/contracts.ts";
 import type { WardenDecisionRequestV1, WardenDecisionV1 } from "../warden/contracts.ts";
 
