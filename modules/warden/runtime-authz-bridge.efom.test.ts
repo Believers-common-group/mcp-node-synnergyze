@@ -47,6 +47,8 @@ function allowDecision(req: WardenDecisionRequestV1): WardenDecisionV1 {
     wardenRef: "WARDEN:001",
     action: req.action,
     targetRef: req.targetRef,
+    operationClass: req.operationClass,
+    physicalWorldContextDigest: req.physicalWorldContextDigest,
     reasonCodes: ["bounded_policy_allow"],
     constraints: [],
     decidedAt: DECIDED_AT,
