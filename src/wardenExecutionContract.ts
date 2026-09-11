@@ -166,13 +166,6 @@ function validatePermissionSubset(
       "Requested UI capability exceeds the authoritative Warden grant",
     );
   }
-
-  if (requested.hostLoopback && !granted.hostLoopback) {
-    throw new ExecutionContractValidationError(
-      "NETWORK_PERMISSION_EXCEEDS_GRANT",
-      "Requested host-loopback capability exceeds the authoritative Warden grant",
-    );
-  }
 }
 
 /**
@@ -294,6 +287,13 @@ export function validateExecutionContractPreSpawn(
     );
   }
 
+  if (contract.permissions.hostLoopback) {
+    throw new ExecutionContractValidationError(
+      "HOST_LOOPBACK_NOT_ALLOWED_R01",
+      "R0.1 does not permit host loopback access",
+    );
+  }
+
   if (context.authorizedPermissions) {
     validatePermissionSubset(contract.permissions, context.authorizedPermissions);
   }
@@ -302,13 +302,6 @@ export function validateExecutionContractPreSpawn(
     throw new ExecutionContractValidationError(
       "RIVER_RESERVATION_MISMATCH",
       "River reservation is missing or mismatched",
-    );
-  }
-
-  if (contract.permissions.hostLoopback) {
-    throw new ExecutionContractValidationError(
-      "HOST_LOOPBACK_NOT_ALLOWED_R01",
-      "R0.1 does not permit host loopback access",
     );
   }
 
