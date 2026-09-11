@@ -1,0 +1,41 @@
+name: sync-mxc-lock-once
+
+on:
+  push:
+    branches:
+      - feat/warden-mxc-execution-contract-r0.1
+    paths:
+      - .github/workflows/sync-mxc-lock.yml
+
+permissions:
+  contents: write
+
+jobs:
+  sync-lock:
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout feature branch
+        uses: actions/checkout@v4
+        with:
+          ref: feat/warden-mxc-execution-contract-r0.1
+          fetch-depth: 0
+
+      - name: Use repository Node version
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Regenerate package lock without lifecycle scripts
+        run: npm install --package-lock-only --ignore-scripts --no-audit --no-fund
+
+      - name: Commit synchronized lockfile
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add package-lock.json
+          if git diff --cached --quiet; then
+            echo "package-lock.json already synchronized"
+            exit 0
+          fi
+          git commit -m "chore: sync MXC package lock"
+          git push origin HEAD:feat/warden-mxc-execution-contract-r0.1
