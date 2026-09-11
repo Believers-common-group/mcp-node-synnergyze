@@ -66,6 +66,17 @@ const context = (): ExecutionValidationContext => ({
   supportedContainment: true,
 });
 
+type QualificationContext = ExecutionValidationContext & {
+  resolvedWardenDecisionId: string;
+  authorizedPermissions: WardenExecutionContractR01["permissions"];
+};
+
+const qualificationContext = (): QualificationContext => ({
+  ...context(),
+  resolvedWardenDecisionId: "WD-000001",
+  authorizedPermissions: structuredClone(contract().permissions),
+});
+
 function expectCode(fn: () => void, code: string): void {
   try {
     fn();
@@ -78,17 +89,54 @@ function expectCode(fn: () => void, code: string): void {
 
 describe("WARDEN-MXC-R0.1 pre-spawn gate", () => {
   it("passes a bounded valid contract", () => {
-    expect(() => validateExecutionContractPreSpawn(contract(), context())).not.toThrow();
+    expect(() => validateExecutionContractPreSpawn(contract(), qualificationContext())).not.toThrow();
+  });
+
+  it("MXC-W-001: rejects a runtime contract with no Warden authority", () => {
+    const malformed = contract() as unknown as Record<string, unknown>;
+    delete malformed.authority;
+    expectCode(
+      () =>
+        validateExecutionContractPreSpawn(
+          malformed as unknown as WardenExecutionContractR01,
+          qualificationContext(),
+        ),
+      "WARDEN_DECISION_MISSING",
+    );
+  });
+
+  it("MXC-W-002: rejects an explicit Warden DENY", () => {
+    const c = contract();
+    (c.authority as { decision: string }).decision = "DENY";
+    expectCode(() => validateExecutionContractPreSpawn(c, qualificationContext()), "DECISION_NOT_ALLOW");
   });
 
   it("MXC-W-003: rejects an expired Warden decision", () => {
     const c = contract();
     c.authority.expiresAt = "2026-09-11T11:59:59.000Z";
-    expectCode(() => validateExecutionContractPreSpawn(c, context()), "DECISION_EXPIRED");
+    expectCode(() => validateExecutionContractPreSpawn(c, qualificationContext()), "DECISION_EXPIRED");
+  });
+
+  it("rejects a decision that is not yet effective", () => {
+    const c = contract();
+    c.authority.effectiveFrom = "2026-09-11T12:00:01.000Z";
+    expectCode(
+      () => validateExecutionContractPreSpawn(c, qualificationContext()),
+      "DECISION_NOT_EFFECTIVE",
+    );
+  });
+
+  it("MXC-W-004: rejects a decision ID that Warden did not resolve", () => {
+    const c = contract();
+    c.authority.wardenDecisionId = "WD-UNKNOWN";
+    expectCode(
+      () => validateExecutionContractPreSpawn(c, qualificationContext()),
+      "WARDEN_DECISION_UNKNOWN",
+    );
   });
 
   it("MXC-W-005: rejects failed Warden decision integrity", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.decisionIntegrityValid = false;
     expectCode(
       () => validateExecutionContractPreSpawn(contract(), ctx),
@@ -97,25 +145,31 @@ describe("WARDEN-MXC-R0.1 pre-spawn gate", () => {
   });
 
   it("MXC-W-006: rejects principal mismatch", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.principalId = "DM-OTHER";
     expectCode(() => validateExecutionContractPreSpawn(contract(), ctx), "PRINCIPAL_MISMATCH");
   });
 
+  it("rejects Genesis node mismatch", () => {
+    const ctx = qualificationContext();
+    ctx.nodeId = "ALPHA-NODE-OTHER";
+    expectCode(() => validateExecutionContractPreSpawn(contract(), ctx), "NODE_MISMATCH");
+  });
+
   it("MXC-W-007: rejects Genesis device mismatch", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.deviceId = "GENESIS-DEVICE-OTHER";
     expectCode(() => validateExecutionContractPreSpawn(contract(), ctx), "DEVICE_MISMATCH");
   });
 
   it("MXC-W-008: rejects workspace mismatch", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.workspaceId = "WORKSPACE-OTHER";
     expectCode(() => validateExecutionContractPreSpawn(contract(), ctx), "WORKSPACE_MISMATCH");
   });
 
   it("MXC-W-009: rejects artifact mutation", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.artifactDigest = "sha256:changed";
     expectCode(
       () => validateExecutionContractPreSpawn(contract(), ctx),
@@ -124,7 +178,7 @@ describe("WARDEN-MXC-R0.1 pre-spawn gate", () => {
   });
 
   it("MXC-W-009: rejects command mutation", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.commandDigest = "sha256:changed";
     expectCode(
       () => validateExecutionContractPreSpawn(contract(), ctx),
@@ -132,8 +186,35 @@ describe("WARDEN-MXC-R0.1 pre-spawn gate", () => {
     );
   });
 
+  it("MXC-W-010: rejects filesystem access beyond the authoritative grant", () => {
+    const c = contract();
+    c.permissions.filesystemRead.push("C:\\Windows");
+    expectCode(
+      () => validateExecutionContractPreSpawn(c, qualificationContext()),
+      "FILESYSTEM_PERMISSION_EXCEEDS_GRANT",
+    );
+  });
+
+  it("MXC-W-011: rejects network access beyond the authoritative grant", () => {
+    const c = contract();
+    c.permissions.networkEgress.push({ cidr: "203.0.113.0/24", protocol: "tcp", port: 443 });
+    expectCode(
+      () => validateExecutionContractPreSpawn(c, qualificationContext()),
+      "NETWORK_PERMISSION_EXCEEDS_GRANT",
+    );
+  });
+
+  it("MXC-W-012: rejects a timeout beyond the authoritative grant", () => {
+    const c = contract();
+    c.permissions.timeoutMs = 60_000;
+    expectCode(
+      () => validateExecutionContractPreSpawn(c, qualificationContext()),
+      "TIMEOUT_EXCEEDS_GRANT",
+    );
+  });
+
   it("MXC-W-013: rejects missing or mismatched River reservation", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.riverReservationId = "RR-OTHER";
     expectCode(
       () => validateExecutionContractPreSpawn(contract(), ctx),
@@ -142,13 +223,13 @@ describe("WARDEN-MXC-R0.1 pre-spawn gate", () => {
   });
 
   it("MXC-W-014: rejects when MXC is unavailable", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.mxcAvailable = false;
     expectCode(() => validateExecutionContractPreSpawn(contract(), ctx), "MXC_UNAVAILABLE");
   });
 
   it("MXC-W-016: rejects unsupported schema", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.supportedSchema = false;
     expectCode(
       () => validateExecutionContractPreSpawn(contract(), ctx),
@@ -157,7 +238,7 @@ describe("WARDEN-MXC-R0.1 pre-spawn gate", () => {
   });
 
   it("MXC-W-016: rejects unsupported containment", () => {
-    const ctx = context();
+    const ctx = qualificationContext();
     ctx.supportedContainment = false;
     expectCode(
       () => validateExecutionContractPreSpawn(contract(), ctx),
@@ -169,7 +250,7 @@ describe("WARDEN-MXC-R0.1 pre-spawn gate", () => {
     const c = contract();
     c.permissions.hostLoopback = true;
     expectCode(
-      () => validateExecutionContractPreSpawn(c, context()),
+      () => validateExecutionContractPreSpawn(c, qualificationContext()),
       "HOST_LOOPBACK_NOT_ALLOWED_R01",
     );
   });
