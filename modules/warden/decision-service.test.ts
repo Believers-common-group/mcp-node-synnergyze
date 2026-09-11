@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, it } from "vitest";
 
 import type { EfomPhysicalWorldContextV1 } from "../osiris/contracts.ts";
@@ -7,6 +5,7 @@ import type { EfomPolicyV1 } from "../osiris/policy.ts";
 import type { WardenDecisionRequestV1 } from "./contracts.ts";
 import {
   evaluateSyntheticWardenDecisionV1,
+  physicalWorldContextDigestV1,
   type SyntheticWardenDecisionPolicyV1,
 } from "./decision-service.ts";
 
@@ -109,7 +108,7 @@ function efomContext(overrides: Partial<EfomPhysicalWorldContextV1> = {}): EfomP
 }
 
 function contextDigest(context: EfomPhysicalWorldContextV1): string {
-  return `sha256:${createHash("sha256").update(JSON.stringify(context), "utf8").digest("hex")}`;
+  return physicalWorldContextDigestV1(context);
 }
 
 function efomRequest(context = efomContext()): WardenDecisionRequestV1 {
