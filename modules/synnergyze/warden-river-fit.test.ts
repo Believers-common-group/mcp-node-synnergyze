@@ -1,7 +1,11 @@
 import { describe, expect, it } from "vitest";
 
 import { SyntheticRiverReservationServiceV1 } from "../river/reservation-service.ts";
-import type { WardenDecisionV1 } from "../warden/contracts.ts";
+import type { WardenDecisionV1, WardenExecutionCheckpointV1 } from "../warden/contracts.ts";
+import {
+  ControlledExecutionGateV1,
+  SyntheticServiceRequestCreateAdapterV1,
+} from "./execution-gate.ts";
 import type { ResolvedGenesisDeviceContextV1 } from "./genesis-device-bridge.ts";
 import { buildSynnergyzeWardenDecisionRequestV1 } from "./warden-fit.ts";
 import { reserveSynnergyzeEvidenceV1 } from "./warden-river-fit.ts";
@@ -42,6 +46,28 @@ function request() {
   });
 }
 
+function executionRequest() {
+  return buildSynnergyzeWardenDecisionRequestV1({
+    requestRef: "WARDEN-REQUEST:EXEC-001",
+    actorRef: "DIGITALME:FAIZ",
+    representedPrincipalRef: "DIGITALME:FAIZ",
+    actingCapacityRef: "CAPACITY:ESTATE-OPERATOR",
+    contextRef: "GENESIS-ESTATE-001",
+    programRef: "SYNNERGYZE-PROGRAM:EXEC-001",
+    eventRef: "SYNNERGYZE-EVENT:EXEC-001",
+    action: "service_request.create",
+    capabilityRef: "service_request.create",
+    targetRef: "ESTATE-SERVICE-DESK-001",
+    requestedEffect: "service_request.created",
+    authorityRefs: ["AUTHORITY:ESTATE-OPERATOR"],
+    policyRefs: ["POLICY:ESTATE-GOLD-PROOF"],
+    representationSourceRefs: ["GENESIS:REPRESENTATION:001"],
+    requestedAt: "2026-09-11T03:35:00.000Z",
+    correlationId: "CORR:EGP-EXEC-001",
+    device,
+  });
+}
+
 function allowDecision(overrides: Partial<WardenDecisionV1> = {}): WardenDecisionV1 {
   return {
     decisionRef: "WARDEN-DECISION:001",
@@ -58,6 +84,17 @@ function allowDecision(overrides: Partial<WardenDecisionV1> = {}): WardenDecisio
     actionToken: "WARDEN-ACTION-TOKEN:test",
     ...overrides,
   } as WardenDecisionV1;
+}
+
+function executionAllowDecision(): WardenDecisionV1 {
+  return allowDecision({
+    decisionRef: "WARDEN-DECISION:EXEC-001",
+    requestRef: "WARDEN-REQUEST:EXEC-001",
+    action: "service_request.create",
+    targetRef: "ESTATE-SERVICE-DESK-001",
+    correlationId: "CORR:EGP-EXEC-001",
+    actionToken: "WARDEN-ACTION-TOKEN:exec-test",
+  });
 }
 
 describe("SYNNERGYZE-WARDEN-RIVER-FIT-R0.1", () => {
@@ -145,6 +182,42 @@ describe("SYNNERGYZE-WARDEN-RIVER-FIT-R0.1", () => {
 
     expect(replay.reservation).toEqual(first.reservation);
     expect(replay.action).toEqual(first.action);
+    expect(service.reservationCount()).toBe(1);
+  });
+
+  it("keeps execution at zero when Warden is revoked after River reservation but before effect", () => {
+    const service = new SyntheticRiverReservationServiceV1();
+    const req = executionRequest();
+    const decision = executionAllowDecision();
+    const { action, reservation } = reserveSynnergyzeEvidenceV1({
+      request: req,
+      decision,
+      reservedAt: "2026-09-11T03:37:00.000Z",
+      service,
+    });
+    const checkpoint: WardenExecutionCheckpointV1 = {
+      checkpointRef: "WARDEN-EXEC-CHECK:EXEC-001",
+      decisionRef: decision.decisionRef,
+      wardenRef: decision.wardenRef,
+      correlationId: decision.correlationId,
+      state: "REVOKED",
+      checkedAt: "2026-09-11T03:38:00.000Z",
+      reasonCodes: ["authority_revoked_before_execution"],
+    };
+    const adapter = new SyntheticServiceRequestCreateAdapterV1();
+    const gate = new ControlledExecutionGateV1([adapter]);
+
+    expect(() =>
+      gate.execute({
+        action,
+        reservation,
+        decision,
+        checkpoint,
+        executedAt: "2026-09-11T03:39:00.000Z",
+      }),
+    ).toThrow("execution_warden_checkpoint_revoked");
+    expect(adapter.invocationCount()).toBe(0);
+    expect(gate.executionCount()).toBe(0);
     expect(service.reservationCount()).toBe(1);
   });
 });
