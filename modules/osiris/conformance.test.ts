@@ -1,5 +1,3 @@
-import { createHash } from "node:crypto";
-
 import { describe, expect, it } from "vitest";
 
 import {
@@ -9,6 +7,7 @@ import {
 import type { WardenDecisionRequestV1, WardenExecutionCheckpointV1 } from "../warden/contracts.ts";
 import {
   evaluateSyntheticWardenDecisionV1,
+  physicalWorldContextDigestV1,
   type SyntheticWardenDecisionPolicyV1,
 } from "../warden/decision-service.ts";
 import {
@@ -66,7 +65,7 @@ function context(status: EfomFindingStatusV1 = "CORROBORATED"): EfomPhysicalWorl
 }
 
 function contextDigest(value: EfomPhysicalWorldContextV1): string {
-  return `sha256:${createHash("sha256").update(JSON.stringify(value), "utf8").digest("hex")}`;
+  return physicalWorldContextDigestV1(value);
 }
 
 function request(value: EfomPhysicalWorldContextV1): WardenDecisionRequestV1 {
