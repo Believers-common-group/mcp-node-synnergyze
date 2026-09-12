@@ -15,6 +15,7 @@ import { maybeRegisterWardenConformanceDecision } from "../tools/registerWardenC
 import { maybeRegisterRiverWardenConformanceReservation } from "../tools/registerRiverWardenConformanceReservation.ts";
 import { maybeRegisterWardenRiverSynnergyzeConformanceExecution } from "../tools/registerWardenRiverSynnergyzeConformanceExecution.ts";
 import { maybeRegisterWardenRiverEffectConformance } from "../tools/registerWardenRiverEffectConformance.ts";
+import { maybeRegisterSynnergyzeRuntimeActivation } from "../tools/registerSynnergyzeRuntimeActivation.ts";
 import { maybeRegisterWardenReconciliationConformance } from "../tools/registerWardenReconciliationConformance.ts";
 import {
   createDefaultPestelLegislativeServiceV1,
@@ -100,6 +101,7 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
   maybeRegisterRiverWardenConformanceReservation(server, toolFilter);
   maybeRegisterWardenRiverSynnergyzeConformanceExecution(server, toolFilter);
   maybeRegisterWardenRiverEffectConformance(server, toolFilter);
+  maybeRegisterSynnergyzeRuntimeActivation(server, toolFilter);
   maybeRegisterWardenReconciliationConformance(server, toolFilter);
 
   const pestelResultStore = new InMemoryLegislativeIntelligenceResultStoreV1();

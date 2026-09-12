@@ -36,6 +36,33 @@ function request(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisi
   };
 }
 
+function deviceBoundRequest(
+  overrides: Partial<WardenDecisionRequestV1> = {},
+): WardenDecisionRequestV1 {
+  return request({
+    executionDeviceRef: "GENESIS-DEVICE-ALPHA-LG-001",
+    genesisDevice: {
+      resolutionRef: "GENESIS-DEVICE-RESOLUTION:river001",
+      deviceRef: "GENESIS-DEVICE-ALPHA-LG-001",
+      estateRef: "GENESIS-ESTATE-001",
+      attestationRef: "GENESIS-DEVICE-ATTESTATION-RIVER-001",
+      assuranceLevel: "L3",
+      evidenceRefs: ["RIVER-DEVICE-EVIDENCE-002", "RIVER-DEVICE-EVIDENCE-001"],
+      resolvedAt: "2026-08-14T06:59:55.000Z",
+      validUntil: "2026-08-14T07:05:00.000Z",
+    },
+    deviceSecurityState: "ACTIVE",
+    deviceSecurityPolicyRef: "BAG-LOCK-POLICY:RIVER-001",
+    deviceSecuritySourceRefs: [
+      "REGISTRY-DEVICE-SECURITY:GENESIS-DEVICE-ALPHA-LG-001",
+      "RIVER-EVIDENCE:BAG-LOCK-RIVER-001",
+    ],
+    deviceSecurityResolvedAt: "2026-08-14T06:59:56.000Z",
+    deviceSecurityValidUntil: "2026-08-14T07:05:00.000Z",
+    ...overrides,
+  });
+}
+
 function policy(
   overrides: Partial<SyntheticWardenDecisionPolicyV1> = {},
 ): SyntheticWardenDecisionPolicyV1 {
@@ -97,6 +124,56 @@ describe("VSR-NETWORK-RIVER-RESERVATION-BRIDGE-001", () => {
     expect(reservation.authorizationDigest).not.toContain(pair.action.actionToken);
     expect(JSON.stringify(reservation)).not.toContain(pair.action.actionToken);
     expect(service.reservationCount()).toBe(1);
+  });
+
+  it("binds canonical Genesis device provenance into device-bound action identity", () => {
+    const pair = allowPair(deviceBoundRequest());
+
+    expect(pair.action.genesisDeviceRequestDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+
+    const reordered = deviceBoundRequest({
+      genesisDevice: {
+        ...deviceBoundRequest().genesisDevice!,
+        evidenceRefs: ["RIVER-DEVICE-EVIDENCE-001", "RIVER-DEVICE-EVIDENCE-002"],
+      },
+    });
+    const reorderedPair = allowPair(reordered);
+    expect(reorderedPair.action.genesisDeviceRequestDigest).toBe(
+      pair.action.genesisDeviceRequestDigest,
+    );
+
+    const changedResolution = deviceBoundRequest({
+      genesisDevice: {
+        ...deviceBoundRequest().genesisDevice!,
+        resolutionRef: "GENESIS-DEVICE-RESOLUTION:river002",
+      },
+    });
+    const changedPair = allowPair(changedResolution);
+    expect(changedPair.action.actionRef).not.toBe(pair.action.actionRef);
+  });
+
+  it("rejects a tampered Genesis device digest before River reservation mutation", () => {
+    const service = new SyntheticRiverReservationServiceV1();
+    const pair = allowPair(deviceBoundRequest());
+
+    expect(() =>
+      service.reserve({
+        ...pair,
+        action: { ...pair.action, genesisDeviceRequestDigest: "sha256:deadbeef" },
+        reservedAt: RESERVED_AT,
+      }),
+    ).toThrow("river_action_envelope_mismatch:genesisDeviceRequestDigest");
+    expect(service.reservationCount()).toBe(0);
+  });
+
+  it("requires Genesis device provenance before building a device-bound action envelope", () => {
+    const requestValue = deviceBoundRequest({ genesisDevice: undefined });
+    const decision = decide(requestValue);
+
+    expect(decision.decision).not.toBe("ALLOW");
+    expect(() => buildAuthorizedActionEnvelopeV1(requestValue, decision)).toThrow(
+      "river_warden_allow_required",
+    );
   });
 
   it("stops ESCALATE before an action envelope or River mutation exists", () => {

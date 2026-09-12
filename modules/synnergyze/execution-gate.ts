@@ -182,6 +182,7 @@ function executionFingerprint(
       targetRef: input.action.targetRef,
       correlationId: input.action.correlationId,
       executionDeviceRef: input.action.executionDeviceRef ?? null,
+      genesisDeviceRequestDigest: input.action.genesisDeviceRequestDigest ?? null,
       deviceSecurityRequestDigest: input.action.deviceSecurityRequestDigest ?? null,
       executionDeviceSecurity: input.executionDeviceSecurity
         ? {

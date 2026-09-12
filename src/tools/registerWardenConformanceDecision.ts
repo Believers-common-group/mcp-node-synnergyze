@@ -13,6 +13,19 @@ export const description =
   "Evaluate the bounded synthetic Warden conformance policy. This tool does not perform an external effect and is disabled unless explicitly enabled.";
 export const enableEnvironmentVariable = "VSR_WARDEN_MCP_CONFORMANCE";
 
+const genesisDeviceSchema = z
+  .object({
+    resolutionRef: z.string().min(1),
+    deviceRef: z.string().min(1),
+    estateRef: z.string().min(1),
+    attestationRef: z.string().min(1),
+    assuranceLevel: z.enum(["L0", "L1", "L2", "L3", "L4"]),
+    evidenceRefs: z.array(z.string().min(1)).min(1),
+    resolvedAt: z.string().min(1),
+    validUntil: z.string().min(1).optional(),
+  })
+  .strict();
+
 const requestSchema = z
   .object({
     requestRef: z.string().min(1),
@@ -27,6 +40,7 @@ const requestSchema = z
     targetRef: z.string().min(1),
     requestedEffect: z.string().min(1).optional(),
     executionDeviceRef: z.string().min(1).optional(),
+    genesisDevice: genesisDeviceSchema.optional(),
     deviceSecurityState: z.literal("ACTIVE").optional(),
     deviceSecurityPolicyRef: z.string().min(1).optional(),
     deviceSecuritySourceRefs: z.array(z.string().min(1)).optional(),
@@ -101,6 +115,33 @@ export const wardenConformanceRequestJsonSchema = {
     targetRef: { type: "string", minLength: 1 },
     requestedEffect: { type: "string", minLength: 1 },
     executionDeviceRef: { type: "string", minLength: 1 },
+    genesisDevice: {
+      type: "object",
+      additionalProperties: false,
+      required: [
+        "resolutionRef",
+        "deviceRef",
+        "estateRef",
+        "attestationRef",
+        "assuranceLevel",
+        "evidenceRefs",
+        "resolvedAt",
+      ],
+      properties: {
+        resolutionRef: { type: "string", minLength: 1 },
+        deviceRef: { type: "string", minLength: 1 },
+        estateRef: { type: "string", minLength: 1 },
+        attestationRef: { type: "string", minLength: 1 },
+        assuranceLevel: { enum: ["L0", "L1", "L2", "L3", "L4"] },
+        evidenceRefs: {
+          type: "array",
+          minItems: 1,
+          items: { type: "string", minLength: 1 },
+        },
+        resolvedAt: { type: "string", minLength: 1 },
+        validUntil: { type: "string", minLength: 1 },
+      },
+    },
     deviceSecurityState: { const: "ACTIVE" },
     deviceSecurityPolicyRef: { type: "string", minLength: 1 },
     deviceSecuritySourceRefs: { type: "array", items: { type: "string", minLength: 1 } },
