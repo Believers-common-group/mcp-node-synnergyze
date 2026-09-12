@@ -126,25 +126,58 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
   if (credentials) {
     processCallbackArguments = async (params, securityKeys) => {
       const result = { ...params };
-      if (securityKeys.has("applicationId")) result.applicationId = credentials.applicationId;
-      if (securityKeys.has("apiKey")) result.apiKey = credentials.apiKey;
+
+      if (securityKeys.has("applicationId")) {
+        result.applicationId = credentials.applicationId;
+      }
+
+      if (securityKeys.has("apiKey")) {
+        result.apiKey = credentials.apiKey;
+      }
+
       return result;
     };
   } else {
     const appState = await AppStateManager.load();
-    const { accessToken } = appState.getAll();
 
-    if (!accessToken) {
-      await authenticate(appState);
+    if (!appState.get("accessToken")) {
+      const token = await authenticate();
+
+      await appState.update({
+        accessToken: token.access_token,
+        refreshToken: token.refresh_token,
+      });
     }
 
-    const dashboardApi = new DashboardApi(appState);
-    regionHotFixMiddlewares.push(makeRegionRequestMiddleware(dashboardApi));
-    processCallbackArguments = async (params) => {
-      if (typeof params.applicationId !== "string") return params;
-      const apiKey = await dashboardApi.getApiKey(params.applicationId);
-      return { ...params, apiKey };
+    const dashboardApi = new DashboardApi({ baseUrl: CONFIG.dashboardApiBaseUrl, appState });
+
+    processCallbackArguments = async (params, securityKeys) => {
+      const result = { ...params };
+
+      if (securityKeys.has("apiKey")) {
+        result.apiKey = await dashboardApi.getApiKey(params.applicationId);
+      }
+
+      return result;
     };
+
+    regionHotFixMiddlewares.push(makeRegionRequestMiddleware(dashboardApi));
+
+    if (isToolAllowed(GetUserInfoOperationId, toolFilter)) {
+      registerGetUserInfo(server, dashboardApi);
+    }
+
+    if (isToolAllowed(GetApplicationsOperationId, toolFilter)) {
+      registerGetApplications(server, dashboardApi);
+    }
+
+    if (isToolAllowed(SetAttributesForFacetingOperationId, toolFilter)) {
+      registerSetAttributesForFaceting(server, dashboardApi);
+    }
+
+    if (isToolAllowed(SetCustomRankingOperationId, toolFilter)) {
+      registerSetCustomRanking(server, dashboardApi);
+    }
   }
 
   for (const openApiSpec of [
@@ -155,25 +188,52 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
     MonitoringSpec,
     CollectionsSpec,
     QuerySuggestionsSpec,
-    UsageSpec,
-    IngestionSpec,
   ]) {
     registerOpenApiTools({
       server,
-      openApiSpec,
-      filter: toolFilter,
       processInputSchema,
       processCallbackArguments,
-      requestMiddlewares: regionHotFixMiddlewares,
+      openApiSpec,
+      toolFilter,
     });
   }
 
-  if (isToolAllowed(GetUserInfoOperationId, toolFilter)) registerGetUserInfo(server);
-  if (isToolAllowed(GetApplicationsOperationId, toolFilter)) registerGetApplications(server);
-  if (isToolAllowed(SetAttributesForFacetingOperationId, toolFilter)) {
-    registerSetAttributesForFaceting(server);
-  }
-  if (isToolAllowed(SetCustomRankingOperationId, toolFilter)) registerSetCustomRanking(server);
+  registerOpenApiTools({
+    server,
+    processInputSchema,
+    processCallbackArguments,
+    openApiSpec: UsageSpec,
+    toolFilter,
+    requestMiddlewares: [
+      async ({ request }) => {
+        const url = new URL(request.url);
+        const nameParams = url.searchParams.get("name");
+
+        if (!nameParams) {
+          return new Request(url, request.clone());
+        }
+
+        const nameValues = nameParams.split(",");
+
+        url.searchParams.delete("name");
+
+        nameValues.forEach((value) => {
+          url.searchParams.append("name", value);
+        });
+
+        return new Request(url, request.clone());
+      },
+    ],
+  });
+
+  registerOpenApiTools({
+    server,
+    processInputSchema,
+    processCallbackArguments,
+    openApiSpec: IngestionSpec,
+    toolFilter,
+    requestMiddlewares: [...regionHotFixMiddlewares],
+  });
 
   return server;
 }
