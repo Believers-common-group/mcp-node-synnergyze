@@ -12,6 +12,7 @@ export interface ActionEnvelopeV1 {
   targetRef: string;
   requestedEffect?: string;
   executionDeviceRef?: string;
+  genesisDeviceRequestDigest?: string;
   deviceSecurityPolicyRef?: string;
   deviceSecurityRequestDigest?: string;
   wardenDecisionRef: string;
