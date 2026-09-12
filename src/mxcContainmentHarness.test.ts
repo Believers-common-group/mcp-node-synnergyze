@@ -3,8 +3,8 @@ import { describe, expect, it, vi } from "vitest";
 import type { ContainerConfig } from "@microsoft/mxc-sdk";
 import {
   executeQualifiedMxcCommandR01,
-  MxcContainmentHarnessError,
   sha256Command,
+  type MxcContainmentHarnessError,
   type MxcSpawnedProcess,
 } from "./mxcContainmentHarness.js";
 import {
@@ -13,7 +13,7 @@ import {
   type WardenExecutionContractR01,
 } from "./wardenExecutionContract.js";
 
-const commandLine = 'node -e "console.log(\"warden-mxc-ok\")"';
+const commandLine = `node -e "console.log('warden-mxc-ok')"`;
 
 function contract(): WardenExecutionContractR01 {
   const commandDigest = sha256Command(commandLine);
@@ -133,7 +133,7 @@ describe("MXC R0.1 containment spawn gate", () => {
     const spawn = vi.fn(() => successfulChild());
 
     await expect(
-      executeQualifiedMxcCommandR01(c, ctx, 'node -e "console.log(\"changed\")"', { spawn }),
+      executeQualifiedMxcCommandR01(c, ctx, `node -e "console.log('changed')"`, { spawn }),
     ).rejects.toMatchObject({ code: "COMMAND_DIGEST_MISMATCH" });
     expect(spawn).not.toHaveBeenCalled();
   });
