@@ -13,6 +13,7 @@ export interface MxcContainmentResult {
   stderr: string;
   policyDigest: string;
   configDigest: string;
+  executionConfigDigest: string;
   containmentIntent: "process";
 }
 
@@ -45,6 +46,27 @@ export class MxcContainmentHarnessError extends Error {
 
 export function sha256Command(commandLine: string): string {
   return `sha256:${createHash("sha256").update(commandLine, "utf8").digest("hex")}`;
+}
+
+function canonicalize(value: unknown): string {
+  if (value === null || typeof value !== "object") {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => canonicalize(item)).join(",")}]`;
+  }
+
+  const record = value as Record<string, unknown>;
+  const keys = Object.keys(record).sort();
+  return `{${keys
+    .filter((key) => record[key] !== undefined)
+    .map((key) => `${JSON.stringify(key)}:${canonicalize(record[key])}`)
+    .join(",")}}`;
+}
+
+function digestConfig(config: ContainerConfig): string {
+  return `sha256:${createHash("sha256").update(canonicalize(config)).digest("hex")}`;
 }
 
 function collectStream(stream: NodeJS.ReadableStream | null | undefined): Promise<string> {
@@ -93,6 +115,7 @@ export async function executeQualifiedMxcCommandR01(
   // propagates unchanged and therefore cannot be mistaken for an execution failure.
   const prepared = prepareMxcExecutionConfigR01(contract, context);
   prepared.config.process!.commandLine = commandLine;
+  const executionConfigDigest = digestConfig(prepared.config);
 
   const spawn = dependencies.spawn ?? spawnSandboxFromConfig;
 
@@ -131,6 +154,7 @@ export async function executeQualifiedMxcCommandR01(
     stderr,
     policyDigest: prepared.policyDigest,
     configDigest: prepared.configDigest,
+    executionConfigDigest,
     containmentIntent: prepared.containmentIntent,
   };
 }
