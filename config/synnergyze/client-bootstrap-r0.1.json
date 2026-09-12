@@ -20,6 +20,6 @@
     "external_effects": false
   },
   "river": {
-    "execution_evidence": "DEFERRED_UNTIL_RUNTIME_ACTIVATION"
+    "execution_evidence": "DEFERRED_UNTIL_WARDEN_FIT"
   }
 }
