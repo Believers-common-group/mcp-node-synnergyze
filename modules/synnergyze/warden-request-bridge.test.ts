@@ -6,6 +6,7 @@ import type {
   DeviceSecurityStateV1,
   ResolvedDeviceSecurityContextV1,
 } from "./contracts.ts";
+import type { ResolvedGenesisDeviceContextV1 } from "./genesis-device-bridge.ts";
 import {
   buildWardenDecisionRequestV1,
   type ResolvedRepresentationContextV1,
@@ -57,6 +58,25 @@ function representation(
     policyRefs: ["POLICY-SERVICE-REQUEST-001"],
     sourceRefs: ["REGISTRY-R2-RELATION-001", "REGISTRY-R3-AUTHORITY-001"],
     resolvedAt: "2026-08-14T06:02:00Z",
+    ...overrides,
+  };
+}
+
+function genesisDevice(
+  overrides: Partial<ResolvedGenesisDeviceContextV1> = {},
+): ResolvedGenesisDeviceContextV1 {
+  return {
+    genesisResolutionRef: "GENESIS-DEVICE-RESOLUTION:abc123",
+    deviceRef: "ALPHA-DEVICE-001",
+    estateRef: "GENESIS-ESTATE-001",
+    locationRef: "GENESIS-LOCATION-ALPHA-001",
+    runtimeInstanceRef: "GENESIS-INSTANCE-ALPHA-001",
+    state: "ACTIVE",
+    assuranceLevel: "L3",
+    sourceEvidenceRefs: ["RIVER-DEVICE-ATTESTATION-001"],
+    attestationRef: "GENESIS-DEVICE-ATTESTATION-001",
+    resolvedAt: "2026-08-14T06:02:30Z",
+    validUntil: "2026-08-14T06:10:00Z",
     ...overrides,
   };
 }
@@ -211,7 +231,7 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
     expect(result).toMatchObject({ ok: false, code: "EVENT_NOT_IN_PROGRAM" });
   });
 
-  it("requires a resolved security context for a device-bound Event", () => {
+  it("requires a Genesis device context for a device-bound Event", () => {
     const { bundle, event } = deviceBoundEvent();
     const result = buildWardenDecisionRequestV1({
       program: bundle.program,
@@ -220,7 +240,101 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
       requestedAt: "2026-08-14T06:03:00Z",
     });
 
-    expect(result).toMatchObject({ ok: false, code: "DEVICE_SECURITY_REQUIRED" });
+    expect(result).toMatchObject({ ok: false, code: "GENESIS_DEVICE_REQUIRED" });
+  });
+
+  it("accepts a valid Genesis device without transient device security", () => {
+    const { bundle, event } = deviceBoundEvent();
+    const result = buildWardenDecisionRequestV1({
+      program: bundle.program,
+      event,
+      representation: representation(),
+      genesisDevice: genesisDevice(),
+      requestedAt: "2026-08-14T06:03:00Z",
+    });
+
+    expect(result.ok).toBe(true);
+    if (!result.ok) return;
+    expect(result.request.genesisDevice?.resolutionRef).toBe("GENESIS-DEVICE-RESOLUTION:abc123");
+    expect(result.request.deviceSecurityState).toBeUndefined();
+  });
+
+  it("rejects a Genesis context for another device", () => {
+    const { bundle, event } = deviceBoundEvent();
+    const result = buildWardenDecisionRequestV1({
+      program: bundle.program,
+      event,
+      representation: representation(),
+      genesisDevice: genesisDevice({ deviceRef: "ALPHA-DEVICE-OTHER" }),
+      requestedAt: "2026-08-14T06:03:00Z",
+    });
+
+    expect(result).toMatchObject({ ok: false, code: "GENESIS_DEVICE_CONTEXT_MISMATCH" });
+  });
+
+  it("rejects missing Genesis attestation or evidence", () => {
+    const { bundle, event } = deviceBoundEvent();
+    const missingAttestation = buildWardenDecisionRequestV1({
+      program: bundle.program,
+      event,
+      representation: representation(),
+      genesisDevice: genesisDevice({ attestationRef: "" }),
+      requestedAt: "2026-08-14T06:03:00Z",
+    });
+    const missingEvidence = buildWardenDecisionRequestV1({
+      program: bundle.program,
+      event,
+      representation: representation(),
+      genesisDevice: genesisDevice({ sourceEvidenceRefs: [] }),
+      requestedAt: "2026-08-14T06:03:00Z",
+    });
+
+    expect(missingAttestation).toMatchObject({ ok: false, code: "GENESIS_DEVICE_EVIDENCE_MISSING" });
+    expect(missingEvidence).toMatchObject({ ok: false, code: "GENESIS_DEVICE_EVIDENCE_MISSING" });
+  });
+
+  it("rejects future and expired Genesis resolutions", () => {
+    const { bundle, event } = deviceBoundEvent();
+    const future = buildWardenDecisionRequestV1({
+      program: bundle.program,
+      event,
+      representation: representation(),
+      genesisDevice: genesisDevice({ resolvedAt: "2026-08-14T06:03:01Z" }),
+      requestedAt: "2026-08-14T06:03:00Z",
+    });
+    const expired = buildWardenDecisionRequestV1({
+      program: bundle.program,
+      event,
+      representation: representation(),
+      genesisDevice: genesisDevice({ validUntil: "2026-08-14T06:02:59Z" }),
+      requestedAt: "2026-08-14T06:03:00Z",
+    });
+
+    expect(future).toMatchObject({ ok: false, code: "GENESIS_DEVICE_FROM_FUTURE" });
+    expect(expired).toMatchObject({ ok: false, code: "GENESIS_DEVICE_EXPIRED" });
+  });
+
+  it("binds Genesis resolution identity into the Warden request identity", () => {
+    const { bundle, event } = deviceBoundEvent();
+    const first = buildWardenDecisionRequestV1({
+      program: bundle.program,
+      event,
+      representation: representation(),
+      genesisDevice: genesisDevice(),
+      requestedAt: "2026-08-14T06:03:00Z",
+    });
+    const second = buildWardenDecisionRequestV1({
+      program: bundle.program,
+      event,
+      representation: representation(),
+      genesisDevice: genesisDevice({ genesisResolutionRef: "GENESIS-DEVICE-RESOLUTION:def456" }),
+      requestedAt: "2026-08-14T06:03:00Z",
+    });
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(true);
+    if (!first.ok || !second.ok) return;
+    expect(second.request.requestRef).not.toBe(first.request.requestRef);
   });
 
   it("rejects a security context for another device", () => {
@@ -229,6 +343,7 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
       program: bundle.program,
       event,
       representation: representation(),
+      genesisDevice: genesisDevice(),
       deviceSecurity: deviceSecurity({ deviceRef: "ALPHA-DEVICE-OTHER" }),
       requestedAt: "2026-08-14T06:03:00Z",
     });
@@ -245,12 +360,13 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
     "CONTROLLED_RECONNECT",
     "RECOVERY_REQUIRED",
   ] as const satisfies readonly DeviceSecurityStateV1[]) {
-    it(`blocks Warden request while device security state is ${state}`, () => {
+    it(`blocks Warden request while supplied device security state is ${state}`, () => {
       const { bundle, event } = deviceBoundEvent();
       const result = buildWardenDecisionRequestV1({
         program: bundle.program,
         event,
         representation: representation(),
+        genesisDevice: genesisDevice(),
         deviceSecurity: deviceSecurity({ state }),
         requestedAt: "2026-08-14T06:03:00Z",
       });
@@ -259,12 +375,13 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
     });
   }
 
-  it("requires device security evidence before requesting Warden authorization", () => {
+  it("requires supplied device security evidence before requesting Warden authorization", () => {
     const { bundle, event } = deviceBoundEvent();
     const result = buildWardenDecisionRequestV1({
       program: bundle.program,
       event,
       representation: representation(),
+      genesisDevice: genesisDevice(),
       deviceSecurity: deviceSecurity({ evidenceRef: "" }),
       requestedAt: "2026-08-14T06:03:00Z",
     });
@@ -272,12 +389,13 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
     expect(result).toMatchObject({ ok: false, code: "DEVICE_SECURITY_EVIDENCE_MISSING" });
   });
 
-  it("rejects future and expired device security resolutions", () => {
+  it("rejects future and expired supplied device security resolutions", () => {
     const { bundle, event } = deviceBoundEvent();
     const future = buildWardenDecisionRequestV1({
       program: bundle.program,
       event,
       representation: representation(),
+      genesisDevice: genesisDevice(),
       deviceSecurity: deviceSecurity({ resolvedAt: "2026-08-14T06:03:01Z" }),
       requestedAt: "2026-08-14T06:03:00Z",
     });
@@ -285,6 +403,7 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
       program: bundle.program,
       event,
       representation: representation(),
+      genesisDevice: genesisDevice(),
       deviceSecurity: deviceSecurity({ validUntil: "2026-08-14T06:02:59Z" }),
       requestedAt: "2026-08-14T06:03:00Z",
     });
@@ -293,12 +412,13 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
     expect(expired).toMatchObject({ ok: false, code: "DEVICE_SECURITY_EXPIRED" });
   });
 
-  it("binds ACTIVE device security evidence into the Warden request identity", () => {
+  it("binds ACTIVE supplied device security evidence into the Warden request identity", () => {
     const { bundle, event } = deviceBoundEvent();
     const first = buildWardenDecisionRequestV1({
       program: bundle.program,
       event,
       representation: representation(),
+      genesisDevice: genesisDevice(),
       deviceSecurity: deviceSecurity(),
       requestedAt: "2026-08-14T06:03:00Z",
     });
@@ -306,6 +426,7 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
       program: bundle.program,
       event,
       representation: representation(),
+      genesisDevice: genesisDevice(),
       deviceSecurity: deviceSecurity({
         resolutionRef: "REGISTRY-DEVICE-SECURITY:ALPHA-DEVICE-001:ACTIVE:2",
         evidenceRef: "RIVER-EVIDENCE:BAG-LOCK-ACTIVE-002",
@@ -326,9 +447,16 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
     expect(second.request.requestRef).not.toBe(first.request.requestRef);
   });
 
-  it("rejects stray device security context on a non-device-bound Event", () => {
+  it("rejects stray device context on a non-device-bound Event", () => {
     const bundle = readyPlanningBundle();
-    const result = buildWardenDecisionRequestV1({
+    const strayGenesis = buildWardenDecisionRequestV1({
+      program: bundle.program,
+      event: bundle.events[0],
+      representation: representation(),
+      genesisDevice: genesisDevice(),
+      requestedAt: "2026-08-14T06:03:00Z",
+    });
+    const straySecurity = buildWardenDecisionRequestV1({
       program: bundle.program,
       event: bundle.events[0],
       representation: representation(),
@@ -336,6 +464,7 @@ describe("VSR-NETWORK-WARDEN-REQUEST-BRIDGE-001", () => {
       requestedAt: "2026-08-14T06:03:00Z",
     });
 
-    expect(result).toMatchObject({ ok: false, code: "DEVICE_SECURITY_CONTEXT_MISMATCH" });
+    expect(strayGenesis).toMatchObject({ ok: false, code: "GENESIS_DEVICE_CONTEXT_MISMATCH" });
+    expect(straySecurity).toMatchObject({ ok: false, code: "DEVICE_SECURITY_CONTEXT_MISMATCH" });
   });
 });
