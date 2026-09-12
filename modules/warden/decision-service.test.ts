@@ -211,4 +211,22 @@ describe("VSR-NETWORK-WARDEN-DECISION-SERVICE-001", () => {
     expect(targetChanged.actionToken).not.toBe(first.actionToken);
     expect(policyChanged.actionToken).not.toBe(first.actionToken);
   });
+
+  it("types a Genesis device dependency as part of a Warden request", () => {
+    const deviceBound = request({
+      executionDeviceRef: "GENESIS-DEVICE-ALPHA-LG-001",
+      genesisDevice: {
+        resolutionRef: "GENESIS-DEVICE-RESOLUTION:abc123",
+        deviceRef: "GENESIS-DEVICE-ALPHA-LG-001",
+        estateRef: "GENESIS-ESTATE-001",
+        attestationRef: "GENESIS-DEVICE-ATTESTATION-001",
+        assuranceLevel: "L3",
+        evidenceRefs: ["RIVER-DEVICE-ATTESTATION-001"],
+        resolvedAt: "2026-08-14T06:59:00.000Z",
+        validUntil: "2026-08-14T07:05:00.000Z",
+      },
+    });
+
+    expect(deviceBound.genesisDevice?.deviceRef).toBe("GENESIS-DEVICE-ALPHA-LG-001");
+  });
 });
