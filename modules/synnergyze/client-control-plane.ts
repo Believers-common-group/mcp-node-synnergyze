@@ -12,7 +12,7 @@ export interface SynnergyzeClientRegistrationInputV1 {
 
 export interface SynnergyzeClientBootstrapV1 extends SynnergyzeClientRegistrationInputV1 {
   state: "REGISTERED";
-  wardenBinding: "UNBOUND";
+  wardenBinding: "FIT_QUALIFIED";
   executable: false;
 }
 
@@ -58,8 +58,8 @@ export interface SynnergyzeClientReadinessV1 {
   clientRef: string;
   genesisBinding: "BOUND";
   synnergyzeState: "READY";
-  wardenBinding: "UNBOUND";
-  executionState: "BLOCKED_WARDEN_UNBOUND";
+  wardenBinding: "FIT_QUALIFIED";
+  executionState: "BLOCKED_RUNTIME_ACTIVATION";
   systemCount: number;
   capabilityCount: number;
   workflowCount: number;
@@ -82,7 +82,7 @@ export class InMemorySynnergyzeClientControlPlaneV1 {
     const record: SynnergyzeClientBootstrapV1 = {
       ...input,
       state: "REGISTERED",
-      wardenBinding: "UNBOUND",
+      wardenBinding: "FIT_QUALIFIED",
       executable: false,
     };
     this.clients.set(record.clientRef, record);
@@ -166,8 +166,8 @@ export class InMemorySynnergyzeClientControlPlaneV1 {
       clientRef,
       genesisBinding: "BOUND",
       synnergyzeState: "READY",
-      wardenBinding: "UNBOUND",
-      executionState: "BLOCKED_WARDEN_UNBOUND",
+      wardenBinding: "FIT_QUALIFIED",
+      executionState: "BLOCKED_RUNTIME_ACTIVATION",
       systemCount: [...this.systems.values()].filter((item) => item.clientRef === clientRef).length,
       capabilityCount: [...this.capabilities.values()].filter(
         (item) => item.clientRef === clientRef,
