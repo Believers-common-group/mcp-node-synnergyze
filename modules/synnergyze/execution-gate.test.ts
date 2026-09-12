@@ -50,6 +50,16 @@ function deviceBoundRequest(
 ): WardenDecisionRequestV1 {
   return request({
     executionDeviceRef: "ALPHA-DEVICE-001",
+    genesisDevice: {
+      resolutionRef: "GENESIS-DEVICE-RESOLUTION:exec001",
+      deviceRef: "ALPHA-DEVICE-001",
+      estateRef: "GENESIS-ESTATE-001",
+      attestationRef: "GENESIS-DEVICE-ATTESTATION-EXEC-001",
+      assuranceLevel: "L3",
+      evidenceRefs: ["RIVER-DEVICE-ATTESTATION-EXEC-001"],
+      resolvedAt: "2026-08-14T08:59:57.000Z",
+      validUntil: "2026-08-14T09:04:59.000Z",
+    },
     deviceSecurityState: "ACTIVE",
     deviceSecurityPolicyRef: "BAG-LOCK-POLICY:ALPHA-001",
     deviceSecuritySourceRefs: [

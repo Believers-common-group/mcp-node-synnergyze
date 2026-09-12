@@ -1,5 +1,18 @@
 export type WardenDecisionStatus = "ALLOW" | "ESCALATE" | "DENY";
 
+export type WardenDeviceAssuranceLevelV1 = "L0" | "L1" | "L2" | "L3" | "L4";
+
+export interface WardenGenesisDeviceDependencyV1 {
+  resolutionRef: string;
+  deviceRef: string;
+  estateRef: string;
+  attestationRef: string;
+  assuranceLevel: WardenDeviceAssuranceLevelV1;
+  evidenceRefs: readonly string[];
+  resolvedAt: string;
+  validUntil?: string;
+}
+
 export interface WardenDecisionRequestV1 {
   requestRef: string;
   actorRef: string;
@@ -13,6 +26,7 @@ export interface WardenDecisionRequestV1 {
   targetRef: string;
   requestedEffect?: string;
   executionDeviceRef?: string;
+  genesisDevice?: WardenGenesisDeviceDependencyV1;
   deviceSecurityState?: "ACTIVE";
   deviceSecurityPolicyRef?: string;
   deviceSecuritySourceRefs?: readonly string[];

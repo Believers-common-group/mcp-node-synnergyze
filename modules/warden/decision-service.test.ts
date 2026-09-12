@@ -1,12 +1,31 @@
 import { describe, expect, it } from "vitest";
 
-import type { WardenDecisionRequestV1 } from "./contracts.ts";
+import type {
+  WardenDecisionRequestV1,
+  WardenGenesisDeviceDependencyV1,
+} from "./contracts.ts";
 import {
   evaluateSyntheticWardenDecisionV1,
   type SyntheticWardenDecisionPolicyV1,
 } from "./decision-service.ts";
 
 const DECIDED_AT = "2026-08-14T07:00:30.000Z";
+
+function genesisDevice(
+  overrides: Partial<WardenGenesisDeviceDependencyV1> = {},
+): WardenGenesisDeviceDependencyV1 {
+  return {
+    resolutionRef: "GENESIS-DEVICE-RESOLUTION:abc123",
+    deviceRef: "GENESIS-DEVICE-ALPHA-LG-001",
+    estateRef: "GENESIS-ESTATE-001",
+    attestationRef: "GENESIS-DEVICE-ATTESTATION-001",
+    assuranceLevel: "L3",
+    evidenceRefs: ["RIVER-DEVICE-ATTESTATION-001"],
+    resolvedAt: "2026-08-14T06:59:00.000Z",
+    validUntil: "2026-08-14T07:05:00.000Z",
+    ...overrides,
+  };
+}
 
 function request(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisionRequestV1 {
   return {
@@ -28,6 +47,16 @@ function request(overrides: Partial<WardenDecisionRequestV1> = {}): WardenDecisi
     correlationId: "CORR-WARDEN-001",
     ...overrides,
   };
+}
+
+function deviceBoundRequest(
+  overrides: Partial<WardenDecisionRequestV1> = {},
+): WardenDecisionRequestV1 {
+  return request({
+    executionDeviceRef: "GENESIS-DEVICE-ALPHA-LG-001",
+    genesisDevice: genesisDevice(),
+    ...overrides,
+  });
 }
 
 function policy(
@@ -210,5 +239,92 @@ describe("VSR-NETWORK-WARDEN-DECISION-SERVICE-001", () => {
     }
     expect(targetChanged.actionToken).not.toBe(first.actionToken);
     expect(policyChanged.actionToken).not.toBe(first.actionToken);
+  });
+
+  it("requires Genesis provenance for every device-bound request", () => {
+    const decision = decide(
+      request({ executionDeviceRef: "GENESIS-DEVICE-ALPHA-LG-001" }),
+    );
+    expect(decision.decision).toBe("DENY");
+    expect(decision.reasonCodes).toEqual(["genesis_device_dependency_required"]);
+  });
+
+  it("denies non-device-bound work when policy itself requires a device", () => {
+    const decision = decide(
+      request(),
+      policy({ deviceRequirement: { required: true, minimumAssuranceLevel: "L2" } }),
+    );
+    expect(decision.decision).toBe("DENY");
+    expect(decision.reasonCodes).toEqual(["genesis_device_policy_requires_device"]);
+  });
+
+  it("denies a Genesis dependency for a different execution device", () => {
+    const decision = decide(
+      deviceBoundRequest({ genesisDevice: genesisDevice({ deviceRef: "GENESIS-DEVICE-OTHER-001" }) }),
+    );
+    expect(decision.decision).toBe("DENY");
+    expect(decision.reasonCodes).toEqual(["genesis_device_ref_mismatch"]);
+  });
+
+  it("denies malformed Genesis resolution and missing attestation evidence", () => {
+    const malformed = decide(
+      deviceBoundRequest({
+        genesisDevice: genesisDevice({ resolutionRef: "NOT-GENESIS" }),
+      }),
+    );
+    expect(malformed.reasonCodes).toEqual(["genesis_device_resolution_invalid"]);
+
+    const missingEvidence = decide(
+      deviceBoundRequest({ genesisDevice: genesisDevice({ evidenceRefs: [] }) }),
+    );
+    expect(missingEvidence.reasonCodes).toEqual(["genesis_device_evidence_missing"]);
+  });
+
+  it("denies a future Genesis resolution", () => {
+    const decision = decide(
+      deviceBoundRequest({
+        genesisDevice: genesisDevice({ resolvedAt: "2026-08-14T07:00:01.000Z" }),
+      }),
+    );
+    expect(decision.reasonCodes).toEqual(["genesis_device_resolution_from_future"]);
+  });
+
+  it("rechecks Genesis validity at decision time", () => {
+    const decision = decide(
+      deviceBoundRequest({
+        genesisDevice: genesisDevice({ validUntil: "2026-08-14T07:00:15.000Z" }),
+      }),
+      policy(),
+      "2026-08-14T07:00:30.000Z",
+    );
+    expect(decision.reasonCodes).toEqual(["genesis_device_resolution_expired"]);
+  });
+
+  it("enforces minimum Genesis device assurance", () => {
+    const insufficient = decide(
+      deviceBoundRequest({ genesisDevice: genesisDevice({ assuranceLevel: "L1" }) }),
+      policy({ deviceRequirement: { required: true, minimumAssuranceLevel: "L2" } }),
+    );
+    expect(insufficient.reasonCodes).toEqual(["genesis_device_assurance_insufficient"]);
+
+    const sufficient = decide(
+      deviceBoundRequest({ genesisDevice: genesisDevice({ assuranceLevel: "L3" }) }),
+      policy({ deviceRequirement: { required: true, minimumAssuranceLevel: "L2" } }),
+    );
+    expect(sufficient.decision).toBe("ALLOW");
+  });
+
+  it("canonicalizes Genesis evidence order in decision identity", () => {
+    const first = decide(
+      deviceBoundRequest({
+        genesisDevice: genesisDevice({ evidenceRefs: ["EVIDENCE-B", "EVIDENCE-A"] }),
+      }),
+    );
+    const second = decide(
+      deviceBoundRequest({
+        genesisDevice: genesisDevice({ evidenceRefs: ["EVIDENCE-A", "EVIDENCE-B"] }),
+      }),
+    );
+    expect(first.decisionRef).toBe(second.decisionRef);
   });
 });

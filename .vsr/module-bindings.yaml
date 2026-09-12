@@ -39,6 +39,7 @@ modules:
       - DIGITALME-CONTEXT
       - AUTHORITY-POLICY-ASSETS
       - EVIDENCE-READINESS-WHEN-REQUIRED
+      - GENESIS-DEVICE-RESOLUTION
     consumers:
       - SYNNERGYZE-RUNTIME-001
       - BNR-RUNTIME-001
@@ -226,6 +227,56 @@ modules:
     activation_gate: SynergyzeGovernance#27:L-008
     tests:
       - modules/contracts.test.ts
+
+  - module_id: MOD-GENESIS-DEVICE-001
+    network_object: GENESIS-DEVICE-REGISTRY-001
+    role: device-identity-binding-attestation-resolution
+    state: contract_typed_bootstrap
+    intended_path: modules/genesis-node-builder
+    implementation_file: modules/genesis-node-builder/device-registry.ts
+    public_contracts:
+      output:
+        - GenesisDeviceRecordV1
+        - GenesisDeviceBindingV1
+        - GenesisDeviceAttestationV1
+        - GenesisDeviceResolutionV1
+    depends_on:
+      - REGISTRY
+      - CANONICAL-GENESIS-REFS
+    consumers:
+      - SYNNERGYZE-RUNTIME-001
+    forbidden:
+      - authorize-action
+      - infer-device-trust-without-attestation
+      - resolve-cross-estate-device
+    activation_gate: GENESIS-DEVICE-DEPENDENCY-R0.1
+    tests:
+      - modules/genesis-node-builder/device-registry.test.ts
+
+  - module_id: MOD-SYNNERGYZE-001
+    network_object: SYNNERGYZE-RUNTIME-001
+    role: client-control-orchestration
+    state: contract_typed_bootstrap
+    intended_path: modules/synnergyze
+    implementation_file: modules/synnergyze/client-control-plane.ts
+    bootstrap_profile: config/synnergyze/client-bootstrap-r0.1.json
+    genesis_binding: REQUIRED
+    warden_binding: FIT_QUALIFIED
+    public_contracts:
+      output:
+        - SynnergyzeClientBootstrapV1
+        - SynnergyzeClientReadinessV1
+    depends_on:
+      - REGISTRY
+      - CANONICAL-GENESIS-REFS
+      - GENESIS-DEVICE-RESOLUTION
+    forbidden:
+      - self-authorize-client-execution
+      - infer-authority-from-system-connection
+      - execute-before-warden-fit
+    activation_gate: SYNNERGYZE-RUNTIME-ACTIVATION-R0.1
+    tests:
+      - modules/synnergyze/client-control-plane.test.ts
 
 cross_boundary_tests:
   - no-warden-decision-means-no-controlled-execution
