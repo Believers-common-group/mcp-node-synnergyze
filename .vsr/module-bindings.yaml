@@ -39,6 +39,7 @@ modules:
       - DIGITALME-CONTEXT
       - AUTHORITY-POLICY-ASSETS
       - EVIDENCE-READINESS-WHEN-REQUIRED
+      - GENESIS-DEVICE-RESOLUTION
     consumers:
       - SYNNERGYZE-RUNTIME-001
       - BNR-RUNTIME-001
@@ -260,7 +261,7 @@ modules:
     implementation_file: modules/synnergyze/client-control-plane.ts
     bootstrap_profile: config/synnergyze/client-bootstrap-r0.1.json
     genesis_binding: REQUIRED
-    warden_binding: UNBOUND
+    warden_binding: FIT_QUALIFIED
     public_contracts:
       output:
         - SynnergyzeClientBootstrapV1
@@ -273,7 +274,7 @@ modules:
       - self-authorize-client-execution
       - infer-authority-from-system-connection
       - execute-before-warden-fit
-    activation_gate: SYNNERGYZE-WARDEN-FIT-R0.1
+    activation_gate: SYNNERGYZE-RUNTIME-ACTIVATION-R0.1
     tests:
       - modules/synnergyze/client-control-plane.test.ts
 
