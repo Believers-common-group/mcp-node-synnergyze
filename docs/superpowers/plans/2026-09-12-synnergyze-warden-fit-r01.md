@@ -52,7 +52,7 @@ const genesisDevice = {
 };
 ```
 
-Create one failing test that assigns `genesisDevice` to `WardenDecisionRequestV1` and one policy fixture with `deviceRequirement: { required: true, minimumAssuranceLevel: "L2" }`.
+Create one failing test that assigns `genesisDevice` to `WardenDecisionRequestV1`. Policy typing is added in Task 3 so this task stays contract-only.
 
 - [ ] **Step 2: Verify RED**
 
@@ -62,7 +62,7 @@ Run:
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/warden/decision-service.test.ts
 ```
 
-Expected: TypeScript/test transform failure because `genesisDevice` and `deviceRequirement` are not defined yet.
+Expected: TypeScript/test transform failure because `genesisDevice` is not defined on `WardenDecisionRequestV1` yet.
 
 - [ ] **Step 3: Add the minimal public contract types**
 
@@ -91,7 +91,7 @@ genesisDevice?: WardenGenesisDeviceDependencyV1;
 
 Do not remove or rename existing `deviceSecurity*` fields.
 
-- [ ] **Step 4: Re-run the focused test and type-check**
+- [ ] **Step 4: Re-run focused test and type-check**
 
 Run:
 
@@ -100,7 +100,7 @@ npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/warden/decision
 npx -y node@22.14.0 ./node_modules/typescript/bin/tsc --noEmit
 ```
 
-Expected: contract typing succeeds; evaluator assertions that depend on policy behavior may remain RED until Task 3.
+Expected: focused test and type-check pass with no evaluator semantics changed yet.
 
 - [ ] **Step 5: Commit the contract boundary**
 
@@ -130,23 +130,14 @@ Extend bridge input with:
 genesisDevice?: ResolvedGenesisDeviceContextV1;
 ```
 
-Add tests proving all of the following before implementation:
+Add tests proving:
 
 ```ts
-expect(resultWithoutGenesis).toMatchObject({
-  ok: false,
-  code: "GENESIS_DEVICE_REQUIRED",
-});
-
-expect(resultWithWrongDevice).toMatchObject({
-  ok: false,
-  code: "GENESIS_DEVICE_CONTEXT_MISMATCH",
-});
-
+expect(resultWithoutGenesis).toMatchObject({ ok: false, code: "GENESIS_DEVICE_REQUIRED" });
+expect(resultWithWrongDevice).toMatchObject({ ok: false, code: "GENESIS_DEVICE_CONTEXT_MISMATCH" });
 expect(validWithoutDeviceSecurity.ok).toBe(true);
 expect(validWithoutDeviceSecurity.request.genesisDevice?.resolutionRef)
   .toBe("GENESIS-DEVICE-RESOLUTION:abc123");
-
 expect(changedResolution.request.requestRef).not.toBe(original.request.requestRef);
 ```
 
@@ -160,9 +151,9 @@ Run:
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/synnergyze/warden-request-bridge.test.ts
 ```
 
-Expected: failures because bridge input and error codes do not yet support Genesis device context and because legacy device-security is still mandatory.
+Expected: failures because bridge input/error codes do not yet support Genesis device context and legacy device-security is still mandatory.
 
-- [ ] **Step 3: Implement the minimal bridge changes**
+- [ ] **Step 3: Implement minimal bridge changes**
 
 Import:
 
@@ -208,13 +199,9 @@ genesisDevice: {
 }
 ```
 
-Include that object in `canonicalRequestIdentity`.
-
-Change the legacy security branch so `deviceSecurity` is optional for a device-bound event; if supplied, preserve all existing validation and request fields. Continue rejecting any `deviceSecurity` or `genesisDevice` context supplied to a non-device-bound event.
+Include that object in `canonicalRequestIdentity`. Make `deviceSecurity` optional for device-bound events; if supplied, preserve all current fail-closed checks and request fields. Continue rejecting any device context supplied to a non-device-bound event.
 
 - [ ] **Step 4: Verify GREEN**
-
-Run:
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/synnergyze/warden-request-bridge.test.ts modules/synnergyze/genesis-device-bridge.test.ts
@@ -223,7 +210,7 @@ npx -y node@22.14.0 ./node_modules/typescript/bin/tsc --noEmit
 
 Expected: bridge and Genesis-device projection tests pass.
 
-- [ ] **Step 5: Commit the bridge fit**
+- [ ] **Step 5: Commit bridge fit**
 
 ```bash
 git add modules/synnergyze/warden-request-bridge.ts modules/synnergyze/warden-request-bridge.test.ts
@@ -242,9 +229,9 @@ git commit -m "feat: bind Genesis device context into Warden requests"
 - Consumes: `WardenDecisionRequestV1.genesisDevice` from Tasks 1-2.
 - Produces: deterministic DENY/ALLOW behavior and `WardenDeviceRequirementV1` policy semantics.
 
-- [ ] **Step 1: Add the policy type and failing behavior tests**
+- [ ] **Step 1: Add policy type and failing behavior tests**
 
-In `decision-service.ts`, define/export:
+Import `WardenDeviceAssuranceLevelV1`, then define/export:
 
 ```ts
 export interface WardenDeviceRequirementV1 {
@@ -259,7 +246,7 @@ Add to `SyntheticWardenDecisionPolicyV1`:
 deviceRequirement?: WardenDeviceRequirementV1;
 ```
 
-Before implementation, add tests for these exact reason codes:
+Add tests for exact reasons:
 
 ```ts
 "genesis_device_dependency_required"
@@ -272,21 +259,17 @@ Before implementation, add tests for these exact reason codes:
 "genesis_device_assurance_insufficient"
 ```
 
-Add an allow test for a matching L3 dependency under an L2 minimum policy and a regression test that non-device-bound requests still allow when no device policy is present.
+Add an allow test for L3 under an L2 minimum and a regression test that non-device-bound requests still allow when no device policy exists.
 
 - [ ] **Step 2: Verify RED**
-
-Run:
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/warden/decision-service.test.ts
 ```
 
-Expected: new denial/allow assertions fail because the evaluator does not inspect `genesisDevice` yet.
+Expected: new behavior tests fail because evaluator does not inspect `genesisDevice`.
 
 - [ ] **Step 3: Implement deterministic assurance and temporal checks**
-
-Add a fixed rank map:
 
 ```ts
 const DEVICE_ASSURANCE_RANK: Record<WardenDeviceAssuranceLevelV1, number> = {
@@ -298,19 +281,18 @@ const DEVICE_ASSURANCE_RANK: Record<WardenDeviceAssuranceLevelV1, number> = {
 };
 ```
 
-Evaluate device requirements after identity/time-policy validity and before capability ALLOW:
+Evaluate after identity/policy time validity and before capability ALLOW:
 
 ```ts
 if (request.executionDeviceRef && !request.genesisDevice) {
   return deny(request, policy, decidedAt, "genesis_device_dependency_required");
 }
-
 if (!request.executionDeviceRef && policy.deviceRequirement?.required) {
   return deny(request, policy, decidedAt, "genesis_device_policy_requires_device");
 }
 ```
 
-When `genesisDevice` exists, fail closed unless:
+When `genesisDevice` exists, require:
 
 ```ts
 genesisDevice.deviceRef === request.executionDeviceRef
@@ -323,20 +305,18 @@ decidedAt <= validUntil // when present
 DEVICE_ASSURANCE_RANK[actual] >= DEVICE_ASSURANCE_RANK[minimum] // when minimum present
 ```
 
-Include `genesisDevice.evidenceRefs` in canonical sorted request material inside `baseDecision` so evidence order does not change the decision identity.
+Include sorted `genesisDevice.evidenceRefs` in canonical request material inside `baseDecision`.
 
 - [ ] **Step 4: Verify GREEN and compatibility**
-
-Run:
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/warden/decision-service.test.ts modules/synnergyze/warden-request-bridge.test.ts
 npx -y node@22.14.0 ./node_modules/typescript/bin/tsc --noEmit
 ```
 
-Expected: Warden device dependency and bridge tests pass; non-device-bound regressions remain green.
+Expected: Warden/bridge device-dependency tests pass and non-device regressions remain green.
 
-- [ ] **Step 5: Commit the evaluator fit**
+- [ ] **Step 5: Commit evaluator fit**
 
 ```bash
 git add modules/warden/decision-service.ts modules/warden/decision-service.test.ts
@@ -345,23 +325,26 @@ git commit -m "feat: enforce Genesis device dependency in Warden"
 
 ---
 
-### Task 4: Fit-qualified conformance state and qualification receipt
+### Task 4: Fit-qualified client/control-plane state
 
 **Files:**
+- Modify: `modules/synnergyze/client-control-plane.ts`
+- Modify: `modules/synnergyze/client-control-plane.test.ts`
 - Modify: `.vsr/module-bindings.yaml`
 - Modify: `config/synnergyze/client-bootstrap-r0.1.json`
-- Modify: `modules/synnergyze/client-control-plane.test.ts`
 - Create: `docs/alpha-node/SYNNERGYZE-WARDEN-FIT-R0.1.md`
 
 **Interfaces:**
 - Consumes: verified bridge/evaluator behavior from Tasks 1-3.
-- Produces: auditable `SYNNERGYZE-WARDEN-FIT-R0.1` state without enabling external effects.
+- Produces: consistent `FIT_QUALIFIED` readiness/config/module metadata while retaining `executable: false` and blocking runtime activation.
 
-- [ ] **Step 1: Write failing conformance assertions**
+- [ ] **Step 1: Write failing readiness and conformance assertions**
 
-Update `modules/synnergyze/client-control-plane.test.ts` to require:
+Update the bootstrap/readiness tests to require:
 
 ```ts
+expect(plane.readiness("CLIENT-VOI-001").wardenBinding).toBe("FIT_QUALIFIED");
+expect(plane.readiness("CLIENT-VOI-001").executionState).toBe("BLOCKED_RUNTIME_ACTIVATION");
 expect(profile.warden.binding).toBe("FIT_QUALIFIED");
 expect(profile.execution.state).toBe("BLOCKED_RUNTIME_ACTIVATION");
 expect(bindings).toContain("GENESIS-DEVICE-RESOLUTION");
@@ -369,19 +352,35 @@ expect(bindings).toContain("warden_binding: FIT_QUALIFIED");
 expect(bindings).toContain("activation_gate: SYNNERGYZE-RUNTIME-ACTIVATION-R0.1");
 ```
 
-- [ ] **Step 2: Verify RED**
+Continue asserting `executable: false` for client/workflow records.
 
-Run:
+- [ ] **Step 2: Verify RED**
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/synnergyze/client-control-plane.test.ts
 ```
 
-Expected: current `UNBOUND` / `BLOCKED_WARDEN_UNBOUND` metadata fails the new assertions.
+Expected: current hardcoded `UNBOUND` / `BLOCKED_WARDEN_UNBOUND` values fail.
 
-- [ ] **Step 3: Update conformance metadata without activating execution**
+- [ ] **Step 3: Update runtime readiness types without enabling execution**
 
-Change `config/synnergyze/client-bootstrap-r0.1.json`:
+In `client-control-plane.ts`, change the bootstrap/readiness Warden state to:
+
+```ts
+wardenBinding: "FIT_QUALIFIED";
+```
+
+and readiness execution state to:
+
+```ts
+executionState: "BLOCKED_RUNTIME_ACTIVATION";
+```
+
+`SynnergyzeClientBootstrapV1.executable` and `SynnergyzeWorkflowContractV1.executable` remain literal `false`. `registerClient()` must return `wardenBinding: "FIT_QUALIFIED"`, and `readiness()` must return `BLOCKED_RUNTIME_ACTIVATION`.
+
+- [ ] **Step 4: Update conformance metadata without activating execution**
+
+Change config to:
 
 ```json
 "warden": {
@@ -394,23 +393,18 @@ Change `config/synnergyze/client-bootstrap-r0.1.json`:
 }
 ```
 
-Update `.vsr/module-bindings.yaml` so:
+In `.vsr/module-bindings.yaml`, add `GENESIS-DEVICE-RESOLUTION` to `MOD-WARDEN-001.depends_on`, set `MOD-SYNNERGYZE-001.warden_binding: FIT_QUALIFIED`, and set its activation gate to `SYNNERGYZE-RUNTIME-ACTIVATION-R0.1`. Do not mark any module `ACTIVE`.
 
-```yaml
-MOD-WARDEN-001:
-  depends_on:
-    - GENESIS-DEVICE-RESOLUTION
+- [ ] **Step 5: Verify focused readiness**
 
-MOD-SYNNERGYZE-001:
-  warden_binding: FIT_QUALIFIED
-  activation_gate: SYNNERGYZE-RUNTIME-ACTIVATION-R0.1
+```bash
+npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/synnergyze/client-control-plane.test.ts
+npx -y node@22.14.0 ./node_modules/typescript/bin/tsc --noEmit
 ```
 
-Do not mark Warden, Synnergyze, River, or SILK as `ACTIVE` merely because the fit passes.
+Expected: readiness/config/module assertions pass while all executable flags remain false.
 
-- [ ] **Step 4: Run full qualification**
-
-Run on Node `v22.14.0`:
+- [ ] **Step 6: Run full qualification**
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/warden modules/synnergyze modules/genesis-node-builder
@@ -418,12 +412,12 @@ npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run
 npx -y node@22.14.0 ./node_modules/typescript/bin/tsc --noEmit
 git diff --check
 git status --short
-git diff --name-only HEAD~1..HEAD -- modules/river
+git diff --name-only $(git merge-base genesis HEAD)..HEAD -- modules/river
 ```
 
-Require zero test failures, type-check exit 0, diff-check exit 0, and no River implementation/contract changes.
+Require zero test failures, type-check exit 0, diff-check exit 0, and no River implementation/contract changes for the Warden-fit stage.
 
-- [ ] **Step 5: Write the qualification receipt**
+- [ ] **Step 7: Write qualification receipt with exact counts**
 
 Create `docs/alpha-node/SYNNERGYZE-WARDEN-FIT-R0.1.md` recording:
 
@@ -434,15 +428,15 @@ Transient device security: OPTIONAL overlay, fail-closed when supplied
 Warden binding: FIT_QUALIFIED
 Execution state: BLOCKED_RUNTIME_ACTIVATION
 External effects: false
-River changes: none
+River changes: none in Warden-fit stage
 ```
 
-Include exact focused/full test counts from Step 4 rather than estimates.
+Include exact focused/full test counts produced by Step 6.
 
-- [ ] **Step 6: Commit qualification metadata**
+- [ ] **Step 8: Commit qualification state**
 
 ```bash
-git add .vsr/module-bindings.yaml config/synnergyze/client-bootstrap-r0.1.json modules/synnergyze/client-control-plane.test.ts docs/alpha-node/SYNNERGYZE-WARDEN-FIT-R0.1.md
+git add modules/synnergyze/client-control-plane.ts modules/synnergyze/client-control-plane.test.ts .vsr/module-bindings.yaml config/synnergyze/client-bootstrap-r0.1.json docs/alpha-node/SYNNERGYZE-WARDEN-FIT-R0.1.md
 git commit -m "chore: qualify Synnergyze Warden fit R0.1"
 ```
 
@@ -454,10 +448,10 @@ git commit -m "chore: qualify Synnergyze Warden fit R0.1"
 - No new code changes expected.
 
 **Interfaces:**
-- Consumes: the verified fit-qualified branch.
+- Consumes: verified fit-qualified branch.
 - Produces: PR #129 with exact tested content and green CI.
 
-- [ ] **Step 1: Verify local worktree is clean and capture tree SHA**
+- [ ] **Step 1: Verify local worktree and capture tree SHA**
 
 ```bash
 git status --short --branch
@@ -480,12 +474,12 @@ behind_by = 0
 status = ahead
 ```
 
-Confirm only the planned Warden/Synnergyze/conformance/qualification files were added or modified in this stage and no River file changed.
+Confirm only planned Warden/Synnergyze/conformance/qualification files were added or modified in this stage and no River file changed.
 
 - [ ] **Step 4: Update PR metadata**
 
-Update PR #129 title/body to include `SYNNERGYZE-WARDEN-FIT-R0.1`, the mandatory Genesis dependency, optional transient security overlay, exact verification counts, and the explicit `BLOCKED_RUNTIME_ACTIVATION` state.
+Update PR #129 title/body to include `SYNNERGYZE-WARDEN-FIT-R0.1`, the mandatory Genesis dependency, optional transient security overlay, exact verification counts, and explicit `BLOCKED_RUNTIME_ACTIVATION` state.
 
-- [ ] **Step 5: Verify CI on the new PR head**
+- [ ] **Step 5: Verify CI on new head**
 
 Require the new head's `test`, `lint`, `type-check`, and Datadog Synthetic workflows to complete successfully before reporting the fit as qualified.
