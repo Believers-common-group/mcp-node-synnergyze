@@ -35,6 +35,38 @@ function stableUnique(values: readonly string[]): readonly string[] {
   return [...new Set(values)].sort();
 }
 
+function requestGenesisDeviceDigest(request: WardenDecisionRequestV1): string | undefined {
+  if (!request.executionDeviceRef) {
+    if (request.genesisDevice) throw new Error("river_genesis_device_context_unexpected");
+    return undefined;
+  }
+
+  const device = request.genesisDevice;
+  if (!device) throw new Error("river_genesis_device_dependency_required");
+  if (device.deviceRef !== request.executionDeviceRef) {
+    throw new Error("river_genesis_device_ref_mismatch");
+  }
+  if (!device.resolutionRef.startsWith("GENESIS-DEVICE-RESOLUTION:")) {
+    throw new Error("river_genesis_device_resolution_invalid");
+  }
+  if (!device.attestationRef || device.evidenceRefs.length === 0) {
+    throw new Error("river_genesis_device_evidence_required");
+  }
+
+  return `sha256:${digest(
+    JSON.stringify({
+      resolutionRef: device.resolutionRef,
+      deviceRef: device.deviceRef,
+      estateRef: device.estateRef,
+      attestationRef: device.attestationRef,
+      assuranceLevel: device.assuranceLevel,
+      evidenceRefs: stableUnique(device.evidenceRefs),
+      resolvedAt: device.resolvedAt,
+      validUntil: device.validUntil ?? null,
+    }),
+  )}`;
+}
+
 function requestDeviceSecurityDigest(request: WardenDecisionRequestV1): string | undefined {
   if (!request.executionDeviceRef) return undefined;
   if (request.deviceSecurityState !== "ACTIVE") {
@@ -88,6 +120,7 @@ function canonicalActionPayload(request: WardenDecisionRequestV1, decision: Ward
     targetRef: request.targetRef,
     requestedEffect: request.requestedEffect,
     executionDeviceRef: request.executionDeviceRef,
+    genesisDeviceRequestDigest: requestGenesisDeviceDigest(request),
     deviceSecurityPolicyRef: request.deviceSecurityPolicyRef,
     deviceSecurityRequestDigest: requestDeviceSecurityDigest(request),
     wardenDecisionRef: decision.decisionRef,
@@ -137,6 +170,7 @@ function assertExactAction(expected: ActionEnvelopeV1, actual: ActionEnvelopeV1)
     "targetRef",
     "requestedEffect",
     "executionDeviceRef",
+    "genesisDeviceRequestDigest",
     "deviceSecurityPolicyRef",
     "deviceSecurityRequestDigest",
     "wardenDecisionRef",
