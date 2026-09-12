@@ -16,6 +16,7 @@
   "license": "MIT",
   "description": "",
   "dependencies": {
+    "@microsoft/mxc-sdk": "0.8.0",
     "@modelcontextprotocol/sdk": "^1.11.0",
     "ajv": "^8.17.1",
     "algoliasearch": "^5.23.4",
