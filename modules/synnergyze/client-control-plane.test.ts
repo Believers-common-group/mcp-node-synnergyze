@@ -13,15 +13,15 @@ function bootstrapPlane() {
 }
 
 describe("Synnergyze client control plane R0.1", () => {
-  it("registers a Genesis-bound client but keeps execution blocked until Warden is fitted", () => {
+  it("reports Warden fit-qualified while runtime execution remains blocked", () => {
     const plane = bootstrapPlane();
 
     expect(plane.readiness("CLIENT-VOI-001")).toEqual({
       clientRef: "CLIENT-VOI-001",
       genesisBinding: "BOUND",
       synnergyzeState: "READY",
-      wardenBinding: "UNBOUND",
-      executionState: "BLOCKED_WARDEN_UNBOUND",
+      wardenBinding: "FIT_QUALIFIED",
+      executionState: "BLOCKED_RUNTIME_ACTIVATION",
       systemCount: 0,
       capabilityCount: 0,
       workflowCount: 0,
@@ -29,7 +29,7 @@ describe("Synnergyze client control plane R0.1", () => {
     });
   });
 
-  it("composes admitted systems, declared capabilities, and contracted workflows", () => {
+  it("composes admitted systems, declared capabilities, and contracted workflows without enabling execution", () => {
     const plane = bootstrapPlane();
     plane.admitSystem({
       systemRef: "SYS-LOGIC-001",
@@ -53,7 +53,37 @@ describe("Synnergyze client control plane R0.1", () => {
     expect(readiness.systemCount).toBe(1);
     expect(readiness.capabilityCount).toBe(1);
     expect(readiness.workflowCount).toBe(1);
-    expect(readiness.executionState).toBe("BLOCKED_WARDEN_UNBOUND");
+    expect(readiness.executionState).toBe("BLOCKED_RUNTIME_ACTIVATION");
+  });
+
+  it("keeps bootstrap and workflow execution flags false", () => {
+    const plane = new InMemorySynnergyzeClientControlPlaneV1();
+    const client = plane.registerClient({
+      clientRef: "CLIENT-VOI-EXEC-BLOCK-001",
+      contractRef: "SYN-CLT-CONTRACT-VOI-EXEC-BLOCK-001",
+      genesisEstateRef: "GENESIS-ESTATE-VOI-EXEC-BLOCK-001",
+    });
+    plane.admitSystem({
+      systemRef: "SYS-EXEC-BLOCK-001",
+      clientRef: client.clientRef,
+      genesisEstateRef: client.genesisEstateRef,
+      genesisSystemRef: "GENESIS-SYSTEM-EXEC-BLOCK-001",
+    });
+    plane.declareCapability({
+      capabilityRef: "CAP-EXEC-BLOCK-001",
+      systemRef: "SYS-EXEC-BLOCK-001",
+      action: "inventory.read",
+      mode: "READ",
+    });
+    const workflow = plane.contractWorkflow({
+      workflowRef: "SYN-WFL-EXEC-BLOCK-001",
+      clientRef: client.clientRef,
+      capabilityRefs: ["CAP-EXEC-BLOCK-001"],
+    });
+
+    expect(client.wardenBinding).toBe("FIT_QUALIFIED");
+    expect(client.executable).toBe(false);
+    expect(workflow.executable).toBe(false);
   });
 
   it("rejects a system whose Genesis estate does not match the client binding", () => {
@@ -89,9 +119,8 @@ describe("Synnergyze client control plane R0.1", () => {
   });
 });
 
-
 describe("Synnergyze bootstrap profile", () => {
-  it("declares Genesis authoritative and Warden deliberately unbound", async () => {
+  it("declares Genesis canonical and Warden fit-qualified without runtime activation", async () => {
     const { readFile } = await import("node:fs/promises");
     const profileUrl = new URL(
       "../../config/synnergyze/client-bootstrap-r0.1.json",
@@ -101,14 +130,15 @@ describe("Synnergyze bootstrap profile", () => {
 
     expect(profile.profile_id).toBe("SYNNERGYZE-CLIENT-BOOTSTRAP-001");
     expect(profile.genesis.authority).toBe("CANONICAL");
-    expect(profile.warden.binding).toBe("UNBOUND");
-    expect(profile.execution.state).toBe("BLOCKED_WARDEN_UNBOUND");
+    expect(profile.warden.binding).toBe("FIT_QUALIFIED");
+    expect(profile.warden.fit_stage).toBe("SYNNERGYZE-WARDEN-FIT-R0.1");
+    expect(profile.execution.state).toBe("BLOCKED_RUNTIME_ACTIVATION");
+    expect(profile.execution.external_effects).toBe(false);
   });
 });
 
-
 describe("Synnergyze VSR module binding", () => {
-  it("publishes the client bootstrap without activating Warden", async () => {
+  it("publishes the Warden fit while retaining a separate runtime activation gate", async () => {
     const { readFile } = await import("node:fs/promises");
     const bindingsUrl = new URL("../../.vsr/module-bindings.yaml", import.meta.url);
     const bindings = await readFile(bindingsUrl, "utf8");
@@ -119,7 +149,8 @@ describe("Synnergyze VSR module binding", () => {
     );
     expect(bindings).toContain("module_id: MOD-GENESIS-DEVICE-001");
     expect(bindings).toContain("GENESIS-DEVICE-RESOLUTION");
-    expect(bindings).toContain("warden_binding: UNBOUND");
+    expect(bindings).toContain("warden_binding: FIT_QUALIFIED");
+    expect(bindings).toContain("activation_gate: SYNNERGYZE-RUNTIME-ACTIVATION-R0.1");
   });
 });
 
