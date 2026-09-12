@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { MxcContainmentResult } from "./mxcContainmentHarness.js";
+import type {
+  MxcContainmentHarnessDependencies,
+  MxcContainmentResult,
+} from "./mxcContainmentHarness.js";
 import { sha256Command } from "./mxcContainmentHarness.js";
 import type { MxcAlphaSmokeCase } from "./mxcAlphaSmokePlan.js";
 import type { MxcAlphaProcessContainerCapability } from "./mxcAlphaSmokeRunner.js";
@@ -112,6 +115,37 @@ function containmentResult(exitCode = 0): MxcContainmentResult {
 }
 
 describe("Alpha MXC case evidence executor", () => {
+  it("passes the fresh Warden-context resolver through to the containment harness", async () => {
+    const test = smokeCase("MXC-W-021", "ALLOWED");
+    const c = contract(test);
+    const ctx = context(c);
+    const revalidateBeforeSpawn = vi.fn(() => structuredClone(ctx));
+    const execute = vi.fn(
+      async (
+        _contract: WardenExecutionContractR01,
+        _context: ExecutionValidationContext,
+        _command: string,
+        dependencies: MxcContainmentHarnessDependencies,
+      ) => {
+        expect(dependencies.revalidateBeforeSpawn).toBe(revalidateBeforeSpawn);
+        return containmentResult(0);
+      },
+    );
+
+    const evidence = await runMxcAlphaCaseR01(
+      test,
+      c,
+      ctx,
+      commandLine,
+      capability,
+      async () => ({ observed: "ALLOWED" }),
+      { execute, revalidateBeforeSpawn },
+    );
+
+    expect(execute).toHaveBeenCalledTimes(1);
+    expect(evidence.verdict).toBe("PASS");
+  });
+
   it("records a complete PASS receipt when an allowed effect is independently verified", async () => {
     const test = smokeCase("MXC-W-021", "ALLOWED");
     const c = contract(test);
