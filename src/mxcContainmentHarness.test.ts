@@ -4,6 +4,7 @@ import type { ContainerConfig } from "@microsoft/mxc-sdk";
 import {
   executeQualifiedMxcCommandR01,
   sha256Command,
+  type MxcContainmentHarnessDependencies,
   type MxcContainmentHarnessError,
   type MxcSpawnedProcess,
 } from "./mxcContainmentHarness.js";
@@ -102,6 +103,18 @@ function successfulChild(stdoutText = "warden-mxc-ok\n"): MxcSpawnedProcess {
   return child;
 }
 
+function qualifiedDependencies(
+  ctx: ExecutionValidationContext,
+  spawn: MxcContainmentHarnessDependencies["spawn"],
+): MxcContainmentHarnessDependencies & {
+  revalidateBeforeSpawn: () => ExecutionValidationContext;
+} {
+  return {
+    spawn,
+    revalidateBeforeSpawn: () => structuredClone(ctx),
+  };
+}
+
 describe("MXC R0.1 containment spawn gate", () => {
   it("does not call MXC spawn when River reservation is mismatched", async () => {
     const c = contract();
@@ -138,6 +151,36 @@ describe("MXC R0.1 containment spawn gate", () => {
     expect(spawn).not.toHaveBeenCalled();
   });
 
+  it("fails closed when no immediate pre-spawn revalidation callback is supplied", async () => {
+    const c = contract();
+    const ctx = context(c);
+    const spawn = vi.fn(() => successfulChild());
+
+    await expect(executeQualifiedMxcCommandR01(c, ctx, commandLine, { spawn })).rejects.toMatchObject({
+      code: "REVALIDATION_REQUIRED",
+    });
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
+  it("revalidates queued authority immediately before spawn and blocks an expired decision", async () => {
+    const c = contract();
+    const ctx = context(c);
+    const spawn = vi.fn(() => successfulChild());
+    const revalidateBeforeSpawn = vi.fn(() => ({
+      ...structuredClone(ctx),
+      now: new Date("2026-09-14T00:00:00.000Z"),
+    }));
+    const deps = { spawn, revalidateBeforeSpawn } as MxcContainmentHarnessDependencies & {
+      revalidateBeforeSpawn: () => ExecutionValidationContext;
+    };
+
+    await expect(executeQualifiedMxcCommandR01(c, ctx, commandLine, deps)).rejects.toMatchObject({
+      code: "DECISION_EXPIRED",
+    });
+    expect(revalidateBeforeSpawn).toHaveBeenCalledTimes(1);
+    expect(spawn).not.toHaveBeenCalled();
+  });
+
   it("uses only spawnSandboxFromConfig semantics after all pre-spawn gates pass", async () => {
     const c = contract();
     const ctx = context(c);
@@ -148,7 +191,12 @@ describe("MXC R0.1 containment spawn gate", () => {
       return successfulChild();
     });
 
-    const result = await executeQualifiedMxcCommandR01(c, ctx, commandLine, { spawn });
+    const result = await executeQualifiedMxcCommandR01(
+      c,
+      ctx,
+      commandLine,
+      qualifiedDependencies(ctx, spawn),
+    );
 
     expect(spawn).toHaveBeenCalledTimes(1);
     expect(result.exitCode).toBe(0);
@@ -166,7 +214,9 @@ describe("MXC R0.1 containment spawn gate", () => {
       throw new Error("mxc unavailable at spawn");
     });
 
-    await expect(executeQualifiedMxcCommandR01(c, ctx, commandLine, { spawn })).rejects.toMatchObject({
+    await expect(
+      executeQualifiedMxcCommandR01(c, ctx, commandLine, qualifiedDependencies(ctx, spawn)),
+    ).rejects.toMatchObject({
       code: "SPAWN_FAILED",
     } satisfies Partial<MxcContainmentHarnessError>);
     expect(spawn).toHaveBeenCalledTimes(1);
