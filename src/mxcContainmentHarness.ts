@@ -26,10 +26,12 @@ export interface MxcSpawnedProcess {
 
 export interface MxcContainmentHarnessDependencies {
   spawn?: (config: ContainerConfig, options: { usePty: false }) => MxcSpawnedProcess;
+  revalidateBeforeSpawn?: () => ExecutionValidationContext | Promise<ExecutionValidationContext>;
 }
 
 export type MxcContainmentHarnessErrorCode =
   | "COMMAND_DIGEST_MISMATCH"
+  | "REVALIDATION_REQUIRED"
   | "SPAWN_FAILED";
 
 export class MxcContainmentHarnessError extends Error {
@@ -88,9 +90,9 @@ function collectStream(stream: NodeJS.ReadableStream | null | undefined): Promis
  *
  * This is deliberately narrow and fail-closed:
  * - command bytes are rebound to the Warden-authorized command digest;
- * - prepareMxcExecutionConfigR01 performs the complete pre-spawn Warden / Genesis /
- *   River / permission / MXC qualification path;
- * - commandLine is populated only after that validation succeeds;
+ * - an initial Warden / Genesis / River / MXC gate rejects invalid work early;
+ * - authority is resolved again immediately before spawn and the complete policy is recompiled;
+ * - commandLine is populated only after fresh revalidation succeeds;
  * - the only execution primitive is spawnSandboxFromConfig(..., { usePty: false });
  * - there is no raw/native fallback path.
  */
@@ -111,9 +113,21 @@ export async function executeQualifiedMxcCommandR01(
     );
   }
 
-  // This is the authoritative pre-spawn gate. Any Warden/Genesis/River/MXC error
-  // propagates unchanged and therefore cannot be mistaken for an execution failure.
-  const prepared = prepareMxcExecutionConfigR01(contract, context);
+  // Initial fail-closed qualification prevents invalid work from reaching the queued spawn boundary.
+  prepareMxcExecutionConfigR01(contract, context);
+
+  if (!dependencies.revalidateBeforeSpawn) {
+    throw new MxcContainmentHarnessError(
+      "REVALIDATION_REQUIRED",
+      "Immediate Warden authority revalidation is required before MXC spawn",
+    );
+  }
+
+  // W-026: resolve fresh authority/context immediately before spawn, then rerun the complete
+  // contract -> policy -> MXC config path. A queued decision that expired or narrowed therefore
+  // fails before any executable command is inserted into a sandbox configuration.
+  const freshContext = await dependencies.revalidateBeforeSpawn();
+  const prepared = prepareMxcExecutionConfigR01(contract, freshContext);
   prepared.config.process!.commandLine = commandLine;
   const executionConfigDigest = digestConfig(prepared.config);
 
