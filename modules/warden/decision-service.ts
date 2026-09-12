@@ -1,8 +1,17 @@
 import { createHash } from "node:crypto";
 
-import type { WardenDecisionRequestV1, WardenDecisionV1 } from "./contracts.ts";
+import type {
+  WardenDecisionRequestV1,
+  WardenDecisionV1,
+  WardenDeviceAssuranceLevelV1,
+} from "./contracts.ts";
 
 export type WardenPolicyLifecycleV1 = "ACTIVE" | "REVOKED";
+
+export interface WardenDeviceRequirementV1 {
+  required: boolean;
+  minimumAssuranceLevel?: WardenDeviceAssuranceLevelV1;
+}
 
 export interface SyntheticWardenDecisionPolicyV1 {
   policySnapshotRef: string;
@@ -20,6 +29,7 @@ export interface SyntheticWardenDecisionPolicyV1 {
   allowedCapabilityRefs: readonly string[];
   manualReviewCapabilityRefs: readonly string[];
   constraints: readonly string[];
+  deviceRequirement?: WardenDeviceRequirementV1;
 }
 
 export interface WardenDecisionEvaluationV1 {
@@ -27,6 +37,14 @@ export interface WardenDecisionEvaluationV1 {
   policy: SyntheticWardenDecisionPolicyV1;
   decidedAt: string;
 }
+
+const DEVICE_ASSURANCE_RANK: Record<WardenDeviceAssuranceLevelV1, number> = {
+  L0: 0,
+  L1: 1,
+  L2: 2,
+  L3: 3,
+  L4: 4,
+};
 
 function digest(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
@@ -58,6 +76,12 @@ function baseDecision(
       authorityRefs: stableUnique(request.authorityRefs),
       policyRefs: stableUnique(request.policyRefs),
       representationSourceRefs: stableUnique(request.representationSourceRefs),
+      genesisDevice: request.genesisDevice
+        ? {
+            ...request.genesisDevice,
+            evidenceRefs: stableUnique(request.genesisDevice.evidenceRefs),
+          }
+        : undefined,
       deviceSecuritySourceRefs: stableUnique(request.deviceSecuritySourceRefs ?? []),
     },
     policy: {
@@ -162,6 +186,59 @@ export function evaluateSyntheticWardenDecisionV1(
 
   if (!includesAll(request.policyRefs, policy.requiredPolicyRefs)) {
     return deny(request, policy, decidedAt, "required_policy_missing");
+  }
+
+  if (request.executionDeviceRef && !request.genesisDevice) {
+    return deny(request, policy, decidedAt, "genesis_device_dependency_required");
+  }
+
+  if (!request.executionDeviceRef && policy.deviceRequirement?.required) {
+    return deny(request, policy, decidedAt, "genesis_device_policy_requires_device");
+  }
+
+  if (request.genesisDevice) {
+    const genesisDevice = request.genesisDevice;
+
+    if (!request.executionDeviceRef || genesisDevice.deviceRef !== request.executionDeviceRef) {
+      return deny(request, policy, decidedAt, "genesis_device_ref_mismatch");
+    }
+
+    if (!genesisDevice.resolutionRef.startsWith("GENESIS-DEVICE-RESOLUTION:")) {
+      return deny(request, policy, decidedAt, "genesis_device_resolution_invalid");
+    }
+
+    if (!genesisDevice.attestationRef || genesisDevice.evidenceRefs.length === 0) {
+      return deny(request, policy, decidedAt, "genesis_device_evidence_missing");
+    }
+
+    const deviceResolvedAtMs = timestamp(genesisDevice.resolvedAt);
+    const deviceValidUntilMs = genesisDevice.validUntil
+      ? timestamp(genesisDevice.validUntil)
+      : undefined;
+
+    if (
+      deviceResolvedAtMs === undefined ||
+      (genesisDevice.validUntil !== undefined && deviceValidUntilMs === undefined) ||
+      DEVICE_ASSURANCE_RANK[genesisDevice.assuranceLevel] === undefined
+    ) {
+      return deny(request, policy, decidedAt, "genesis_device_resolution_invalid");
+    }
+
+    if (deviceResolvedAtMs > requestedAtMs || deviceResolvedAtMs > decidedAtMs) {
+      return deny(request, policy, decidedAt, "genesis_device_resolution_from_future");
+    }
+
+    if (deviceValidUntilMs !== undefined && decidedAtMs > deviceValidUntilMs) {
+      return deny(request, policy, decidedAt, "genesis_device_resolution_expired");
+    }
+
+    const minimumAssurance = policy.deviceRequirement?.minimumAssuranceLevel;
+    if (
+      minimumAssurance &&
+      DEVICE_ASSURANCE_RANK[genesisDevice.assuranceLevel] < DEVICE_ASSURANCE_RANK[minimumAssurance]
+    ) {
+      return deny(request, policy, decidedAt, "genesis_device_assurance_insufficient");
+    }
   }
 
   if (policy.manualReviewCapabilityRefs.includes(request.capabilityRef)) {
