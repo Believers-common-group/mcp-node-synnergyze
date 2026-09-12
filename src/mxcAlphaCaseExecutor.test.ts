@@ -125,9 +125,9 @@ describe("Alpha MXC case evidence executor", () => {
         _contract: WardenExecutionContractR01,
         _context: ExecutionValidationContext,
         _command: string,
-        dependencies: MxcContainmentHarnessDependencies,
+        dependencies?: MxcContainmentHarnessDependencies,
       ) => {
-        expect(dependencies.revalidateBeforeSpawn).toBe(revalidateBeforeSpawn);
+        expect(dependencies?.revalidateBeforeSpawn).toBe(revalidateBeforeSpawn);
         return containmentResult(0);
       },
     );
