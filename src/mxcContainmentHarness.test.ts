@@ -155,6 +155,8 @@ describe("MXC R0.1 containment spawn gate", () => {
     expect(result.stdout).toBe("warden-mxc-ok\n");
     expect(result.policyDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
     expect(result.configDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.executionConfigDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
+    expect(result.executionConfigDigest).not.toBe(result.configDigest);
   });
 
   it("fails closed when MXC spawn throws and never substitutes a native process", async () => {
