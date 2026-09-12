@@ -4,7 +4,7 @@
 
 **Goal:** Activate the bounded Genesis → Synnergyze → Warden → River → Synnergyze → River conformance runtime with deterministic human-readable Proof IDs while keeping external effects, settlement finality, and Registry truth promotion disabled.
 
-**Architecture:** Strengthen the existing River action envelope so the Genesis device dependency remains cryptographically bound after Warden authorization, add deterministic issuer-bound Proof Reference factories, compose the existing Warden/River/Synnergyze engines into one device-bound controlled activation service, and expose that service through an explicitly gated MCP tool. Existing native refs and SHA-256 hashes remain authoritative; Proof IDs are a provenance index over them, never a replacement evidence engine.
+**Architecture:** Strengthen the existing River action envelope so the Genesis device dependency remains cryptographically bound after Warden authorization, add deterministic issuer-bound Proof Reference factories, compose the existing Warden/River/Synnergyze engines into one device-bound controlled activation service, and expose that service through an explicitly gated MCP tool. Existing native refs and SHA-256 hashes remain authoritative; Proof IDs index those native objects and never replace them.
 
 **Tech Stack:** TypeScript 5.8, Node.js `v22.14.0`, Vitest 3, Zod, Node `crypto` SHA-256, existing Warden/River/Synnergyze conformance modules.
 
@@ -13,44 +13,24 @@
 ## Global Constraints
 
 - `Proof ID != cryptographic digest`.
-- Proof IDs use `<SCOPE>-<ISSUER>-<CLAIM>-<ID8>` with deterministic uppercase SHA-256 prefix suffixes.
-- A caller MUST NOT be able to pass an arbitrary `proofFrom`; issuer-specific creation APIs hard-code issuer ownership.
-- Proof `createdAt` comes from the native source event/receipt, never from the replay call time.
-- R0.1 qualification is device-bound and requires both the Genesis device dependency and the existing transient device-security context.
+- Proof IDs use `<SCOPE>-<ISSUER>-<CLAIM>-<ID8>` where `ID8` is derived from the canonical proof digest.
+- Callers cannot choose `proofFrom`; issuer-specific factory functions own provenance.
+- Proof `createdAt` is taken from the native source event/receipt so replay is stable.
+- R0.1 qualification is device-bound and requires both Genesis device provenance and transient device-security context.
 - Genesis remains canonical for device identity/binding/attestation/resolution.
 - Warden remains the only authorization/policy decision authority.
-- River remains evidence reservation/seal/causal-trace authority.
+- River remains reservation/seal/causal-trace authority.
 - Synnergyze remains orchestration/execution/effect-verification authority for its own stages.
-- The existing River seal/causal-trace path is reused; no second evidence seal is created.
+- Reuse the existing River seal/causal-trace path; do not create another evidence engine.
 - `CONTROLLED_ACTIVE` does not mean production `ACTIVE`.
-- `externalEffects = false`, `settlementFinality = false`, `registryTruthPromoted = false` in every R0.1 runtime result.
-- The next gate is `EXTERNAL-EFFECT-ACTIVATION-R0.1`.
-- Do not weaken existing device-security execution-gate checks.
+- Every runtime result reports `externalEffects:false`, `settlementFinality:false`, and `registryTruthPromoted:false`.
+- Next gate: `EXTERNAL-EFFECT-ACTIVATION-R0.1`.
+- Existing device-security execution-gate checks must not be weakened.
 - Do not merge PR #129 or the runtime PR without explicit user instruction.
-
-## File Structure
-
-New focused units:
-
-- `modules/proof/proof-reference.ts` — deterministic Proof Reference types, canonicalization, integrity assertion, and issuer-bound factory APIs.
-- `modules/proof/proof-reference.test.ts` — Proof ID/digest/canonicalization/provenance tests.
-- `modules/synnergyze/runtime-activation.ts` — device-bound controlled runtime orchestration using existing core engines and Proof Reference factories.
-- `modules/synnergyze/runtime-activation.test.ts` — complete RED→GREEN runtime/proof-chain tests.
-- `src/tools/registerSynnergyzeRuntimeActivation.ts` — explicit MCP exposure and opt-in gating for the controlled runtime only.
-- `src/tools/registerSynnergyzeRuntimeActivation.test.ts` — MCP input/gating/replay tests.
-- `docs/alpha-node/SYNNERGYZE-RUNTIME-ACTIVATION-R0.1.md` — exact-head qualification receipt with real Proof IDs.
-
-Existing files changed only where the new boundary genuinely needs them:
-
-- `modules/river/contracts.ts` and `modules/river/reservation-service.ts` — bind Genesis device dependency digest into `ActionEnvelopeV1`.
-- `modules/synnergyze/execution-gate.ts` — include the Genesis dependency digest in execution idempotency identity.
-- `src/tools/registerWardenConformanceDecision.ts` — accept the already-approved `genesisDevice` request shape at the conformance transport boundary.
-- `src/commands/start-server.ts` — conditionally register the runtime-activation tool.
-- `modules/synnergyze/client-control-plane.ts`, config and `.vsr/module-bindings.yaml` — reflect `CONTROLLED_ACTIVE` while retaining `executable:false` for ordinary client/workflow external execution.
 
 ---
 
-### Task 1: Bind the Genesis device dependency into the River action envelope
+### Task 1: Bind Genesis device provenance into River action identity
 
 **Files:**
 - Modify: `modules/river/contracts.ts`
@@ -60,13 +40,12 @@ Existing files changed only where the new boundary genuinely needs them:
 - Modify: `modules/synnergyze/execution-gate.test.ts`
 
 **Interfaces:**
-- Consumes: `WardenDecisionRequestV1.genesisDevice` from `modules/warden/contracts.ts`.
+- Consumes: `WardenDecisionRequestV1.genesisDevice`.
 - Produces: `ActionEnvelopeV1.genesisDeviceRequestDigest?: string`.
-- Later tasks rely on this digest as a native source ref for River reservation/execution proof identity.
 
-- [ ] **Step 1: Add failing River tests for Genesis-device action binding**
+- [ ] **Step 1: Write the failing River tests**
 
-In `modules/river/reservation-service.test.ts`, add device-bound fixtures using the current Warden request contract:
+Add this fixture to `modules/river/reservation-service.test.ts`:
 
 ```ts
 const genesisDevice = {
@@ -81,7 +60,7 @@ const genesisDevice = {
 };
 ```
 
-Add tests that prove:
+Add assertions proving:
 
 ```ts
 expect(action.genesisDeviceRequestDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
@@ -97,34 +76,25 @@ expect(() => river.reserve({
 })).toThrow("river_action_envelope_mismatch:genesisDeviceRequestDigest");
 ```
 
-Also prove a device-bound request with no `genesisDevice` fails closed at River action construction.
+Also add a test asserting a device-bound request without `genesisDevice` throws `river_genesis_device_dependency_required` when building the action envelope.
 
 - [ ] **Step 2: Run the focused River test and verify RED**
-
-Run on Node `v22.14.0`:
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/river/reservation-service.test.ts
 ```
 
-Expected: compile/assertion failures because `ActionEnvelopeV1` has no `genesisDeviceRequestDigest` and River does not bind Genesis device provenance yet.
+Expected: compile/assertion failure because `genesisDeviceRequestDigest` does not exist yet.
 
-- [ ] **Step 3: Extend the River contract and canonical action payload**
+- [ ] **Step 3: Extend the River contract**
 
-In `modules/river/contracts.ts`, add:
+In `ActionEnvelopeV1`, insert this property immediately after `executionDeviceRef?: string;`:
 
 ```ts
-export interface ActionEnvelopeV1 {
-  // existing fields...
-  executionDeviceRef?: string;
-  genesisDeviceRequestDigest?: string;
-  deviceSecurityPolicyRef?: string;
-  deviceSecurityRequestDigest?: string;
-  // existing fields...
-}
+genesisDeviceRequestDigest?: string;
 ```
 
-In `modules/river/reservation-service.ts`, add a deterministic helper:
+In `modules/river/reservation-service.ts`, add:
 
 ```ts
 function requestGenesisDeviceDigest(request: WardenDecisionRequestV1): string | undefined {
@@ -158,21 +128,25 @@ function requestGenesisDeviceDigest(request: WardenDecisionRequestV1): string | 
 }
 ```
 
-Add `genesisDeviceRequestDigest: requestGenesisDeviceDigest(request)` to `canonicalActionPayload()` and include `genesisDeviceRequestDigest` in `assertExactAction()`.
+Add this exact field to `canonicalActionPayload()`:
 
-- [ ] **Step 4: Bind the Genesis digest into Synnergyze execution identity**
+```ts
+genesisDeviceRequestDigest: requestGenesisDeviceDigest(request),
+```
 
-In `modules/synnergyze/execution-gate.ts`, include:
+Add `"genesisDeviceRequestDigest"` to the `assertExactAction()` field list immediately after `"executionDeviceRef"`.
+
+- [ ] **Step 4: Bind the digest into Synnergyze execution replay identity**
+
+In `executionFingerprint()` add:
 
 ```ts
 genesisDeviceRequestDigest: input.action.genesisDeviceRequestDigest ?? null,
 ```
 
-inside `executionFingerprint()`.
+Add a regression test that reuses the same action ref with a changed Genesis digest and expects `execution_idempotency_conflict`.
 
-Add an execution-gate regression test that reuses the same `actionRef` with a mutated Genesis digest and proves `execution_idempotency_conflict` rather than treating it as an exact replay.
-
-- [ ] **Step 5: Run focused River + execution tests and verify GREEN**
+- [ ] **Step 5: Run focused tests and type-check**
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run \
@@ -181,9 +155,9 @@ npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run \
 npx -y node@22.14.0 ./node_modules/typescript/bin/tsc --noEmit
 ```
 
-Expected: all focused tests pass and type-check exits 0.
+Expected: all pass.
 
-- [ ] **Step 6: Commit the strengthened action lineage**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add modules/river/contracts.ts modules/river/reservation-service.ts \
@@ -194,20 +168,19 @@ git commit -m "feat: bind Genesis device provenance into River actions"
 
 ---
 
-### Task 2: Add deterministic issuer-bound Proof References
+### Task 2: Add deterministic issuer-owned Proof References
 
 **Files:**
 - Create: `modules/proof/proof-reference.ts`
 - Create: `modules/proof/proof-reference.test.ts`
 
 **Interfaces:**
-- Produces: `ProofReferenceV1`, `ProofScopeV1`, `ProofTypeV1`, `assertProofReferenceIntegrityV1()` and eight issuer-bound creation functions.
-- No public API accepts `proofFrom` as an input parameter.
-- Task 3 consumes these factories to build the runtime proof chain.
+- Produces: `ProofReferenceV1`, `ProofScopeV1`, `ProofTypeV1`, `assertProofReferenceIntegrityV1()` and eight issuer-specific creation functions.
+- No public API accepts a caller-supplied issuer.
 
-- [ ] **Step 1: Write failing Proof Reference tests**
+- [ ] **Step 1: Write the failing Proof Reference tests**
 
-Create `modules/proof/proof-reference.test.ts` with imports that do not exist yet:
+Create `modules/proof/proof-reference.test.ts` and import:
 
 ```ts
 import {
@@ -218,7 +191,7 @@ import {
 } from "./proof-reference.ts";
 ```
 
-Use this fixed input shape:
+Use:
 
 ```ts
 const base = {
@@ -231,33 +204,27 @@ const base = {
 };
 ```
 
-Prove:
+Assert:
 
 ```ts
 const proof = createGenesisDeviceProofReferenceV1(base);
 expect(proof.proofFrom).toBe("GENESIS");
 expect(proof.proofId).toMatch(/^E-GEN-DEVICE-[0-9A-F]{8}$/);
 expect(proof.integrityDigest).toMatch(/^sha256:[0-9a-f]{64}$/);
-
 expect(createGenesisDeviceProofReferenceV1(base)).toEqual(
   createGenesisDeviceProofReferenceV1({ ...base, sourceRefs: ["REF-A", "REF-B"] }),
 );
-
 expect(
   createGenesisDeviceProofReferenceV1({ ...base, sourceRefs: ["REF-C"] }).proofId,
 ).not.toBe(proof.proofId);
-
 expect(() => assertProofReferenceIntegrityV1({
   ...proof,
   proofId: "E-GEN-DEVICE-DEADBEEF",
 })).toThrow("proof_id_digest_mismatch");
-```
-
-Add ownership assertions:
-
-```ts
-expect(createWardenAuthorizationProofReferenceV1({ ...base, subjectRef: "WARDEN-DECISION:001" }).proofFrom)
-  .toBe("WARDEN");
+expect(createWardenAuthorizationProofReferenceV1({
+  ...base,
+  subjectRef: "WARDEN-DECISION:001",
+}).proofFrom).toBe("WARDEN");
 expect(createRiverRuntimeCompositeProofReferenceV1({
   ...base,
   scope: "GROUP",
@@ -266,22 +233,23 @@ expect(createRiverRuntimeCompositeProofReferenceV1({
 }).proofId).toMatch(/^G-RIV-RUNTIME-[0-9A-F]{8}$/);
 ```
 
-- [ ] **Step 2: Run the Proof Reference test and verify RED**
+- [ ] **Step 2: Run and verify RED**
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/proof/proof-reference.test.ts
 ```
 
-Expected: module-not-found/undefined-export failure.
+Expected: module-not-found failure.
 
-- [ ] **Step 3: Implement the Proof Reference types and private canonical builder**
+- [ ] **Step 3: Implement the Proof Reference types**
 
-In `modules/proof/proof-reference.ts`, define:
+Create `modules/proof/proof-reference.ts` with:
 
 ```ts
+import { createHash } from "node:crypto";
+
 export type ProofScopeV1 = "ESTATE" | "GROUP" | "MISSION";
 export type ProofIssuerV1 = "GENESIS" | "SYNNERGYZE" | "WARDEN" | "RIVEROS";
-
 export type ProofTypeV1 =
   | "GENESIS_DEVICE_RESOLUTION"
   | "SYNNERGYZE_COMPOSITION"
@@ -318,84 +286,40 @@ export interface ProofReferenceInputV1 {
 }
 ```
 
-Define internal fixed metadata:
+Define this exact metadata table:
 
 ```ts
 const DEFINITIONS = {
-  GENESIS_DEVICE_RESOLUTION: {
-    issuer: "GENESIS", issuerCode: "GEN", claimCode: "DEVICE",
-    claim: "the execution device/context was canonically resolved",
-  },
-  SYNNERGYZE_COMPOSITION: {
-    issuer: "SYNNERGYZE", issuerCode: "SYN", claimCode: "COMPOSE",
-    claim: "the governed runtime request was composed with required lineage",
-  },
-  WARDEN_AUTHORIZATION: {
-    issuer: "WARDEN", issuerCode: "WAR", claimCode: "AUTH",
-    claim: "the exact runtime request was authorized under Warden policy",
-  },
-  RIVER_RESERVATION: {
-    issuer: "RIVEROS", issuerCode: "RIV", claimCode: "RESERVE",
-    claim: "evidence capacity was reserved for the exact authorized action",
-  },
-  SYNNERGYZE_EXECUTION: {
-    issuer: "SYNNERGYZE", issuerCode: "SYN", claimCode: "EXEC",
-    claim: "the reserved authorized action passed controlled execution",
-  },
-  SYNNERGYZE_VERIFICATION: {
-    issuer: "SYNNERGYZE", issuerCode: "SYN", claimCode: "VERIFY",
-    claim: "post-execution observation produced a verified effect",
-  },
-  RIVER_SEAL: {
-    issuer: "RIVEROS", issuerCode: "RIV", claimCode: "SEAL",
-    claim: "the verified effect was bound into the River evidence seal and causal trace",
-  },
-  RIVER_RUNTIME_COMPOSITE: {
-    issuer: "RIVEROS", issuerCode: "RIV", claimCode: "RUNTIME",
-    claim: "the required controlled-runtime proofs are causally bound at the terminal River seal",
-  },
+  GENESIS_DEVICE_RESOLUTION: ["GENESIS", "GEN", "DEVICE", "the execution device/context was canonically resolved"],
+  SYNNERGYZE_COMPOSITION: ["SYNNERGYZE", "SYN", "COMPOSE", "the governed runtime request was composed with required lineage"],
+  WARDEN_AUTHORIZATION: ["WARDEN", "WAR", "AUTH", "the exact runtime request was authorized under Warden policy"],
+  RIVER_RESERVATION: ["RIVEROS", "RIV", "RESERVE", "evidence capacity was reserved for the exact authorized action"],
+  SYNNERGYZE_EXECUTION: ["SYNNERGYZE", "SYN", "EXEC", "the reserved authorized action passed controlled execution"],
+  SYNNERGYZE_VERIFICATION: ["SYNNERGYZE", "SYN", "VERIFY", "post-execution observation produced a verified effect"],
+  RIVER_SEAL: ["RIVEROS", "RIV", "SEAL", "the verified effect was bound into the River evidence seal and causal trace"],
+  RIVER_RUNTIME_COMPOSITE: ["RIVEROS", "RIV", "RUNTIME", "the required controlled-runtime proofs are causally bound at the terminal River seal"],
 } as const;
 ```
 
-The private builder MUST:
+Implement a private builder that deduplicates/sorts `sourceRefs`, serializes the canonical payload with fixed key ordering, computes SHA-256, maps scope to `E|G|M`, and generates `<SCOPE>-<ISSUER>-<CLAIM>-<HEX8>`.
+
+- [ ] **Step 4: Export issuer-specific factories and integrity assertion**
+
+Export exactly:
 
 ```ts
-const canonicalSourceRefs = [...new Set(input.sourceRefs.filter(Boolean))].sort();
-const payload = JSON.stringify({
-  proofFrom: definition.issuer,
-  proofType,
-  claim: definition.claim,
-  subjectRef: input.subjectRef,
-  scope: input.scope,
-  scopeRef: input.scopeRef,
-  sourceRefs: canonicalSourceRefs,
-  createdAt: input.createdAt,
-  synthetic: input.synthetic,
-  supersedesProofId: input.supersedesProofId ?? null,
-});
-const hex = createHash("sha256").update(payload, "utf8").digest("hex");
+createGenesisDeviceProofReferenceV1
+createSynnergyzeCompositionProofReferenceV1
+createWardenAuthorizationProofReferenceV1
+createRiverReservationProofReferenceV1
+createSynnergyzeExecutionProofReferenceV1
+createSynnergyzeVerificationProofReferenceV1
+createRiverSealProofReferenceV1
+createRiverRuntimeCompositeProofReferenceV1
+assertProofReferenceIntegrityV1
 ```
 
-Map scope to `E | G | M`, build `<SCOPE>-<ISSUER>-<CLAIM>-<HEX8>`, and retain the full `sha256:<hex>` digest.
-
-- [ ] **Step 4: Expose only issuer-bound factory functions**
-
-Export exactly these public creation APIs:
-
-```ts
-createGenesisDeviceProofReferenceV1(input)
-createSynnergyzeCompositionProofReferenceV1(input)
-createWardenAuthorizationProofReferenceV1(input)
-createRiverReservationProofReferenceV1(input)
-createSynnergyzeExecutionProofReferenceV1(input)
-createSynnergyzeVerificationProofReferenceV1(input)
-createRiverSealProofReferenceV1(input)
-createRiverRuntimeCompositeProofReferenceV1(input)
-```
-
-Do NOT export a generic `(proofFrom, proofType, input)` creation function.
-
-Implement `assertProofReferenceIntegrityV1(proof)` by reconstructing the proof from `proof.proofType`, asserting fixed issuer/type ownership, rebuilding the canonical digest, and checking both `integrityDigest` and the `ID8` suffix. Use explicit fail-closed errors:
+`assertProofReferenceIntegrityV1()` must rebuild the proof from `proofType` and throw these errors where applicable:
 
 ```text
 proof_issuer_mismatch
@@ -404,16 +328,18 @@ proof_integrity_digest_mismatch
 proof_id_digest_mismatch
 ```
 
-- [ ] **Step 5: Run Proof Reference tests and type-check**
+Do not export a generic factory that accepts `proofFrom`.
+
+- [ ] **Step 5: Run tests and type-check**
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/proof/proof-reference.test.ts
 npx -y node@22.14.0 ./node_modules/typescript/bin/tsc --noEmit
 ```
 
-Expected: all proof tests pass and no type errors.
+Expected: all pass.
 
-- [ ] **Step 6: Commit the Proof Reference contract**
+- [ ] **Step 6: Commit**
 
 ```bash
 git add modules/proof/proof-reference.ts modules/proof/proof-reference.test.ts
@@ -422,19 +348,19 @@ git commit -m "feat: add deterministic system-owned Proof IDs"
 
 ---
 
-### Task 3: Implement the device-bound controlled runtime activation service
+### Task 3: Build the device-bound controlled runtime activation service
 
 **Files:**
 - Create: `modules/synnergyze/runtime-activation.ts`
 - Create: `modules/synnergyze/runtime-activation.test.ts`
 
 **Interfaces:**
-- Consumes: `WardenDecisionRequestV1`, `SyntheticWardenDecisionPolicyV1`, `ResolvedDeviceSecurityContextV1`, the River reservation service, controlled execution gate, effect verifier, RC1 River seal adapters, and Task 2 Proof Reference factories.
-- Produces: `SynnergyzeRuntimeActivationResultV1` with a partial or complete proof chain and a `G-RIV-RUNTIME-*` composite only on terminal River seal success.
+- Consumes: `WardenDecisionRequestV1`, `SyntheticWardenDecisionPolicyV1`, `ResolvedDeviceSecurityContextV1`, River reservation, controlled execution, effect verification, River RC1 seal adapters, and Task 2 proof factories.
+- Produces: `SynnergyzeRuntimeActivationResultV1`.
 
-- [ ] **Step 1: Write the failing controlled-runtime test fixture**
+- [ ] **Step 1: Write the failing happy-path and failure-path tests**
 
-Create a deterministic device-bound fixture in `modules/synnergyze/runtime-activation.test.ts`:
+Use this exact device-bound request fixture:
 
 ```ts
 const request: WardenDecisionRequestV1 = {
@@ -472,7 +398,7 @@ const request: WardenDecisionRequestV1 = {
 };
 ```
 
-Use the existing transient context shape:
+Use this transient context:
 
 ```ts
 const executionDeviceSecurity: ResolvedDeviceSecurityContextV1 = {
@@ -487,7 +413,7 @@ const executionDeviceSecurity: ResolvedDeviceSecurityContextV1 = {
 };
 ```
 
-Use the fixed conformance identity/policy values and a monotonic timeline:
+Use this timeline:
 
 ```ts
 const timeline = {
@@ -500,12 +426,18 @@ const timeline = {
 };
 ```
 
-Add RED assertions for the successful chain:
+Assert the successful result has this issuer order:
 
 ```ts
 expect(result.state).toBe("CONTROLLED_ACTIVE_PROOF");
 expect(result.proofChain.map((proof) => proof.proofFrom)).toEqual([
-  "GENESIS", "SYNNERGYZE", "WARDEN", "RIVEROS", "SYNNERGYZE", "SYNNERGYZE", "RIVEROS",
+  "GENESIS",
+  "SYNNERGYZE",
+  "WARDEN",
+  "RIVEROS",
+  "SYNNERGYZE",
+  "SYNNERGYZE",
+  "RIVEROS",
 ]);
 expect(result.compositeProof?.proofId).toMatch(/^G-RIV-RUNTIME-[0-9A-F]{8}$/);
 expect(result.externalEffects).toBe(false);
@@ -513,19 +445,21 @@ expect(result.settlementFinality).toBe(false);
 expect(result.registryTruthPromoted).toBe(false);
 ```
 
-Add RED tests proving:
+Add tests for:
 
-- missing Genesis dependency -> `BLOCKED` and no composite proof;
-- missing/mismatched transient device-security context -> `BLOCKED` and no composite proof;
-- Warden `DENY` -> no River reservation/execution/verification/seal/composite proof;
-- expired Warden/device validity -> blocked;
-- verification exception -> no River seal proof/composite proof;
-- causal trace mismatch -> no composite proof;
-- exact replay returns identical proof IDs and adapter invocation count remains 1;
-- changed device-security context with same requestRef throws `runtime_activation_replay_conflict`;
-- every emitted proof passes `assertProofReferenceIntegrityV1()`.
+```text
+missing Genesis dependency -> BLOCKED, no composite proof
+mismatched transient device-security context -> BLOCKED, no composite proof
+Warden DENY -> no reservation/execution/seal/composite proof
+expired Warden/device validity -> BLOCKED
+verification EXCEPTION -> no River seal proof/composite proof
+causal-trace mismatch -> no composite proof
+exact replay -> identical Proof IDs and adapter invocation count remains 1
+same requestRef with mutated security context -> runtime_activation_replay_conflict
+every emitted proof -> assertProofReferenceIntegrityV1() succeeds
+```
 
-- [ ] **Step 2: Run runtime activation tests and verify RED**
+- [ ] **Step 2: Run and verify RED**
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/synnergyze/runtime-activation.test.ts
@@ -533,9 +467,9 @@ npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/synnergyze/runt
 
 Expected: module-not-found failure.
 
-- [ ] **Step 3: Define runtime activation input/result contracts**
+- [ ] **Step 3: Define runtime contracts**
 
-In `modules/synnergyze/runtime-activation.ts`, define:
+Create:
 
 ```ts
 export interface RuntimeActivationTimelineV1 {
@@ -569,56 +503,43 @@ export interface SynnergyzeRuntimeActivationResultV1 {
 }
 ```
 
-Use a class so exact replay preserves one in-memory execution journal:
+Use a stateful service:
 
 ```ts
 export class SynnergyzeRuntimeActivationServiceV1 {
-  private readonly river = new SyntheticRiverReservationServiceV1();
-  private readonly adapter = new SyntheticServiceRequestCreateAdapterV1();
-  private readonly gate = new ControlledExecutionGateV1([this.adapter]);
-  private readonly verifier = new EffectVerificationServiceV1();
-  private readonly observer = new SyntheticServiceRequestObservationSourceV1();
-  private readonly byRequestRef = new Map<string, StoredRuntimeActivationV1>();
-
   execute(input: SynnergyzeRuntimeActivationInputV1): SynnergyzeRuntimeActivationResultV1;
   adapterInvocationCount(): number;
 }
 ```
 
-- [ ] **Step 4: Implement fail-closed preconditions and replay fingerprinting**
+Internally instantiate one `SyntheticRiverReservationServiceV1`, one `SyntheticServiceRequestCreateAdapterV1`, one `ControlledExecutionGateV1`, one `EffectVerificationServiceV1`, one `SyntheticServiceRequestObservationSourceV1`, and one `Map<string, StoredRuntimeActivationV1>`.
+
+- [ ] **Step 4: Implement preconditions and replay fingerprint**
 
 Before Warden evaluation, require:
 
 ```ts
-request.executionDeviceRef
-request.genesisDevice
-request.genesisDevice.deviceRef === request.executionDeviceRef
-input.estateScopeRef === request.genesisDevice.estateRef
-executionDeviceSecurity.deviceRef === request.executionDeviceRef
-executionDeviceSecurity.state === "ACTIVE"
+if (!request.executionDeviceRef) return blocked("runtime_activation_device_required");
+if (!request.genesisDevice) return blocked("runtime_activation_genesis_device_required");
+if (request.genesisDevice.deviceRef !== request.executionDeviceRef) return blocked("runtime_activation_genesis_device_mismatch");
+if (input.estateScopeRef !== request.genesisDevice.estateRef) return blocked("runtime_activation_estate_scope_mismatch");
+if (executionDeviceSecurity.deviceRef !== request.executionDeviceRef) return blocked("runtime_activation_device_security_mismatch");
+if (executionDeviceSecurity.state !== "ACTIVE") return blocked("runtime_activation_device_security_not_active");
 ```
 
-Also require the transient context to match the flattened request security fields:
+Also require exact equality between request security fields and `executionDeviceSecurity`, and require `request.deviceSecuritySourceRefs` to contain both the resolution and evidence refs.
 
-```ts
-request.deviceSecurityPolicyRef === executionDeviceSecurity.policyRef
-request.deviceSecurityResolvedAt === executionDeviceSecurity.resolvedAt
-request.deviceSecurityValidUntil === executionDeviceSecurity.validUntil
-new Set(request.deviceSecuritySourceRefs).has(executionDeviceSecurity.resolutionRef)
-new Set(request.deviceSecuritySourceRefs).has(executionDeviceSecurity.evidenceRef)
-```
-
-Validate timeline order:
+Validate:
 
 ```text
-request.requestedAt <= decidedAt <= reservedAt <= checkedAt <= executedAt <= observedAt <= verifiedAt
+requestedAt <= decidedAt <= reservedAt <= checkedAt <= executedAt <= observedAt <= verifiedAt
 ```
 
-Create a replay fingerprint over canonical request material, canonical Genesis evidence refs, canonical transient-security context, full policy material, `estateScopeRef`, and `groupScopeRef`. Do not include `timeline`, so an exact retry at a later wall-clock time returns the original stored result. Same `requestRef` + different fingerprint throws `runtime_activation_replay_conflict`.
+Build the replay fingerprint from canonical request material, policy material, canonical Genesis evidence refs, transient-security context, `estateScopeRef`, and `groupScopeRef`. Exclude the execution timeline from that fingerprint. Same `requestRef` plus a different fingerprint throws `runtime_activation_replay_conflict`; exact replay returns the stored result.
 
-- [ ] **Step 5: Compose the existing core runtime engines**
+- [ ] **Step 5: Compose the existing engines in order**
 
-Implement this exact order:
+Run:
 
 ```ts
 const decision = evaluateSyntheticWardenDecisionV1({
@@ -628,7 +549,7 @@ const decision = evaluateSyntheticWardenDecisionV1({
 });
 ```
 
-If the decision is not `ALLOW`, return `BLOCKED` before River mutation.
+Return `BLOCKED` immediately for `DENY` or `ESCALATE`.
 
 For `ALLOW`:
 
@@ -640,7 +561,11 @@ const reservation = this.river.reserve({
   action,
   reservedAt: timeline.reservedAt,
 });
+```
 
+Create the checkpoint:
+
+```ts
 const checkpoint: WardenExecutionCheckpointV1 = {
   checkpointRef: `WARDEN-EXEC-CHECK:${digest(
     [decision.decisionRef, reservation.reservationRef, timeline.checkedAt].join("|"),
@@ -652,7 +577,11 @@ const checkpoint: WardenExecutionCheckpointV1 = {
   checkedAt: timeline.checkedAt,
   reasonCodes: ["runtime_activation_r0.1_checkpoint_valid"],
 };
+```
 
+Execute:
+
+```ts
 const executionReceipt = this.gate.execute({
   action,
   reservation,
@@ -663,7 +592,7 @@ const executionReceipt = this.gate.execute({
 });
 ```
 
-Then:
+Observe and verify:
 
 ```ts
 const observation = this.observer.observe(executionReceipt, timeline.observedAt);
@@ -674,162 +603,52 @@ const verification = this.verifier.verify({
 });
 ```
 
-If verification is not `VERIFIED_EFFECT`, return `BLOCKED` and do not seal.
+Return `BLOCKED` if verification is not `VERIFIED_EFFECT`.
 
-Build the existing RC1-compatible reservation/seal entries exactly as the merged effect-conformance path does, then call:
+Build RC1 evidence entries exactly as the existing `registerWardenRiverEffectConformance.ts` path does, then call:
 
 ```ts
 const seal = adaptRc1EvidenceSeal(reservation, verification.effect, entries);
 const causalTrace = adaptRc1CausalTrace(request.correlationId, entries);
 ```
 
-Require:
+Require exact match on reservation, effect and seal refs before a composite proof can be minted.
 
-```ts
-seal.state === "SEALED"
-causalTrace.sealed === true
-causalTrace.reservationRef === reservation.reservationRef
-causalTrace.effectRef === verification.effect.effectRef
-causalTrace.sealRef === seal.sealRef
+- [ ] **Step 6: Build stage Proof References from native timestamps**
+
+Create seven proofs in this order:
+
+```text
+Genesis device resolution
+Synnergyze composition
+Warden authorization
+River reservation
+Synnergyze execution
+Synnergyze verification
+River seal
 ```
 
-- [ ] **Step 6: Build the seven stage proofs from native timestamps**
+Use these subject refs and timestamps:
 
-Create proofs in this exact order:
-
-```ts
-const genesisProof = createGenesisDeviceProofReferenceV1({
-  subjectRef: request.genesisDevice.deviceRef,
-  scope: "ESTATE",
-  scopeRef: input.estateScopeRef,
-  sourceRefs: [
-    request.genesisDevice.resolutionRef,
-    request.genesisDevice.attestationRef,
-    ...request.genesisDevice.evidenceRefs,
-  ],
-  createdAt: request.genesisDevice.resolvedAt,
-  synthetic: true,
-});
+```text
+Genesis: subject=request.genesisDevice.deviceRef, createdAt=request.genesisDevice.resolvedAt
+Composition: subject=request.requestRef, createdAt=request.requestedAt
+Warden: subject=decision.decisionRef, createdAt=decision.decidedAt
+Reservation: subject=reservation.reservationRef, createdAt=reservation.reservedAt
+Execution: subject=executionReceipt.receiptRef, createdAt=executionReceipt.executedAt
+Verification: subject=verification.effect.effectRef, createdAt=verification.effect.verifiedAt
+Seal: subject=seal.sealRef, createdAt=seal.sealedAt
 ```
 
-```ts
-const compositionProof = createSynnergyzeCompositionProofReferenceV1({
-  subjectRef: request.requestRef,
-  scope: "ESTATE",
-  scopeRef: input.estateScopeRef,
-  sourceRefs: [
-    request.programRef,
-    request.eventRef,
-    ...request.representationSourceRefs,
-    genesisProof.proofId,
-  ],
-  createdAt: request.requestedAt,
-  synthetic: true,
-});
-```
+Each proof must include the immediately preceding proof ID plus the native refs needed to prove its claim. The reservation proof must include `action.genesisDeviceRequestDigest`, and the seal proof must include `seal.traceDigest` plus the verified effect ref.
+
+Call `assertProofReferenceIntegrityV1()` on all seven proofs before creating the composite.
+
+- [ ] **Step 7: Mint the composite proof only after terminal River seal**
+
+Create the composite with:
 
 ```ts
-const wardenProof = createWardenAuthorizationProofReferenceV1({
-  subjectRef: decision.decisionRef,
-  scope: "ESTATE",
-  scopeRef: input.estateScopeRef,
-  sourceRefs: [
-    request.requestRef,
-    ...request.authorityRefs,
-    ...request.policyRefs,
-    genesisProof.proofId,
-    compositionProof.proofId,
-  ],
-  createdAt: decision.decidedAt,
-  synthetic: true,
-});
-```
-
-```ts
-const reservationProof = createRiverReservationProofReferenceV1({
-  subjectRef: reservation.reservationRef,
-  scope: "ESTATE",
-  scopeRef: input.estateScopeRef,
-  sourceRefs: [
-    action.actionRef,
-    decision.decisionRef,
-    reservation.authorizationDigest,
-    action.genesisDeviceRequestDigest!,
-    wardenProof.proofId,
-  ],
-  createdAt: reservation.reservedAt,
-  synthetic: true,
-});
-```
-
-```ts
-const executionProof = createSynnergyzeExecutionProofReferenceV1({
-  subjectRef: executionReceipt.receiptRef,
-  scope: "ESTATE",
-  scopeRef: input.estateScopeRef,
-  sourceRefs: [
-    action.actionRef,
-    reservation.reservationRef,
-    decision.decisionRef,
-    checkpoint.checkpointRef,
-    executionReceipt.adapterRef,
-    executionReceipt.adapterResultRef,
-    reservationProof.proofId,
-  ],
-  createdAt: executionReceipt.executedAt,
-  synthetic: true,
-});
-```
-
-```ts
-const verificationProof = createSynnergyzeVerificationProofReferenceV1({
-  subjectRef: verification.effect.effectRef,
-  scope: "ESTATE",
-  scopeRef: input.estateScopeRef,
-  sourceRefs: [
-    verification.effect.verificationRef,
-    observation.observationRef,
-    observation.sourceEvidenceRef,
-    executionReceipt.receiptRef,
-    executionProof.proofId,
-  ],
-  createdAt: verification.effect.verifiedAt,
-  synthetic: true,
-});
-```
-
-```ts
-const sealProof = createRiverSealProofReferenceV1({
-  subjectRef: seal.sealRef,
-  scope: "ESTATE",
-  scopeRef: input.estateScopeRef,
-  sourceRefs: [
-    seal.reservationRef,
-    verification.effect.effectRef,
-    seal.traceDigest,
-    causalTrace.sealRef!,
-    verificationProof.proofId,
-  ],
-  createdAt: seal.sealedAt,
-  synthetic: true,
-});
-```
-
-Assert each proof with `assertProofReferenceIntegrityV1()` before creating the composite.
-
-- [ ] **Step 7: Mint the composite River runtime proof only after terminal seal**
-
-```ts
-const proofChain = [
-  genesisProof,
-  compositionProof,
-  wardenProof,
-  reservationProof,
-  executionProof,
-  verificationProof,
-  sealProof,
-] as const;
-
 const compositeProof = createRiverRuntimeCompositeProofReferenceV1({
   subjectRef: request.correlationId,
   scope: "GROUP",
@@ -861,9 +680,7 @@ Return:
 }
 ```
 
-Store this immutable result by `requestRef` for exact replay.
-
-- [ ] **Step 8: Run focused runtime/proof/River tests and verify GREEN**
+- [ ] **Step 8: Run focused tests and type-check**
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run \
@@ -875,9 +692,9 @@ npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run \
 npx -y node@22.14.0 ./node_modules/typescript/bin/tsc --noEmit
 ```
 
-Expected: all focused suites pass; the synthetic adapter invocation count remains 1 after exact replay.
+Expected: all pass.
 
-- [ ] **Step 9: Commit the controlled runtime core**
+- [ ] **Step 9: Commit**
 
 ```bash
 git add modules/synnergyze/runtime-activation.ts modules/synnergyze/runtime-activation.test.ts
@@ -886,7 +703,7 @@ git commit -m "feat: activate bounded Synnergyze proof runtime"
 
 ---
 
-### Task 4: Expose controlled activation through an explicitly gated MCP tool
+### Task 4: Expose R0.1 through the existing explicitly gated MCP surface
 
 **Files:**
 - Modify: `src/tools/registerWardenConformanceDecision.ts`
@@ -898,34 +715,23 @@ git commit -m "feat: activate bounded Synnergyze proof runtime"
 - Modify: `package.json`
 
 **Interfaces:**
-- Consumes: Task 3 `SynnergyzeRuntimeActivationServiceV1`.
-- Produces MCP operation `synnergyzeActivateControlledRuntimeR01`.
-- This operation remains synthetic/reference-only and cannot activate an external adapter.
+- Produces MCP operation: `synnergyzeActivateControlledRuntimeR01`.
 
-- [ ] **Step 1: Add failing conformance-schema tests for `genesisDevice`**
+- [ ] **Step 1: Write a failing transport test for `genesisDevice`**
 
-Extend the request-schema tests so a device-bound request containing:
+Add a device-bound request containing the complete `genesisDevice` object from Task 3 to the Warden conformance parser test. Assert `parseWardenConformanceDecisionInput()` preserves the object unchanged.
 
-```ts
-genesisDevice: {
-  resolutionRef: "GENESIS-DEVICE-RESOLUTION:alpha001",
-  deviceRef: "GENESIS-DEVICE-ALPHA-LG-001",
-  estateRef: "GENESIS-ESTATE-001",
-  attestationRef: "GENESIS-DEVICE-ATTESTATION-001",
-  assuranceLevel: "L3",
-  evidenceRefs: ["RIVER-DEVICE-EVIDENCE-001"],
-  resolvedAt: "2026-09-12T05:00:00.000Z",
-  validUntil: "2026-09-12T06:00:00.000Z",
-}
+Run:
+
+```bash
+npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run src/tools/registerWardenConformanceDecision.test.ts
 ```
 
-survives `parseWardenConformanceDecisionInput()` unchanged.
+Expected: RED because the current strict schema rejects `genesisDevice`.
 
-Run the focused Warden tool test and expect RED because the current strict schema rejects `genesisDevice`.
+- [ ] **Step 2: Extend the transport schema**
 
-- [ ] **Step 2: Extend the Warden conformance request schema without changing authority semantics**
-
-Add a strict nested Zod schema:
+Add:
 
 ```ts
 const genesisDeviceSchema = z.object({
@@ -940,41 +746,27 @@ const genesisDeviceSchema = z.object({
 }).strict();
 ```
 
-Add `genesisDevice: genesisDeviceSchema.optional()` to the Zod request and the equivalent nested object to `wardenConformanceRequestJsonSchema`.
+Add `genesisDevice: genesisDeviceSchema.optional()` to the Zod request and the equivalent nested JSON schema. Do not change `WARDEN_CONFORMANCE_POLICY`.
 
-Do not alter `WARDEN_CONFORMANCE_POLICY` merely to make device execution pass. The base Warden invariant already requires Genesis dependency for device-bound requests.
+- [ ] **Step 3: Write failing MCP registration and invocation tests**
 
-- [ ] **Step 3: Write the failing runtime-tool tests**
+Create `src/tools/registerSynnergyzeRuntimeActivation.test.ts` and prove:
 
-In `registerSynnergyzeRuntimeActivation.test.ts`, define the operation input as:
-
-```ts
-{
-  request: <device-bound WardenDecisionRequestV1>,
-  executionDeviceSecurity: {
-    resolutionRef: "DEVICE-SECURITY-RESOLUTION-001",
-    deviceRef: "GENESIS-DEVICE-ALPHA-LG-001",
-    state: "ACTIVE",
-    policyRef: "DEVICE-SECURITY-POLICY-001",
-    evidenceRef: "DEVICE-SECURITY-EVIDENCE-001",
-    assuranceLevel: "L3",
-    resolvedAt: "2026-09-12T05:00:00.000Z",
-    validUntil: "2026-09-12T06:00:00.000Z",
-  },
-  groupScopeRef: "GROUP:ALPHA-RUNTIME-QUALIFICATION-001"
-}
+```text
+tool absent by default
+tool absent when any prerequisite env flag is missing
+tool absent for allow-tools=all
+tool present only when all five env flags are 1 and exact tool name is allow-listed
+successful invocation returns CONTROLLED_ACTIVE_PROOF
+successful invocation returns G-RIV-RUNTIME-* composite proof
+externalEffects=false
+settlementFinality=false
+registryTruthPromoted=false
+exact replay returns the same Proof IDs
+mismatched transient device-security input fails closed
 ```
 
-Prove:
-
-- tool is not registered unless every prerequisite conformance env flag plus the runtime flag is `1`;
-- explicit allow-list membership is required; `all` does not expose it;
-- successful invocation returns `CONTROLLED_ACTIVE_PROOF` and a `G-RIV-RUNTIME-*` composite;
-- response flags external effects/settlement/Registry truth as false;
-- exact replay returns the same Proof IDs;
-- malformed/mismatched device security fails closed.
-
-- [ ] **Step 4: Implement the runtime MCP tool**
+- [ ] **Step 4: Implement the MCP tool**
 
 Create `src/tools/registerSynnergyzeRuntimeActivation.ts` with:
 
@@ -983,32 +775,11 @@ export const operationId = "synnergyzeActivateControlledRuntimeR01";
 export const enableEnvironmentVariable = "VSR_SYNNERGYZE_RUNTIME_ACTIVATION_R01";
 ```
 
-Define a strict `executionDeviceSecurity` schema matching `ResolvedDeviceSecurityContextV1`.
+Create a strict schema for `executionDeviceSecurity` matching `ResolvedDeviceSecurityContextV1` and accept `groupScopeRef` as a non-empty string.
 
-Construct one long-lived `SynnergyzeRuntimeActivationServiceV1` per registration. For each call, use the injected clock once:
+Use one long-lived `SynnergyzeRuntimeActivationServiceV1` per tool registration. On each call, read the injected clock once and use that value for all six timeline fields. Reject inputs without `executionDeviceRef` or `genesisDevice` before calling the service.
 
-```ts
-const now = clock();
-const result = service.execute({
-  request: parsed.request as WardenDecisionRequestV1,
-  policy: WARDEN_CONFORMANCE_POLICY,
-  executionDeviceSecurity: parsed.executionDeviceSecurity,
-  estateScopeRef: parsed.request.genesisDevice!.estateRef,
-  groupScopeRef: parsed.groupScopeRef,
-  timeline: {
-    decidedAt: now,
-    reservedAt: now,
-    checkedAt: now,
-    executedAt: now,
-    observedAt: now,
-    verifiedAt: now,
-  },
-});
-```
-
-Before calling the service, reject requests without `executionDeviceRef` or `genesisDevice`; the R0.1 qualification tool is intentionally device-bound.
-
-The registration gate MUST require all of:
+Registration requires:
 
 ```text
 VSR_WARDEN_MCP_CONFORMANCE=1
@@ -1016,16 +787,14 @@ VSR_RIVER_MCP_CONFORMANCE=1
 VSR_SYNNERGYZE_MCP_CONFORMANCE=1
 VSR_EFFECT_MCP_CONFORMANCE=1
 VSR_SYNNERGYZE_RUNTIME_ACTIVATION_R01=1
-explicit --allow-tools synnergyzeActivateControlledRuntimeR01
+explicit allow-list membership for synnergyzeActivateControlledRuntimeR01
 ```
 
-- [ ] **Step 5: Register the tool in server startup**
+- [ ] **Step 5: Wire startup and package script**
 
-In `src/commands/start-server.ts`, import and call `maybeRegisterSynnergyzeRuntimeActivation()` alongside the existing conformance registrations. Preserve the explicit opt-in semantics.
+In `src/commands/start-server.ts`, call `maybeRegisterSynnergyzeRuntimeActivation()` with the existing tool filter and environment object.
 
-Add startup tests proving the tool is absent by default and appears only under the full gate.
-
-Add to `package.json`:
+Add:
 
 ```json
 "test:runtime-activation": "vitest run modules/proof/proof-reference.test.ts modules/synnergyze/runtime-activation.test.ts src/tools/registerSynnergyzeRuntimeActivation.test.ts"
@@ -1044,7 +813,7 @@ npx -y node@22.14.0 ./node_modules/typescript/bin/tsc --noEmit
 
 Expected: all pass.
 
-- [ ] **Step 7: Commit the controlled activation transport**
+- [ ] **Step 7: Commit**
 
 ```bash
 git add src/tools/registerWardenConformanceDecision.ts \
@@ -1057,7 +826,7 @@ git commit -m "feat: expose proof-bound controlled runtime activation"
 
 ---
 
-### Task 5: Promote conformance metadata to `CONTROLLED_ACTIVE` and issue the qualification receipt
+### Task 5: Promote only the controlled conformance state and issue the qualification receipt
 
 **Files:**
 - Modify: `modules/synnergyze/client-control-plane.ts`
@@ -1066,91 +835,61 @@ git commit -m "feat: expose proof-bound controlled runtime activation"
 - Modify: `.vsr/module-bindings.yaml`
 - Create: `docs/alpha-node/SYNNERGYZE-RUNTIME-ACTIVATION-R0.1.md`
 
-**Interfaces:**
-- Consumes: verified Task 1–4 behavior.
-- Produces auditable metadata proving the bounded runtime is active while ordinary external client/workflow execution remains disabled.
+- [ ] **Step 1: Write failing state assertions**
 
-- [ ] **Step 1: Write failing control-plane/conformance-state assertions**
-
-Change the readiness test to require:
+Require:
 
 ```ts
 expect(readiness.executionState).toBe("CONTROLLED_ACTIVE");
 expect(readiness.proofChain).toBe("REQUIRED");
 expect(readiness.externalEffects).toBe(false);
-```
-
-Also assert that ordinary records remain non-executable:
-
-```ts
 expect(client.executable).toBe(false);
 expect(workflow.executable).toBe(false);
 ```
 
-Add config/binding assertions for:
-
-```text
-execution.state = CONTROLLED_ACTIVE
-execution.external_effects = false
-execution.proof_chain = REQUIRED
-execution.activation_gate = EXTERNAL-EFFECT-ACTIVATION-R0.1
-river.execution_evidence = REQUIRED
-river.seal = REQUIRED
-MOD-SYNNERGYZE-001 state = conformance_implemented
-MOD-SYNNERGYZE-001 runtime_state = CONTROLLED_ACTIVE
-MOD-SYNNERGYZE-001 activation_gate = EXTERNAL-EFFECT-ACTIVATION-R0.1
-```
-
-- [ ] **Step 2: Run client-control-plane tests and verify RED**
+- [ ] **Step 2: Run and verify RED**
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run modules/synnergyze/client-control-plane.test.ts
 ```
 
-Expected: failures on current `BLOCKED_RUNTIME_ACTIVATION` metadata.
+Expected: failures against `BLOCKED_RUNTIME_ACTIVATION`.
 
-- [ ] **Step 3: Update the typed readiness surface**
+- [ ] **Step 3: Update readiness typing**
 
-Change `SynnergyzeClientReadinessV1` to:
+Set:
 
 ```ts
-export interface SynnergyzeClientReadinessV1 {
-  clientRef: string;
-  genesisBinding: "BOUND";
-  synnergyzeState: "READY";
-  wardenBinding: "FIT_QUALIFIED";
-  executionState: "CONTROLLED_ACTIVE";
-  proofChain: "REQUIRED";
-  externalEffects: false;
-  systemCount: number;
-  capabilityCount: number;
-  workflowCount: number;
-  deviceCount: number;
-}
+executionState: "CONTROLLED_ACTIVE";
+proofChain: "REQUIRED";
+externalEffects: false;
 ```
 
-Return those exact values from `readiness()`.
+Return those exact values from `readiness()`. Leave client/workflow `executable:false` unchanged.
 
-Do not change `SynnergyzeClientBootstrapV1.executable` or `SynnergyzeWorkflowContractV1.executable`; they stay `false` because R0.1 does not authorize ordinary external effects.
+- [ ] **Step 4: Update config and module bindings**
 
-- [ ] **Step 4: Update bootstrap profile and module binding**
-
-Set `config/synnergyze/client-bootstrap-r0.1.json`:
+Set the config execution object to:
 
 ```json
-"execution": {
+{
   "state": "CONTROLLED_ACTIVE",
   "external_effects": false,
   "proof_chain": "REQUIRED",
   "activation_gate": "EXTERNAL-EFFECT-ACTIVATION-R0.1"
-},
-"river": {
+}
+```
+
+Set River config to:
+
+```json
+{
   "execution_evidence": "REQUIRED",
   "seal": "REQUIRED"
 }
 ```
 
-In `.vsr/module-bindings.yaml`, update only the Synnergyze runtime lifecycle needed by this stage:
+For `MOD-SYNNERGYZE-001`, set:
 
 ```yaml
 state: conformance_implemented
@@ -1161,35 +900,11 @@ external_effects: false
 activation_gate: EXTERNAL-EFFECT-ACTIVATION-R0.1
 ```
 
-Add dependencies:
+Add dependencies on `WARDEN-RUNTIME-001`, `RIVEROS-001`, `GENESIS-DEVICE-RESOLUTION`, and `RIVER-EVIDENCE-SEAL`. Add public outputs `SynnergyzeRuntimeActivationResultV1` and `ProofReferenceV1`. Add the three new test files to the module test list.
 
-```yaml
-- WARDEN-RUNTIME-001
-- RIVEROS-001
-- GENESIS-DEVICE-RESOLUTION
-- RIVER-EVIDENCE-SEAL
-```
+Do not mark any module `AUTHORIZED` or `ACTIVE`.
 
-Add public output contracts:
-
-```yaml
-- SynnergyzeRuntimeActivationResultV1
-- ProofReferenceV1
-```
-
-Add tests:
-
-```yaml
-- modules/proof/proof-reference.test.ts
-- modules/synnergyze/runtime-activation.test.ts
-- src/tools/registerSynnergyzeRuntimeActivation.test.ts
-```
-
-Do not mark any module `ACTIVE`, `AUTHORIZED`, or settlement-final.
-
-- [ ] **Step 5: Run the fresh full qualification suite on Node 22.14.0**
-
-Run:
+- [ ] **Step 5: Run the fresh qualification suite on Node 22.14.0**
 
 ```bash
 npm run test:runtime-activation
@@ -1200,7 +915,7 @@ git diff --check
 git status --short
 ```
 
-Also run the existing focused authority/evidence suites:
+Also run:
 
 ```bash
 npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run \
@@ -1212,28 +927,26 @@ npx -y node@22.14.0 ./node_modules/vitest/vitest.mjs run \
   modules/genesis-node-builder/device-registry.test.ts
 ```
 
-Require zero failures, type-check exit 0, lint exit 0, and diff-check exit 0.
+Record the exact test counts from the command output.
 
-- [ ] **Step 6: Capture real Proof IDs from the deterministic runtime fixture**
+- [ ] **Step 6: Capture actual Proof IDs and native refs from the deterministic fixture**
 
-Temporarily add a single test assertion message or use a one-off local Node/tsx invocation against the exact deterministic fixture from `runtime-activation.test.ts` to print:
+Run a one-off Node/tsx invocation that imports the deterministic fixture used by `runtime-activation.test.ts` and prints:
 
-```text
-E-GEN-DEVICE-........
-E-SYN-COMPOSE-........
-E-WAR-AUTH-........
-E-RIV-RESERVE-........
-E-SYN-EXEC-........
-E-SYN-VERIFY-........
-E-RIV-SEAL-........
-G-RIV-RUNTIME-........
+```ts
+console.log(JSON.stringify({
+  proofIds: result.proofChain.map((proof) => proof.proofId),
+  compositeProofId: result.compositeProof?.proofId,
+  requestRef: result.requestRef,
+  correlationId: result.correlationId,
+}, null, 2));
 ```
 
-Do not commit debug logging. Re-run `git diff --check` and confirm the debug output path left no source change.
+If the fixture is not exported, temporarily export it from the test helper, run the command, then remove that temporary export before committing. Do not commit debug logging.
 
-- [ ] **Step 7: Write the qualification receipt with exact evidence**
+- [ ] **Step 7: Write the qualification receipt using only real captured values**
 
-Create `docs/alpha-node/SYNNERGYZE-RUNTIME-ACTIVATION-R0.1.md` with:
+Create `docs/alpha-node/SYNNERGYZE-RUNTIME-ACTIVATION-R0.1.md` and record:
 
 ```text
 Stage: SYNNERGYZE-RUNTIME-ACTIVATION-R0.1
@@ -1248,23 +961,17 @@ Registry truth promoted: false
 Next gate: EXTERNAL-EFFECT-ACTIVATION-R0.1
 ```
 
-Record:
+Also record the exact final commit SHA, exact full/focused test counts, actual Proof IDs from Step 6, and the actual Genesis resolution, Warden decision, River reservation, Synnergyze execution receipt, verified effect, River seal, and causal-trace refs from the deterministic qualification run.
 
-- exact final commit SHA;
-- exact full/focused test counts from fresh output;
-- exact representative Proof IDs from Step 6;
-- native Genesis resolution, Warden decision, River reservation, execution receipt, effect verification, River seal and causal-trace refs used by the deterministic qualification fixture;
-- the spoken proof statements, e.g.:
+For each material proof statement use:
 
 ```text
-E-WAR-AUTH-XXXXXXXX — Proof from Warden: the exact runtime request was authorized under the fixed conformance policy.
-E-RIV-SEAL-XXXXXXXX — Proof from RiverOS: the verified effect was accepted into the River evidence seal and causal trace.
-G-RIV-RUNTIME-XXXXXXXX — Proof from RiverOS: all mandatory controlled-runtime proof stages reached the terminal River seal.
+<actual Proof ID> — Proof from <actual proving system>: <exact claim proven by that record>.
 ```
 
-Never write merely “passed” when the receipt can name the Proof ID and proving system.
+Do not invent or preallocate a Proof ID in the receipt.
 
-- [ ] **Step 8: Commit conformance state and qualification receipt**
+- [ ] **Step 8: Commit**
 
 ```bash
 git add modules/synnergyze/client-control-plane.ts \
@@ -1279,13 +986,9 @@ git commit -m "chore: qualify controlled Synnergyze runtime R0.1"
 ### Task 6: Publish the stacked runtime PR and verify exact-head evidence
 
 **Files:**
-- No additional production changes expected.
+- No production files added in this task.
 
-**Interfaces:**
-- Consumes: verified runtime branch.
-- Produces: a stacked PR whose base is PR #129's feature branch until PR #129 merges.
-
-- [ ] **Step 1: Verify the final branch lineage**
+- [ ] **Step 1: Verify final lineage**
 
 ```bash
 git status --short --branch
@@ -1294,52 +997,44 @@ git rev-parse HEAD^{tree}
 git log --oneline -8
 ```
 
-Require the runtime branch to descend from:
+Require the branch to descend from `1608cfa803df2ffec41434b30aadfb65603bf408`.
 
-```text
-1608cfa803df2ffec41434b30aadfb65603bf408
-```
-
-and contain no force-rewritten history.
-
-- [ ] **Step 2: Compare runtime stage against the Warden-fit head**
-
-Use the forge compare API or:
+- [ ] **Step 2: Review exact diff scope**
 
 ```bash
 git diff --name-status 1608cfa803df2ffec41434b30aadfb65603bf408...HEAD
 ```
 
-Review that changed files are limited to the planned proof, River lineage, runtime activation, transport, conformance metadata, tests and docs. Confirm no real provider connector, SILK settlement adapter, payment rail, ERP write adapter, or production credential file was changed.
+Confirm the diff contains only proof, River lineage, controlled runtime, transport, conformance metadata, tests, and docs. Confirm it contains no real provider connector, payment rail, SILK settlement adapter, ERP write adapter, or production credential file.
 
-- [ ] **Step 3: Publish without force and create a stacked PR**
+- [ ] **Step 3: Push and open the stacked PR**
 
-Push `feat/synnergyze-runtime-activation-r0.1` and open a PR with:
+Open with:
 
 ```text
 base = feat/synnergyze-client-bootstrap-r0.1
 head = feat/synnergyze-runtime-activation-r0.1
+title = feat: activate proof-bound Synnergyze controlled runtime R0.1
 ```
 
-Title:
+PR body must state:
 
 ```text
-feat: activate proof-bound Synnergyze controlled runtime R0.1
+stacked on PR #129
+runtime state = CONTROLLED_ACTIVE
+Proof ID doctrine = deterministic issuer-owned human ID over full native digest
+qualification path = device-bound Genesis + transient device security
+externalEffects = false
+settlementFinality = false
+registryTruthPromoted = false
+next gate = EXTERNAL-EFFECT-ACTIVATION-R0.1
 ```
 
-The PR body MUST state:
+Include the exact final head SHA and exact test counts from Task 5.
 
-- stacked on PR #129;
-- exact Proof-ID doctrine;
-- device-bound Genesis + transient security qualification;
-- Warden/River/Synnergyze proof ownership;
-- exact test counts and head SHA;
-- `externalEffects:false`, `settlementFinality:false`, `registryTruthPromoted:false`;
-- next gate `EXTERNAL-EFFECT-ACTIVATION-R0.1`.
+- [ ] **Step 4: Verify exact-head CI**
 
-- [ ] **Step 4: Run/observe exact-head CI**
-
-Require success for the repository's standard PR workflows on the exact runtime head, including at minimum:
+Require success on the exact runtime head for:
 
 ```text
 test
@@ -1349,21 +1044,21 @@ Runtime AuthZ Bridge
 Datadog Synthetic tests
 ```
 
-If the new `test:runtime-activation` script is not a standalone workflow, prove its suites are included in the full `test` run and cite their focused local/CI output in the receipt.
+Verify the focused runtime/proof suites are either present in the full `test` run or separately recorded from `npm run test:runtime-activation`.
 
-- [ ] **Step 5: Final verification before any completion claim**
+- [ ] **Step 5: Perform final verification before any completion claim**
 
-Invoke `superpowers:verification-before-completion`, then verify:
+Invoke `superpowers:verification-before-completion` and verify:
 
 ```text
-full suite = 0 failures
-focused runtime/proof suite = 0 failures
-type-check = success
-lint = success
-PR head = exact qualified SHA
-PR base = feat/synnergyze-client-bootstrap-r0.1
-PR merge state = not merged
-external-effects flags = false
+full suite has zero failures
+focused runtime/proof suite has zero failures
+type-check success
+lint success
+PR head equals the qualified SHA
+PR base equals feat/synnergyze-client-bootstrap-r0.1
+PR is not merged
+external-effects flags remain false
 ```
 
 Only then report the stage as qualified. Do not merge either PR without explicit user instruction.
