@@ -1,6 +1,7 @@
 import type { IsolationTier } from "@microsoft/mxc-sdk";
 import {
   executeQualifiedMxcCommandR01,
+  type MxcContainmentHarnessDependencies,
   type MxcContainmentResult,
 } from "./mxcContainmentHarness.js";
 import type {
@@ -62,6 +63,7 @@ export interface MxcAlphaCaseEvidence {
 
 export interface MxcAlphaCaseExecutorDependencies {
   execute?: typeof executeQualifiedMxcCommandR01;
+  revalidateBeforeSpawn?: MxcContainmentHarnessDependencies["revalidateBeforeSpawn"];
   now?: () => Date;
 }
 
@@ -124,7 +126,9 @@ export async function runMxcAlphaCaseR01(
 
   let result: MxcContainmentResult;
   try {
-    result = await execute(contract, context, commandLine);
+    result = await execute(contract, context, commandLine, {
+      revalidateBeforeSpawn: dependencies.revalidateBeforeSpawn,
+    });
   } catch (error) {
     return {
       ...base,
