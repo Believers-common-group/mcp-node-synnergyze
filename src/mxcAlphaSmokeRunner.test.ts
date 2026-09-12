@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { PlatformSupport } from "@microsoft/mxc-sdk";
 import {
   assertAlphaProcessContainerReady,
-  MxcAlphaSmokeRunnerError,
+  type MxcAlphaSmokeRunnerError,
 } from "./mxcAlphaSmokeRunner.js";
 
 function support(overrides: Partial<PlatformSupport> = {}): PlatformSupport {
