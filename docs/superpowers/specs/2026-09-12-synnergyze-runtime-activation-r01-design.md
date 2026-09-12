@@ -39,6 +39,7 @@ R0.1 does NOT:
 - replace any native Genesis, Warden, Synnergyze, or River identifier;
 - create a second hashing/evidence engine;
 - make River the semantic author of proofs produced by another system;
+- allow Synnergyze to mint a proof claiming to be from Genesis, Warden, or RiverOS;
 - turn a passing test, Warden ALLOW, execution receipt, or River seal into production activation.
 
 The next explicit gate remains:
@@ -50,7 +51,7 @@ The next explicit gate remains:
 R0.1 activates only this bounded chain:
 
 ```text
-Genesis resolution
+Genesis device resolution
   -> Synnergyze composition
   -> Warden decision
   -> River evidence reservation
@@ -59,7 +60,7 @@ Genesis resolution
   -> post-execution observation
   -> Synnergyze effect verification
   -> River evidence seal + causal trace
-  -> composite runtime proof
+  -> River composite runtime proof
 ```
 
 The runtime state becomes:
@@ -76,6 +77,17 @@ registry_truth        = false
 ```
 
 `CONTROLLED_ACTIVE` means the governed reference/conformance chain is executable. It does not mean production-active.
+
+### 3.1 R0.1 qualification path is device-bound
+
+The qualification execution used to promote this stage MUST be device-bound so it exercises the Genesis device dependency fitted in `SYNNERGYZE-WARDEN-FIT-R0.1`.
+
+The qualification path therefore requires both:
+
+1. a current Genesis device resolution carried into the Warden request; and
+2. the existing transient device-security context required by the present River/execution path for device-bound action.
+
+This does not mean every future governed runtime action must be device-bound. It means this R0.1 activation proof must exercise the newly established device-bound authority chain rather than qualifying only an easier non-device path.
 
 ## 4. Proof ownership rule
 
@@ -100,11 +112,11 @@ Synnergyze verified effect != River sealed evidence
 River seal != external production activation
 ```
 
-## 5. Proof Reference contract
+## 5. Proof Reference contract and issuer-owned builders
 
-Introduce a small, provider-neutral proof reference contract. Recommended module boundary:
+Introduce a small, provider-neutral proof reference contract. Recommended shared contract boundary:
 
-`modules/proof/proof-reference.ts`
+`modules/proof/contracts.ts`
 
 Conceptual contract:
 
@@ -137,7 +149,28 @@ export interface ProofReferenceV1 {
 }
 ```
 
-The module may calculate/reference proofs, but it MUST NOT authorize action, verify identity, seal River evidence, or create settlement state.
+The shared module owns only types plus deterministic canonicalization/validation utilities. It MUST NOT expose a public API that accepts an arbitrary `proofFrom` and mints a proof on behalf of any system.
+
+Proof construction is issuer-owned. Recommended boundaries:
+
+```text
+modules/genesis-node-builder/proof-reference.ts
+modules/synnergyze/proof-reference.ts
+modules/warden/proof-reference.ts
+modules/river/proof-reference.ts
+```
+
+Each issuer-owned builder accepts only that subsystem's native output types and emits only that subsystem's `proofFrom` value.
+
+Examples:
+
+- Genesis builder consumes `GenesisDeviceResolutionV1` and emits `proofFrom: "GENESIS"`.
+- Warden builder consumes `WardenDecisionV1` plus the exact request lineage and emits `proofFrom: "WARDEN"`.
+- River reservation builder consumes `EvidenceReservationV1` and its exact action/decision lineage and emits `proofFrom: "RIVEROS"`.
+- Synnergyze execution builder consumes `SynnergyzeExecutionReceiptV1` and emits `proofFrom: "SYNNERGYZE"`.
+- River seal/composite builder consumes the native River seal + causal trace and required upstream Proof IDs and emits `proofFrom: "RIVEROS"`.
+
+The builders are proof adapters over native authoritative outputs. They MUST NOT authorize action, verify identity outside their existing native source contract, create a new River seal, or create settlement state.
 
 ## 6. Proof ID grammar
 
@@ -181,7 +214,7 @@ while the internal record remains bound to an exact `GENESIS-ESTATE-*` scope ref
 
 A future export/presentation layer may add an estate-specific masked alias, but R0.1 does not introduce a second identity authority or reversible pseudonym scheme.
 
-## 7. Canonicalization and digest rules
+## 7. Canonicalization, timestamps, and digest rules
 
 Proof identity is derived from a canonical payload containing at minimum:
 
@@ -204,22 +237,39 @@ Rules:
 2. The canonical payload MUST use deterministic key ordering.
 3. `integrityDigest = sha256(canonicalPayload)`.
 4. `proofId.ID8 = first8(uppercase(hex(integrityDigest)))`.
-5. Exact input replay MUST yield the same proof ID and digest.
-6. Mutated reuse of a proof ID with different canonical material MUST fail closed.
-7. A proof may reference existing native digest-bearing objects; it MUST NOT rewrite or truncate their native digest fields.
+5. `createdAt` MUST be derived from the native authoritative source event for that proof, not from the current wrapper/orchestrator invocation time.
+6. Exact native-source replay MUST yield the same `createdAt`, Proof ID, and digest even if replay occurs later.
+7. Mutated reuse of a Proof ID with different canonical material MUST fail closed.
+8. A proof may reference existing native digest-bearing objects; it MUST NOT rewrite or truncate their native digest fields.
+
+Recommended native timestamp mapping:
+
+```text
+Genesis device proof     -> resolution.resolvedAt
+Warden auth proof        -> decision.decidedAt
+River reservation proof -> reservation.reservedAt
+Synnergyze exec proof    -> executionReceipt.executedAt
+Synnergyze verify proof  -> verifiedEffect.verifiedAt
+River seal proof         -> seal.sealedAt
+River composite proof    -> seal.sealedAt
+```
+
+Synnergyze composition proof uses the request's canonical `requestedAt` because the request itself is the native composition output being indexed.
 
 ## 8. Required R0.1 proof chain
 
-A successful controlled runtime chain must surface these proof classes.
+A successful controlled runtime qualification chain must surface these proof classes.
 
-### 8.1 Genesis dependency proof
+### 8.1 Genesis device dependency proof
 
 ```text
 E-GEN-DEVICE-*
-Proof from Genesis: the execution device/context was canonically resolved for the estate with the stated attestation/assurance at the relevant time.
+Proof from Genesis: the execution device was canonically resolved for the estate with the stated attestation/assurance at the relevant time.
 ```
 
 Source refs include the Genesis resolution and its attestation/evidence refs.
+
+This proof is mandatory for the R0.1 qualification execution because that execution is explicitly device-bound.
 
 ### 8.2 Synnergyze composition proof
 
@@ -280,7 +330,16 @@ G-RIV-RUNTIME-*
 Proof from RiverOS: all required controlled-runtime proof stages are causally bound under the same governed lineage and have reached the R0.1 terminal seal state.
 ```
 
-The composite proof references the required stage Proof IDs plus native causal/seal refs. It does not create new authority and does not imply external activation.
+This proof is produced only by the River proof adapter from:
+
+- the native `EvidenceSealV1`;
+- the native `CausalTraceV1`;
+- the mandatory upstream stage Proof IDs;
+- the exact request/correlation lineage.
+
+Synnergyze orchestration may request/collect this proof, but it cannot mint `G-RIV-RUNTIME-*` itself.
+
+The composite proof does not create new authority and does not imply external activation.
 
 ## 9. Runtime orchestration
 
@@ -301,15 +360,20 @@ Recommended runtime activation service boundary:
 
 Responsibilities:
 
-1. accept only a request already valid for the qualified Warden-fit boundary;
-2. execute the canonical bounded chain;
-3. build proof references from native stage outputs;
-4. enforce same request/correlation/program/event/action lineage;
-5. require terminal River seal + causal trace;
-6. emit `CONTROLLED_ACTIVE_PROOF` only when every mandatory proof exists;
-7. preserve exact replay/idempotency;
-8. reject mutated replay;
-9. never call a real external-effect adapter in R0.1.
+1. accept only a request valid for the qualified Warden-fit boundary;
+2. require a device-bound reference request for R0.1 qualification;
+3. require both Genesis device context and the present transient device-security context for that device-bound qualification request;
+4. execute/reuse the canonical bounded Warden -> River -> Synnergyze -> verification -> River seal chain;
+5. obtain each proof from the owning subsystem's proof adapter;
+6. enforce same request/correlation/program/event/action/device lineage;
+7. require terminal River seal + causal trace;
+8. request/receive the River-owned composite runtime proof;
+9. emit `CONTROLLED_ACTIVE_PROOF` only when every mandatory proof exists and validates;
+10. preserve exact replay/idempotency;
+11. reject mutated replay;
+12. never call a real external-effect adapter in R0.1.
+
+The orchestrator is not a proof authority. It collects and validates proofs from the systems that own the underlying native facts.
 
 ## 10. Runtime result
 
@@ -339,6 +403,8 @@ The result is proof of a bounded governed runtime path, not production authority
 The runtime MUST NOT issue a composite proof when any of these occur:
 
 - Genesis resolution missing/malformed/stale/expired;
+- Genesis device ref differs from the execution device ref;
+- required transient device-security context is missing or non-ACTIVE for the R0.1 device-bound qualification path;
 - Synnergyze request lineage mismatch;
 - Warden result is DENY or ESCALATE;
 - Warden validity expires before reservation/execution;
@@ -350,22 +416,27 @@ The runtime MUST NOT issue a composite proof when any of these occur:
 - River evidence seal absent or malformed;
 - causal trace does not bind required reservation/effect lineage;
 - any mandatory Proof ID is absent;
-- proof source refs cross correlation/request scope;
+- a proof was not created by the adapter owned by its declared issuer;
+- proof source refs cross correlation/request/device scope;
 - proof digest does not reproduce the Proof ID suffix;
-- exact proof ID is reused with mutated canonical payload.
+- exact Proof ID is reused with mutated canonical payload.
 
 A partial chain may surface the proofs actually established, but MUST remain `BLOCKED` and MUST NOT mint `G-RIV-RUNTIME-*`.
 
 ## 12. Existing device-security interaction
 
-R0.1 must preserve the distinction between:
+R0.1 preserves the distinction between:
 
 - Genesis device identity/attestation/resolution; and
 - transient device-security/containment context.
 
-Where the controlled execution path requires transient device security, it remains a separate fail-closed precondition. Proof references may cite its evidence, but it does not become Genesis identity and it does not become Warden authority.
+For the device-bound R0.1 qualification execution, the existing transient device-security context remains mandatory because the current River reservation/execution path already treats it as a device-bound fail-closed dependency.
+
+Proof references may cite its evidence, but transient device security does not become Genesis identity and it does not become Warden authority.
 
 No R0.1 change may weaken the current device-security execution-gate checks merely to make runtime activation pass.
+
+A later version may define policy-driven cases where Genesis device dependency exists without transient device-security, but that is not part of this activation stage.
 
 ## 13. Configuration and conformance state
 
@@ -394,23 +465,27 @@ TDD must prove at least:
 
 1. deterministic Proof ID/digest generation;
 2. reordered duplicate source refs canonicalize identically;
-3. changed source material changes Proof ID;
-4. mismatched Proof ID/digest fails closed;
-5. every required stage has correct `proofFrom` ownership;
-6. Warden DENY/ESCALATE cannot mint downstream runtime proof;
-7. missing River reservation blocks execution/composite proof;
-8. execution receipt remains `EXECUTED_UNVERIFIED` until observation/verification;
-9. verification exception cannot mint River seal proof;
-10. missing/mismatched causal trace blocks composite proof;
-11. successful synthetic chain yields all required stage proofs plus `G-RIV-RUNTIME-*`;
-12. exact replay yields identical proof IDs and no second adapter effect;
-13. mutated replay fails closed;
-14. runtime result always reports `externalEffects:false`;
-15. runtime result always reports `settlementFinality:false`;
-16. runtime result always reports `registryTruthPromoted:false`;
-17. existing Warden-fit/device tests remain green;
-18. existing River seal/causal-trace tests remain green;
-19. no real external network/provider call is introduced.
+3. native-source replay at a later wall-clock time preserves Proof ID because `createdAt` comes from the native source event;
+4. changed source material changes Proof ID;
+5. mismatched Proof ID/digest fails closed;
+6. generic/shared proof code cannot mint arbitrary issuer provenance;
+7. every required stage has correct `proofFrom` ownership;
+8. the R0.1 qualification request is device-bound and carries a valid Genesis device resolution;
+9. missing/inactive transient device-security blocks the device-bound qualification execution;
+10. Warden DENY/ESCALATE cannot mint downstream runtime proof;
+11. missing River reservation blocks execution/composite proof;
+12. execution receipt remains `EXECUTED_UNVERIFIED` until observation/verification;
+13. verification exception cannot mint River seal proof;
+14. missing/mismatched causal trace blocks composite proof;
+15. successful synthetic chain yields all required stage proofs plus River-owned `G-RIV-RUNTIME-*`;
+16. exact replay yields identical proof IDs and no second adapter effect;
+17. mutated replay fails closed;
+18. runtime result always reports `externalEffects:false`;
+19. runtime result always reports `settlementFinality:false`;
+20. runtime result always reports `registryTruthPromoted:false`;
+21. existing Warden-fit/device tests remain green;
+22. existing River seal/causal-trace tests remain green;
+23. no real external network/provider call is introduced.
 
 ## 15. Proof-language operating convention
 
@@ -424,7 +499,7 @@ For material evidence statements in qualification records, runtime reports, oper
 
 Do not require humans to speak/read the full cryptographic digest unless performing integrity validation or forensic investigation.
 
-When several systems contribute, name the final proving authority and cite the upstream proof IDs/source refs rather than saying vaguely that “the system proved it.”
+When several systems contribute, name the final proving authority and cite the upstream Proof IDs/source refs rather than saying vaguely that “the system proved it.”
 
 Example:
 
