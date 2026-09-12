@@ -15,6 +15,7 @@ import { maybeRegisterWardenConformanceDecision } from "../tools/registerWardenC
 import { maybeRegisterRiverWardenConformanceReservation } from "../tools/registerRiverWardenConformanceReservation.ts";
 import { maybeRegisterWardenRiverSynnergyzeConformanceExecution } from "../tools/registerWardenRiverSynnergyzeConformanceExecution.ts";
 import { maybeRegisterWardenRiverEffectConformance } from "../tools/registerWardenRiverEffectConformance.ts";
+import { maybeRegisterSynnergyzeRuntimeActivation } from "../tools/registerSynnergyzeRuntimeActivation.ts";
 import { maybeRegisterWardenReconciliationConformance } from "../tools/registerWardenReconciliationConformance.ts";
 import {
   createDefaultPestelLegislativeServiceV1,
@@ -100,6 +101,7 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
   maybeRegisterRiverWardenConformanceReservation(server, toolFilter);
   maybeRegisterWardenRiverSynnergyzeConformanceExecution(server, toolFilter);
   maybeRegisterWardenRiverEffectConformance(server, toolFilter);
+  maybeRegisterSynnergyzeRuntimeActivation(server, toolFilter);
   maybeRegisterWardenReconciliationConformance(server, toolFilter);
 
   const pestelResultStore = new InMemoryLegislativeIntelligenceResultStoreV1();
@@ -124,58 +126,25 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
   if (credentials) {
     processCallbackArguments = async (params, securityKeys) => {
       const result = { ...params };
-
-      if (securityKeys.has("applicationId")) {
-        result.applicationId = credentials.applicationId;
-      }
-
-      if (securityKeys.has("apiKey")) {
-        result.apiKey = credentials.apiKey;
-      }
-
+      if (securityKeys.has("applicationId")) result.applicationId = credentials.applicationId;
+      if (securityKeys.has("apiKey")) result.apiKey = credentials.apiKey;
       return result;
     };
   } else {
     const appState = await AppStateManager.load();
+    const { accessToken } = appState.getAll();
 
-    if (!appState.get("accessToken")) {
-      const token = await authenticate();
-
-      await appState.update({
-        accessToken: token.access_token,
-        refreshToken: token.refresh_token,
-      });
+    if (!accessToken) {
+      await authenticate(appState);
     }
 
-    const dashboardApi = new DashboardApi({ baseUrl: CONFIG.dashboardApiBaseUrl, appState });
-
-    processCallbackArguments = async (params, securityKeys) => {
-      const result = { ...params };
-
-      if (securityKeys.has("apiKey")) {
-        result.apiKey = await dashboardApi.getApiKey(params.applicationId);
-      }
-
-      return result;
-    };
-
+    const dashboardApi = new DashboardApi(appState);
     regionHotFixMiddlewares.push(makeRegionRequestMiddleware(dashboardApi));
-
-    if (isToolAllowed(GetUserInfoOperationId, toolFilter)) {
-      registerGetUserInfo(server, dashboardApi);
-    }
-
-    if (isToolAllowed(GetApplicationsOperationId, toolFilter)) {
-      registerGetApplications(server, dashboardApi);
-    }
-
-    if (isToolAllowed(SetAttributesForFacetingOperationId, toolFilter)) {
-      registerSetAttributesForFaceting(server, dashboardApi);
-    }
-
-    if (isToolAllowed(SetCustomRankingOperationId, toolFilter)) {
-      registerSetCustomRanking(server, dashboardApi);
-    }
+    processCallbackArguments = async (params) => {
+      if (typeof params.applicationId !== "string") return params;
+      const apiKey = await dashboardApi.getApiKey(params.applicationId);
+      return { ...params, apiKey };
+    };
   }
 
   for (const openApiSpec of [
@@ -186,52 +155,25 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
     MonitoringSpec,
     CollectionsSpec,
     QuerySuggestionsSpec,
+    UsageSpec,
+    IngestionSpec,
   ]) {
     registerOpenApiTools({
       server,
+      openApiSpec,
+      filter: toolFilter,
       processInputSchema,
       processCallbackArguments,
-      openApiSpec,
-      toolFilter,
+      requestMiddlewares: regionHotFixMiddlewares,
     });
   }
 
-  registerOpenApiTools({
-    server,
-    processInputSchema,
-    processCallbackArguments,
-    openApiSpec: UsageSpec,
-    toolFilter,
-    requestMiddlewares: [
-      async ({ request }) => {
-        const url = new URL(request.url);
-        const nameParams = url.searchParams.get("name");
-
-        if (!nameParams) {
-          return new Request(url, request.clone());
-        }
-
-        const nameValues = nameParams.split(",");
-
-        url.searchParams.delete("name");
-
-        nameValues.forEach((value) => {
-          url.searchParams.append("name", value);
-        });
-
-        return new Request(url, request.clone());
-      },
-    ],
-  });
-
-  registerOpenApiTools({
-    server,
-    processInputSchema,
-    processCallbackArguments,
-    openApiSpec: IngestionSpec,
-    toolFilter,
-    requestMiddlewares: [...regionHotFixMiddlewares],
-  });
+  if (isToolAllowed(GetUserInfoOperationId, toolFilter)) registerGetUserInfo(server);
+  if (isToolAllowed(GetApplicationsOperationId, toolFilter)) registerGetApplications(server);
+  if (isToolAllowed(SetAttributesForFacetingOperationId, toolFilter)) {
+    registerSetAttributesForFaceting(server);
+  }
+  if (isToolAllowed(SetCustomRankingOperationId, toolFilter)) registerSetCustomRanking(server);
 
   return server;
 }
