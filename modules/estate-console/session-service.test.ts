@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { describe, expect, it } from "vitest";
 
 import type { EstateConsoleAdmissionRequestV1 } from "./contracts.ts";
@@ -132,5 +134,26 @@ describe("Estate Console session admission", () => {
       if (result.state === "ISSUED") throw new Error("unexpected_issued_session");
       expect(result.reasonCode).toBe("IDENTITY_CONTEXT_MISMATCH");
     }
+  });
+
+  it("keeps the Alpha example config synthetic and secret-free", () => {
+    const raw = readFileSync(
+      new URL("../../config/estate-console/ALPHA-NODE-001.example.json", import.meta.url),
+      "utf8",
+    );
+    const config = JSON.parse(raw) as {
+      principalRef: string;
+      deviceRef: string;
+      consoleRef: string;
+      publicKeyFingerprint: string;
+      capabilities: string[];
+    };
+
+    expect(config.principalRef).toBe("DIGITALME:TEST-IPAD-001");
+    expect(config.deviceRef).toBe("GENESIS-DEVICE:IPAD-EXAMPLE-001");
+    expect(config.consoleRef).toBe("TEXTASTIC-IPAD-EXAMPLE-001");
+    expect(config.publicKeyFingerprint).toBe("SHA256:EXAMPLE-TEXTASTIC-IPAD-001");
+    expect(config.capabilities).toEqual(["DISCOVER", "OBSERVE", "INSPECT", "SUBMIT"]);
+    expect(raw).not.toMatch(/PRIVATE KEY|password|api[_-]?key|secret/i);
   });
 });
