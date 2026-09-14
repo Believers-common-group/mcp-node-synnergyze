@@ -1,0 +1,23 @@
+{
+  "principalRef": "DIGITALME:TEST-IPAD-001",
+  "deviceRef": "GENESIS-DEVICE:IPAD-EXAMPLE-001",
+  "consoleRef": "TEXTASTIC-IPAD-EXAMPLE-001",
+  "nodeRef": "ALPHA-NODE-001",
+  "estateRef": "GENESIS-ESTATE-001",
+  "profileRef": "ESTATE-CONSOLE-PROFILE:ENGINEERING-STAGING-V0.1",
+  "deviceState": "ACTIVE",
+  "publicKeyFingerprint": "SHA256:EXAMPLE-TEXTASTIC-IPAD-001",
+  "capabilities": [
+    "DISCOVER",
+    "OBSERVE",
+    "INSPECT",
+    "SUBMIT"
+  ],
+  "sourceRefs": [
+    "REGISTRY:DEVICE:IPAD-EXAMPLE-001",
+    "DIGITALME:TEST-IPAD-001",
+    "POLICY:ESTATE-CONSOLE:G0"
+  ],
+  "validFrom": "2026-09-14T00:00:00.000Z",
+  "validUntil": "2027-09-14T00:00:00.000Z"
+}
