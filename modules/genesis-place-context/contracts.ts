@@ -1,12 +1,16 @@
 export type Timestamp = string;
 export interface PlaceBinding {
   binding_id:string; estate_id:string; place_id:string; physical_site_ref:string;
+  legal_entity_refs:readonly string[];occupancy_basis:"OWNER"|"TENANT"|"LICENSEE"|"MANAGER"|"OTHER"|"UNKNOWN";
   status:"PROPOSED"|"VERIFIED"|"SUSPENDED"|"REVOKED";
   jurisdiction_refs:readonly string[]; recognition_evidence_refs:readonly string[];
   verified_at?:string; verified_by?:string; valid_from:string; valid_until?:string;
 }
 export interface Requirement {
   requirement_id:string; jurisdiction_ref:string; source_ref:string; source_verified_at?:string;
+  authority_class:"STATUTORY"|"CONTRACTUAL"|"ESTATE_POLICY";
+  category:"TAX"|"LABOUR"|"LICENCE"|"SAFETY"|"ENVIRONMENT"|"PRIVACY"|"DATA_RESIDENCY"|"MUNICIPAL"|"OTHER";
+  inheritance:"CONTEXTUAL"|"NONE";
   verification_state:"VERIFIED"|"UNVERIFIED"|"EXPIRED";
   applicability_predicate_ref:string; effective_from:string; effective_until?:string;
   exception_refs?:readonly string[];
@@ -14,6 +18,7 @@ export interface Requirement {
 export interface Envelope {
   envelope_id:string; binding_id:string; estate_id:string; place_id:string; version:string;
   source_set_status:"VERIFIED"|"PARTIAL"|"UNVERIFIED"; compiled_at:string;
+  scope_factors:readonly ("ACTIVITY"|"LEGAL_ENTITY"|"ACTOR"|"PRODUCT"|"COUNTERPARTY"|"DESTINATION"|"DATA_FLOW"|"TIME")[];
   valid_from:string; valid_until?:string; requirements:readonly Requirement[];
 }
 export interface Activity {

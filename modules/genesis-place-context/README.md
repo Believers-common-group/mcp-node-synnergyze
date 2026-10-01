@@ -8,3 +8,5 @@ npx vitest run modules/genesis-place-context/resolver.test.ts
 
 ## Safety
 The source adapter is NOT intrinsically trustworthy. A future provider-native verifier must independently check source identity, regulator trust root, document authenticity, content hash, effective/expiry and amendment/supersession, and signed evidence. The predicate adapter must independently validate conditions, exceptions, applicability evidence and scope. This first iteration prohibits automatically granting exceptions, treats conflicts as unresolved, and supplies no legal rule corpus. A COMPLETE status under fabricated test receipts never confers authority. Warden admission, privacy classification, signed provenance, River evidence, and live endpoint are separate G2+ gated work.
+
+G1 alignment: `legal_entity_refs`, `occupancy_basis`, rule category, authority class, inheritance, source freshness and `scope_factors` are now checked rather than inferred from a VERIFIED label. Synthetic tenancy does not establish actual lawful possession.

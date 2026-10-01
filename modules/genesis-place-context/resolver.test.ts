@@ -9,13 +9,16 @@ function example():ResolveRequest {
    evaluated_at:now,actor_digitalme_ref:"SYNTH-ACTOR",estate_id:"SYNTH-E",
    place_id:"SYNTH-P",context_facts_ref:"SYNTH-FACT"},
  bindings:[{binding_id:"SYNTH-B",estate_id:"SYNTH-E",place_id:"SYNTH-P",
-   physical_site_ref:"SYNTH-SITE",status:"VERIFIED",
+   physical_site_ref:"SYNTH-SITE",legal_entity_refs:["SYNTH-ENTITY"],
+   occupancy_basis:"TENANT",status:"VERIFIED",
    jurisdiction_refs:["SYNTH-J"],recognition_evidence_refs:["SYNTH-RECOGNITION"],
    verified_by:"SYNTH-VERIFIER",verified_at:verified,valid_from:from}],
  envelope:{envelope_id:"SYNTH-ENV",binding_id:"SYNTH-B",estate_id:"SYNTH-E",
    place_id:"SYNTH-P",version:"G0-R0.2",compiled_at:verified,valid_from:from,
+   scope_factors:["ACTIVITY","LEGAL_ENTITY","TIME"],
    source_set_status:"VERIFIED",requirements:[{requirement_id:"SYNTH-RULE",
      jurisdiction_ref:"SYNTH-J",source_ref:"SYNTH-SOURCE",source_verified_at:verified,
+     authority_class:"STATUTORY",category:"TAX",inheritance:"CONTEXTUAL",
      verification_state:"VERIFIED",effective_from:from,
      applicability_predicate_ref:"SYNTH-PREDICATE"}]},
  admitted_providers:["SYNTH-TRUSTED"],
@@ -36,6 +39,9 @@ describe("G1 sandbox — fake proofs only, not legal verification",()=>{
  it("deterministic",async()=>expect(await run()).toEqual(await run()));
  it("missing adapter holds",async()=>expect((await run(f=>{f.sources=undefined})).resolution_status).toBe("UNRESOLVED"));
  it("missing legal inventory holds",async()=>expect((await run(f=>{f.envelope={...f.envelope,requirements:[]}})).resolution_status).toBe("UNRESOLVED"));
+ it("binding with no legal entity is unresolved",async()=>expect((await run(f=>{f.bindings=[{...f.bindings[0],legal_entity_refs:[]}]})).resolution_status).toBe("UNRESOLVED"));
+ it("missing recognized occupancy basis is unresolved",async()=>expect((await run(f=>{f.bindings=[{...f.bindings[0],occupancy_basis:"UNKNOWN"}]})).resolution_status).toBe("UNRESOLVED"));
+ it("stale declared rule verification cannot pass",async()=>expect((await run(f=>{f.envelope={...f.envelope,requirements:[{...f.envelope.requirements[0],source_verified_at:"2026-09-01T00:00:00+05:30"}]}})).resolution_status).toBe("UNRESOLVED"));
  it("suspended binding holds",async()=>expect((await run(f=>{f.bindings=[{...f.bindings[0],status:"SUSPENDED"}]})).resolution_status).toBe("UNRESOLVED"));
  it("different estate cannot borrow place",async()=>expect((await run(f=>{f.bindings=[{...f.bindings[0],estate_id:"DIFFERENT"}]})).resolution_status).toBe("UNRESOLVED"));
  it("two same estate bindings conflict",async()=>expect((await run(f=>{f.bindings=[f.bindings[0],{...f.bindings[0],binding_id:"OTHER"}]})).resolution_status).toBe("UNRESOLVED"));

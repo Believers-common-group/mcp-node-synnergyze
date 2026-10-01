@@ -20,13 +20,14 @@ export async function resolvePlaceContextG1(i:ResolveRequest):Promise<Resolution
   const matching=!!b&&e.binding_id===b.binding_id&&e.estate_id===a.estate_id&&e.place_id===a.place_id;
   if(!matching)open.push("CTX-CROSS_ESTATE_OR_ENVELOPE_MISMATCH");
   if(!b||b.status!=="VERIFIED"||!b.verified_by||!b.verified_at||
-     !b.recognition_evidence_refs.length||!b.jurisdiction_refs.length)open.push("CTX-RECOGNITION_NOT_VERIFIED");
+     !b.recognition_evidence_refs.length||!b.jurisdiction_refs.length||
+     !b.legal_entity_refs?.length||!b.occupancy_basis||b.occupancy_basis==="UNKNOWN")open.push("CTX-RECOGNITION_NOT_VERIFIED");
   if(checked===undefined||at===undefined||checked<at||
      !b||!inWindow(b.valid_from,b.valid_until,at??0)||
      !inWindow(e.valid_from,e.valid_until,at??0)||
      date(e.compiled_at)===undefined||date(e.compiled_at)!> (checked??0))
      open.push("CTX_INVALID_TIME_OR_VERSION");
-  if(e.source_set_status!=="VERIFIED"||!e.requirements.length)open.push("CTX-INVENTORY_NOT_VERIFIED");
+  if(e.source_set_status!=="VERIFIED"||!e.requirements.length||!e.scope_factors?.length)open.push("CTX-INVENTORY_NOT_VERIFIED");
   if(!i.sources||!i.predicates||!i.admitted_providers.length)open.push("CTX-ADAPTER_NOT_ADMITTED");
   const age=i.max_source_age_ms??86400000;
   if(!Number.isFinite(age)||age<=0)open.push("CTX-FRESHNESS_POLICY_INVALID");
@@ -50,10 +51,12 @@ export async function resolvePlaceContextG1(i:ResolveRequest):Promise<Resolution
     }
     // No legal rule is evaluated if physical-site recognition is unresolved.
     if(!open.length)for(const r of e.requirements) {
-      if(!r.requirement_id||r.verification_state!=="VERIFIED"||
+      if(!r.requirement_id||!r.authority_class||!r.category||!r.inheritance||
+         r.verification_state!=="VERIFIED"||
          !b!.jurisdiction_refs.includes(r.jurisdiction_ref)||
          !r.source_verified_at||date(r.source_verified_at)===undefined||
          date(r.source_verified_at)!>checked!||
+         checked!-date(r.source_verified_at)!>age||
          !inWindow(r.effective_from,r.effective_until,at!)){
         open.push(r.requirement_id||"CTX-UNNAMED_RULE");continue;
       }
