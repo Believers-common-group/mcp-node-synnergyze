@@ -63,4 +63,15 @@ describe("G1 sandbox — fake proofs only, not legal verification",()=>{
   expect(r.resolution_status).toBe("UNRESOLVED");
  });
  it("invalid chronology fails closed",async()=>expect((await run(f=>{f.activity={...f.activity,evaluated_at:"2026-09-01T00:00:00+05:30"}})).resolution_status).toBe("UNRESOLVED"));
+ it("binds actor, facts, and source material to context identity",async()=>{
+  const initial=await run(),otherActor=await run(f=>{f.activity={...f.activity,actor_digitalme_ref:"DIFFERENT"}});
+  const otherFacts=await run(f=>{f.activity={...f.activity,context_facts_ref:"OTHER-FACTS"}});
+  const otherSource=await run(f=>{const original=f.sources!;
+    f.sources={async verify(ref,j){const v=await original.verify(ref,j);
+      return v&&{...v,sha256:"b".repeat(64)};}};});
+  const otherCategory=await run(f=>{f.envelope={...f.envelope,requirements:[
+    {...f.envelope.requirements[0],category:"LABOUR"}]};});
+  for(const next of [otherActor,otherFacts,otherSource,otherCategory])
+    expect(next.source_digest).not.toBe(initial.source_digest);
+ });
 });
