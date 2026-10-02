@@ -78,8 +78,16 @@ export async function resolvePlaceContextG1(i:ResolveRequest):Promise<Resolution
   const ar=sorted(applied),ur=sorted(open);
   const resolution_status=ur.length===0&&ar.length?"COMPLETE":ar.length?"PARTIAL":"UNRESOLVED";
   verified.sort((x,y)=>(x.ref+x.evidence).localeCompare(y.ref+y.evidence));
-  const evidence_hash=hash({activity:a.activity_id,estate:a.estate_id,place:a.place_id,
-    binding:b?.binding_id||"UNRESOLVED",envelope:e.envelope_id,version:e.version,
+  // Hash the full acting subject, observed facts, Place binding, rule snapshot and
+  // source receipts. Stable set ordering prevents false changes from list order.
+  const evidence_hash=hash({activity:a,
+    binding:b?{...b,legal_entity_refs:sorted(b.legal_entity_refs||[]),
+      jurisdiction_refs:sorted(b.jurisdiction_refs),
+      recognition_evidence_refs:sorted(b.recognition_evidence_refs)}:null,
+    envelope:{...e,scope_factors:sorted(e.scope_factors||[]),
+      requirements:[...e.requirements].map(req=>({...req,
+        exception_refs:sorted(req.exception_refs||[])
+      })).sort((x,y)=>x.requirement_id.localeCompare(y.requirement_id))},
     applied:ar,unresolved:ur,verified});
   return {
     resolution_id:"CONTEXT:"+evidence_hash.slice(0,24),activity_id:a.activity_id,
