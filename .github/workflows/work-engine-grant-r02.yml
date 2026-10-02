@@ -1,0 +1,27 @@
+name: VSR Work Engine R0.2-D Grant Verification
+on:
+  pull_request:
+    branches: [genesis]
+    paths:
+      - 'modules/warden/work-plan-grant-verifier*'
+      - '.github/workflows/work-engine-grant-r02.yml'
+  push:
+    branches: ['change/work-engine-r0.2-d']
+    paths:
+      - 'modules/warden/work-plan-grant-verifier*'
+      - '.github/workflows/work-engine-grant-r02.yml'
+permissions:
+  contents: read
+jobs:
+  reference-grant-verification:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci
+      - run: npm run type-check
+      - run: npx vitest run modules/warden/work-plan-grant-verifier.test.ts
