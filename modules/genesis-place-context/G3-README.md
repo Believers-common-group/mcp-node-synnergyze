@@ -18,3 +18,6 @@ No native network fetch, credentials, writes, payments, machines, shell access, 
 `npm run test`
 
 G3 approval requires independent admission of credible competent authority roots, key revocation/freshness, provider native adapters, non-synthetic Warden policy enforcement, append-only River verification, redaction/provenance and bounded real-site pilot acceptance. Passing synthetic unit tests does not satisfy those gates.
+
+## Qualification hardening
+A signed applicability conclusion is now bound to the **specific obligation, jurisdiction, actor, activity class and event time, Place binding, envelope ID/version and facts reference**. Shared predicates across distinct requirements are held pending an explicit many-to-many rule contract. Claimed recognition/requirement verification times must agree with source issuance, and a claim cannot be issued outside its signed validity interval. These controls limit replay and post-dated claims but do not independently establish legally competent authorities or complete regulations.

@@ -117,7 +117,10 @@ export async function runSignedPlaceReviewG3(input:PlaceSourceEndToEndInputG3):
      !b.physical_site_ref||!b.recognition_evidence_refs.length)
     return hold("G3_RECOGNITION_INCOMPLETE");
   for(const ref of b.recognition_evidence_refs){
+    const signedRecognition=bundle.inspect(ref,jurisdiction,"RECOGNITION");
     const proof=documentFor(ref,"RECOGNITION");
+    if(!signedRecognition || signedRecognition.claim.issued_at!==b.verified_at)
+      return hold("G3_RECOGNITION_ISSUANCE_MISMATCH");
     if(!proof || proof.schema!=="G3-RECOGNITION:1"||
        proof.binding_id!==b.binding_id||proof.estate_id!==b.estate_id||
        proof.place_id!==b.place_id||proof.physical_site_ref!==b.physical_site_ref||
@@ -129,8 +132,15 @@ export async function runSignedPlaceReviewG3(input:PlaceSourceEndToEndInputG3):
        !sameRefs(proof.jurisdiction_refs as string[],b.jurisdiction_refs))
       return hold("G3_RECOGNITION_PAYLOAD_MISMATCH");
   }
+  const usedPredicates=new Set<string>();
   for(const r of e.requirements) {
+    if(usedPredicates.has(r.applicability_predicate_ref))
+      return hold("G3_AMBIGUOUS_SHARED_PREDICATE");
+    usedPredicates.add(r.applicability_predicate_ref);
+    const signedRule=bundle.inspect(r.source_ref,jurisdiction,"REQUIREMENT");
     const proof=documentFor(r.source_ref,"REQUIREMENT");
+    if(!signedRule||signedRule.claim.issued_at!==r.source_verified_at)
+      return hold("G3_REQUIREMENT_ISSUANCE_MISMATCH");
     if(!proof||proof.schema!=="G3-REQUIREMENT:1"||
        proof.requirement_id!==r.requirement_id||
        proof.source_ref!==r.source_ref||proof.jurisdiction_ref!==r.jurisdiction_ref||
@@ -152,9 +162,17 @@ export async function runSignedPlaceReviewG3(input:PlaceSourceEndToEndInputG3):
       if(!result)return;
       let p:Record<string,unknown>;
       try{p=JSON.parse(result.body.toString("utf8")) as Record<string,unknown>;}catch{return}
-      if(p.schema!=="G3-APPLICABILITY:1"||p.predicate_ref!==predicate_ref||
-         p.activity_id!==activity.activity_id||p.estate_id!==activity.estate_id||
-         p.place_id!==activity.place_id||p.context_facts_ref!==activity.context_facts_ref||
+      const rule=e.requirements.find(r=>r.applicability_predicate_ref===predicate_ref);
+      if(!rule||p.schema!=="G3-APPLICABILITY:1"||p.predicate_ref!==predicate_ref||
+         p.requirement_id!==rule.requirement_id||p.jurisdiction_ref!==rule.jurisdiction_ref||
+         p.activity_id!==activity.activity_id||p.activity_class!==activity.activity_class||
+         p.activity_occurred_at!==activity.activity_occurred_at||
+         p.evaluated_at!==activity.evaluated_at||
+         p.actor_digitalme_ref!==activity.actor_digitalme_ref||
+         p.estate_id!==activity.estate_id||p.place_id!==activity.place_id||
+         p.binding_id!==b.binding_id||p.envelope_id!==e.envelope_id||
+         p.envelope_version!==e.version||
+         p.context_facts_ref!==activity.context_facts_ref||
          (p.result!=="APPLIES"&&p.result!=="DOES_NOT_APPLY"))return;
       return {predicate_ref,status:p.result,evidence_ref:ref,verified:true};
     },

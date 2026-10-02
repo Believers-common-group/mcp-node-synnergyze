@@ -114,8 +114,14 @@ function makeFixture():Fixture {
     signed(predicateRef,"PREDICATE",{
       schema:"G3-APPLICABILITY:1",
       predicate_ref:requirement.applicability_predicate_ref,
-      activity_id:activity.activity_id,estate_id:activity.estate_id,
-      place_id:activity.place_id,context_facts_ref:activity.context_facts_ref,
+      requirement_id:requirement.requirement_id,jurisdiction_ref:requirement.jurisdiction_ref,
+      activity_id:activity.activity_id,activity_class:activity.activity_class,
+      activity_occurred_at:activity.activity_occurred_at,evaluated_at:activity.evaluated_at,
+      actor_digitalme_ref:activity.actor_digitalme_ref,
+      estate_id:activity.estate_id,place_id:activity.place_id,
+      binding_id:b.binding_id,envelope_id:envelope.envelope_id,
+      envelope_version:envelope.version,
+      context_facts_ref:activity.context_facts_ref,
       result:"APPLIES",
     }),
     signed(inventoryRef,"INVENTORY",{
@@ -293,5 +299,59 @@ describe("G3 signed source assurance — synthetic keys ONLY",()=>{
   it("holds a signed rule source with wrong jurisdiction claim",async()=>{
     const r=await run(f=>{const i=f.index.requirement,p=payload(f.input.signed_sources[i]);f.resign(i,p,{jurisdiction_ref:"OTHER-JURISDICTION"})});
     expect(r.reason_codes).toContain("G3_REQUIREMENT_PAYLOAD_MISMATCH");
+  });
+  it("holds replay of signed predicate against a different event time",async()=>{
+    const r=await run(f=>{f.input.context.activity={...f.input.context.activity,
+      activity_occurred_at:"2026-10-02T05:58:30.000Z"}});
+    expect(r.state).toBe("HOLD");
+    expect(r.resolution?.resolution_status).toBe("UNRESOLVED");
+  });
+  it("holds reuse of signed applicability across a different actor",async()=>{
+    const r=await run(f=>{f.input.context.activity={...f.input.context.activity,
+      actor_digitalme_ref:"OTHER-ACTOR"}});
+    expect(r.state).toBe("HOLD");
+    expect(r.resolution?.resolution_status).toBe("UNRESOLVED");
+  });
+  it("holds replay of signed applicability after envelope version change",async()=>{
+    const r=await run(f=>{
+      const c=f.input.context;
+      c.envelope={...c.envelope,version:"R0.2-REPLAY"};
+      const i=f.index.inventory,p=payload(f.input.signed_sources[i]);
+      f.resign(i,{...p,version:"R0.2-REPLAY",snapshot_digest:envelopeInventoryDigestG3(c)},{
+        source_ref:"G3-INVENTORY:"+c.envelope.envelope_id+":"+c.envelope.version,
+      });
+    });
+    expect(r.state).toBe("HOLD");
+  });
+  it("rejects a correctly signed proof whose issuance predates its claimed verification",async()=>{
+    const r=await run(f=>{
+      const i=f.index.requirement,p=payload(f.input.signed_sources[i]);
+      f.resign(i,p,{issued_at:"2026-10-02T05:49:00.000Z"});
+    });
+    expect(r.reason_codes).toContain("G3_REQUIREMENT_ISSUANCE_MISMATCH");
+  });
+  it("rejects recognition claims issued before claimed verification",async()=>{
+    const r=await run(f=>{
+      const i=f.index.recognition,p=payload(f.input.signed_sources[i]);
+      f.resign(i,p,{issued_at:"2026-10-02T05:49:00.000Z"});
+    });
+    expect(r.reason_codes).toContain("G3_RECOGNITION_ISSUANCE_MISMATCH");
+  });
+  it("rejects a signed source whose validity ended before its issuance",async()=>{
+    const r=await run(f=>{
+      const i=f.index.inventory,p=payload(f.input.signed_sources[i]);
+      f.resign(i,p,{valid_until:"2026-10-02T05:49:00.000Z"});
+    });
+    expect(r.reason_codes).toContain("G3_SIGNED_INVENTORY_MISSING_OR_INVALID");
+  });
+  it("holds reusing a predicate shared by separate obligations",async()=>{
+    const r=await run(f=>{
+      const c=f.input.context,old=c.envelope.requirements[0];
+      c.envelope={...c.envelope,requirements:[old,{...old,requirement_id:"TEST-OBLIGATION-2",
+        source_ref:"TEST-STATUTE-2"}]};
+      const i=f.index.inventory,p=payload(f.input.signed_sources[i]);
+      f.resign(i,{...p,snapshot_digest:envelopeInventoryDigestG3(c)});
+    });
+    expect(r.reason_codes).toContain("G3_AMBIGUOUS_SHARED_PREDICATE");
   });
 });

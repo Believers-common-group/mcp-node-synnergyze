@@ -80,7 +80,7 @@ export class VerifiedSourceBundleG3 {
     const from=time(c.valid_from), until=time(c.valid_until);
     if (now===undefined||issued===undefined||from===undefined||until===undefined||
         !Number.isFinite(this.maxAgeMs)||this.maxAgeMs<=0||
-        until<from||now<issued||now-issued>this.maxAgeMs||now<from||now>until) return;
+        until<from||issued<from||issued>until||now<issued||now-issued>this.maxAgeMs||now<from||now>until) return;
     const matching=this.anchors.filter(a=>a.provider_ref===c.provider_ref&&a.key_id===c.key_id);
     if (matching.length!==1)return;
     const anchor=matching[0];
