@@ -139,7 +139,8 @@ export async function runSignedPlaceReviewG3(input:PlaceSourceEndToEndInputG3):
     usedPredicates.add(r.applicability_predicate_ref);
     const signedRule=bundle.inspect(r.source_ref,jurisdiction,"REQUIREMENT");
     const proof=documentFor(r.source_ref,"REQUIREMENT");
-    if(!signedRule||signedRule.claim.issued_at!==r.source_verified_at)
+    if(!signedRule)return hold("G3_REQUIREMENT_PAYLOAD_MISMATCH");
+    if(signedRule.claim.issued_at!==r.source_verified_at)
       return hold("G3_REQUIREMENT_ISSUANCE_MISMATCH");
     if(!proof||proof.schema!=="G3-REQUIREMENT:1"||
        proof.requirement_id!==r.requirement_id||
