@@ -1,0 +1,60 @@
+name: AWCE MCP Deployment Contract
+on:
+  pull_request:
+    paths:
+      - package.json
+      - src/app.ts
+      - src/commands/start-server.ts
+      - ops/awce-mcp-deployment-contract.r0.1.json
+      - docs/alpha-node/AWCE-MCP-DEPLOYMENT-CONTRACT-R01.md
+      - .github/workflows/awce-mcp-deployment-contract.yml
+  push:
+    branches:
+      - fix/awce-mcp-deployment-contract-r01-20261010
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify-stdio-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Checkout exact revision
+        uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          persist-credentials: false
+      - name: Select reviewed Node version
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.14.0'
+      - name: Verify fail-closed stdio deployment contract
+        shell: bash
+        run: |
+          node --input-type=module <<'NODE'
+          import assert from 'node:assert/strict';
+          import { existsSync, readFileSync } from 'node:fs';
+
+          const contract = JSON.parse(readFileSync('ops/awce-mcp-deployment-contract.r0.1.json', 'utf8'));
+          const pkg = JSON.parse(readFileSync('package.json', 'utf8'));
+          const entry = readFileSync('src/app.ts', 'utf8');
+          const start = readFileSync('src/commands/start-server.ts', 'utf8');
+          assert.equal(contract.schema, 'awce.executor-deployment.r0.1');
+          assert.equal(contract.transport, 'stdio');
+          assert.equal(contract.artifact_kind, 'compiled_executable');
+          assert.equal(contract.vercel_static_compatible, false);
+          assert.equal(contract.hosted_http_mcp_implemented, false);
+          assert.equal(contract.endpoint_verified, false);
+          assert.equal(contract.allowed_to_launch, false);
+          assert.equal(contract.fallback_eligible, false);
+          assert.equal(contract.deployment_state, 'NOT_ADMITTED');
+          assert.equal(contract.warden_admission_required, true);
+          assert.equal(contract.river_execution_receipt_required, true);
+          assert.match(entry, /start-server/);
+          assert.match(start, /StdioServerTransport/);
+          assert.match(pkg.scripts.build, /bun build .* --compile/);
+          assert.equal(existsSync('vercel.json'), false,
+            'CLI-only repository must not masquerade as a Vercel static app');
+          console.log('PASS: stdio/executable contract registered, routing remains NOT_ADMITTED');
+          NODE
