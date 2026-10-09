@@ -162,7 +162,10 @@ export async function routeExecution(
 
   let claimed = false;
   for (const [index, executor] of candidates.entries()) {
-    if (index > 0 && (!request.allowFallback || !executor.fallbackEligible)) break;
+    if (index > 0) {
+      if (!request.allowFallback) break;
+      if (!executor.fallbackEligible) continue;
+    }
     attempts.push(executor.id);
 
     let permit: WardenPermit;
