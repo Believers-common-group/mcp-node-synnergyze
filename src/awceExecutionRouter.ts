@@ -56,6 +56,10 @@ export interface ExecutionReceipt {
 }
 
 export interface RouterPorts {
+  inputIntegrity: {
+    /** Verify the request input digest against the exact canonical payload bytes. */
+    verify(request: RouteRequest): Promise<boolean>;
+  };
   registry: {
     /** Trusted authoritative admitted capability inventory, not caller-supplied choices. */
     list(capability: string): Promise<ExecutorRecord[]>;
@@ -144,6 +148,14 @@ export async function routeExecution(
   if (![request.requestId, request.principalId, request.capability, request.inputDigest]
     .every(value => typeof value === "string" && value.trim().length > 0)) {
     return blocked("INVALID_REQUEST", attempts);
+  }
+
+  try {
+    if (await ports.inputIntegrity.verify(request) !== true) {
+      return blocked("INPUT_DIGEST_UNVERIFIED", attempts);
+    }
+  } catch {
+    return blocked("INPUT_DIGEST_UNVERIFIED", attempts);
   }
 
   let listed: ExecutorRecord[];
