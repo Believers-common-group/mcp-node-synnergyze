@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { createPgBreakerStore, type PgClientLike, type PgPoolLike, type PgQueryResult } from "./awcePgBreakerStore.ts";
-import { acquireProbe, closedCircuit, type BreakerState, type StateTransaction } from "./awceCircuitBreaker.ts";
+import { acquireProbe, closedCircuit, type BreakerState } from "./awceCircuitBreaker.ts";
 
 class MemoryPg implements PgPoolLike {
   state: BreakerState | undefined;
@@ -15,10 +15,9 @@ class MemoryPg implements PgPoolLike {
   async connect(): Promise<PgClientLike> {
     this.connections++;
     let pending = this.state ? structuredClone(this.state) : undefined;
-    const store = this;
     return {
       query: async (sql: string, values: unknown[] = []): Promise<PgQueryResult> => {
-        store.statements.push(sql);
+        this.statements.push(sql);
         if (sql.startsWith("BEGIN")) return { rows: [] };
         if (sql.startsWith("INSERT")) {
           if (!pending) pending = JSON.parse(values[1] as string) as BreakerState;
@@ -26,26 +25,26 @@ class MemoryPg implements PgPoolLike {
         }
         if (sql.startsWith("SELECT")) return { rows: pending ? [{ state: structuredClone(pending) }] : [] };
         if (sql.startsWith("UPDATE")) {
-          if (store.denyWrites) throw Error("NO_WRITE_AUTHORITY");
+          if (this.denyWrites) throw Error("NO_WRITE_AUTHORITY");
           pending = JSON.parse(values[1] as string) as BreakerState;
           return { rows: [] };
         }
         if (sql === "COMMIT") {
-          if (store.serializationFailures > 0) {
-            store.serializationFailures--;
+          if (this.serializationFailures > 0) {
+            this.serializationFailures--;
             throw Object.assign(new Error("serialization conflict"), { code: "40001" });
           }
-          store.state = pending ? structuredClone(pending) : undefined;
-          store.commits++;
+          this.state = pending ? structuredClone(pending) : undefined;
+          this.commits++;
           return { rows: [] };
         }
         if (sql === "ROLLBACK") {
-          store.rollbacks++;
+          this.rollbacks++;
           return { rows: [] };
         }
         throw Error("UNEXPECTED_SQL");
       },
-      release: () => { store.released++; },
+      release: () => { this.released++; },
     };
   }
 }
