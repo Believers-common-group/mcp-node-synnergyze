@@ -106,8 +106,13 @@ export function acquireProbe(
   }
 
   if (state.phase === "CLOSED") {
+    // Serialize probe observations within each executor/capability/artifact.
+    // Prevent an older success from erasing a newer failure.
+    if (state.recoveryLease && state.recoveryLease.expiresAt > now) {
+      return { next: { ...state }, value: { allowed: false, reason: "HALF_OPEN_IN_FLIGHT" } };
+    }
     return {
-      next: { ...state },
+      next: { ...state, recoveryLease: { id: token, expiresAt: now + policy.leaseMs } },
       value: { allowed: true, reason: "PROBE_ADMITTED", phaseAtAdmission: "CLOSED", token },
     };
   }
@@ -177,7 +182,10 @@ export function completeProbe(
     };
   }
 
-  if (admission.phaseAtAdmission !== "CLOSED" || state.phase !== "CLOSED") {
+  if (admission.phaseAtAdmission !== "CLOSED" || state.phase !== "CLOSED"
+      || !state.recoveryLease
+      || state.recoveryLease.id !== admission.token
+      || state.recoveryLease.expiresAt <= now) {
     return { next: { ...state }, value: { accepted: false } };
   }
 
@@ -197,7 +205,7 @@ export function completeProbe(
   }
 
   return {
-    next: { ...state, consecutiveFailures },
+    next: { ...state, consecutiveFailures, recoveryLease: null },
     value: { accepted: true },
   };
 }
