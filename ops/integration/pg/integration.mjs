@@ -82,7 +82,7 @@ try {
     "SELECT current_user AS who, to_regclass('awce.breaker_state') AS tbl",
   );
   assert.equal(table.rows[0].who, "awce_ci_runtime");
-  assert.equal(table.rows[0].tbl, "breaker_state");
+  assert.equal(table.rows[0].tbl, "awce.breaker_state");
   ok("real PostgreSQL migration and restricted client admission");
 
   const store = createPgBreakerStore(runtime, { maxAttempts: 5 });
