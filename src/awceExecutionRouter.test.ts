@@ -38,6 +38,12 @@ const FALLBACK: ExecutorRecord = {
 function fixture(executors: ExecutorRecord[] = [PRIMARY]) {
   const trace: string[] = [];
   const ports: RouterPorts = {
+    inputIntegrity: {
+      verify: async () => {
+        trace.push("integrity");
+        return true;
+      },
+    },
     registry: {
       list: async () => {
         trace.push("registry");
@@ -122,7 +128,7 @@ describe("AWCE fail-closed deterministic routing", () => {
       attempts: [PRIMARY.id],
     });
     expect(trace).toEqual([
-      "registry", "warden:estate-worker-1", "health:estate-worker-1",
+      "integrity", "registry", "warden:estate-worker-1", "health:estate-worker-1",
       "reserve:estate-worker-1", "claim", "invoke:estate-worker-1",
       "commit:estate-worker-1", "complete",
     ]);
@@ -136,12 +142,21 @@ describe("AWCE fail-closed deterministic routing", () => {
     expect(trace).toEqual([]);
   });
 
+  it("rejects unverified or tampered canonical payload digests before capability lookup", async () => {
+    const { ports, trace } = fixture();
+    ports.inputIntegrity.verify = async () => false;
+    expect(await routeExecution({ ...REQUEST, payload: { tampered: true } }, ports)).toMatchObject({
+      status: "BLOCKED", reason: "INPUT_DIGEST_UNVERIFIED",
+    });
+    expect(trace).toEqual([]);
+  });
+
   it("does not launch unadmitted executables even if a record is returned", async () => {
     const { ports, trace } = fixture([{ ...PRIMARY, state: "NOT_ADMITTED" }]);
     expect(await routeExecution(REQUEST, ports)).toMatchObject({
       status: "BLOCKED", reason: "NO_ADMITTED_EXECUTOR",
     });
-    expect(trace).toEqual(["registry"]);
+    expect(trace).toEqual(["integrity", "registry"]);
   });
 
   it("blocks when the authoritative registry is unavailable", async () => {
@@ -150,7 +165,7 @@ describe("AWCE fail-closed deterministic routing", () => {
     expect(await routeExecution(REQUEST, ports)).toMatchObject({
       status: "BLOCKED", reason: "REGISTRY_UNAVAILABLE",
     });
-    expect(trace).toEqual([]);
+    expect(trace).toEqual(["integrity"]);
   });
 
   it("blocks if a purported Warden grant has an invalid signature", async () => {
