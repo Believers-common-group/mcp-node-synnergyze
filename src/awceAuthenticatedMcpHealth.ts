@@ -54,7 +54,7 @@ function verifiedEndpoint(binding: EndpointBinding | null, executor: ExecutorRec
       || url.search || url.hash || approved.protocol !== "https:" || approved.port !== ""
       || approved.username || approved.password || approved.pathname !== "/"
       || approved.search || approved.hash || url.origin !== approved.origin
-      || !/^[a-z0-9-]+(?:\\.[a-z0-9-]+)+$/i.test(url.hostname)
+      || !/^[a-z0-9-]+(?:\.[a-z0-9-]+)+$/i.test(url.hostname)
       || url.hostname === "localhost"
       || url.hostname.endsWith(".localhost")
       || url.hostname.endsWith(".local")
@@ -135,7 +135,7 @@ export function createAuthenticatedMcpHealthProbe(
       } catch {
         return false;
       }
-      if (!token || token.length > MAX_TOKEN_LENGTH || !/^[A-Za-z0-9._~+\\/=-]+$/.test(token)) {
+      if (!token || token.length > MAX_TOKEN_LENGTH || !/^[A-Za-z0-9._~+=-]+$/.test(token)) {
         return false;
       }
 
