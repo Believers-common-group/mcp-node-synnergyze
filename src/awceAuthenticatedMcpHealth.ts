@@ -150,9 +150,9 @@ export function createAuthenticatedMcpHealthProbe(
         const response = await deps.fetcher(url.href, {
           method: "POST",
           redirect: "error",
-          cache: "no-store",
           signal: controller.signal,
           headers: {
+            "Cache-Control": "no-store",
             Authorization: `Bearer ${token}`,
             "Content-Type": "application/json",
             Accept: "application/json, text/event-stream",
