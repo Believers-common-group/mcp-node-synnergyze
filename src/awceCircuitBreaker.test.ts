@@ -174,6 +174,31 @@ describe("AWCE circuit breaker R0.3", () => {
     expect(x.current()?.phase).toBe("CLOSED");
   });
 
+  it("serializes even CLOSED probes and rejects a stale result after lease renewal", () => {
+    const first = acquireProbe(closedCircuit(), 0, "closed-first", POLICY);
+    expect(first.value.allowed).toBe(true);
+    const concurrent = acquireProbe(first.next, 1, "closed-other", POLICY);
+    expect(concurrent.value).toMatchObject({
+      allowed: false, reason: "HALF_OPEN_IN_FLIGHT",
+    });
+    const replacement = acquireProbe(first.next, 500, "closed-second", POLICY);
+    expect(replacement.value.allowed).toBe(true);
+    const oldResult = completeProbe(replacement.next, first.value, true, 501, POLICY);
+    expect(oldResult.value.accepted).toBe(false);
+    expect(oldResult.next.recoveryLease?.id).toBe("closed-second");
+    const fresh = completeProbe(replacement.next, replacement.value, false, 501, POLICY);
+    expect(fresh.value.accepted).toBe(true);
+    expect(fresh.next.consecutiveFailures).toBe(1);
+    expect(fresh.next.recoveryLease).toBeNull();
+  });
+
+  it("rejects any CLOSED probe completion whose lease expires", () => {
+    const admission = acquireProbe(closedCircuit(), 0, "closed-lease", POLICY);
+    const stale = completeProbe(admission.next, admission.value, true, 500, POLICY);
+    expect(stale.value.accepted).toBe(false);
+    expect(stale.next.recoveryLease?.id).toBe("closed-lease");
+  });
+
   it("permits exactly one HALF_OPEN probe under a valid lease", () => {
     const state: BreakerState = {
       phase: "OPEN", consecutiveFailures: 2, openedAt: 0, recoveryLease: null,
