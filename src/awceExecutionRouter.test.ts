@@ -224,6 +224,34 @@ describe("AWCE fail-closed deterministic routing", () => {
     expect(trace).not.toContain("warden:estate-worker-2");
   });
 
+  it("skips an ineligible intermediate provider and safely considers the next admitted fallback", async () => {
+    const skipped: ExecutorRecord = {
+      ...FALLBACK,
+      id: "not-approved-as-fallback",
+      artifactDigest: "sha256:skipped-artifact",
+      fallbackEligible: false,
+      priority: 2,
+    };
+    const third: ExecutorRecord = {
+      ...FALLBACK,
+      id: "estate-worker-3",
+      artifactDigest: "sha256:third-artifact",
+      fallbackEligible: true,
+      priority: 3,
+    };
+    const { ports, trace } = fixture([PRIMARY, skipped, third]);
+    ports.health.probe = async executor => {
+      trace.push("health:" + executor.id);
+      return executor.id === third.id;
+    };
+    expect(await routeExecution(REQUEST, ports)).toEqual({
+      status: "COMPLETED", executorId: third.id,
+      receiptId: "river-receipt-" + third.id,
+      attempts: [PRIMARY.id, third.id],
+    });
+    expect(trace).not.toContain("warden:not-approved-as-fallback");
+  });
+
   it("does not retry an executor whose operation may have started", async () => {
     const { ports, trace } = fixture([PRIMARY, FALLBACK]);
     ports.execution.invoke = async (_request, executor) => {
