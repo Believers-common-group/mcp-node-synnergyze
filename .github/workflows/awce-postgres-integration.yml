@@ -22,7 +22,7 @@ jobs:
     timeout-minutes: 12
     services:
       postgres:
-        image: postgres:16-alpine
+        image: public.ecr.aws/docker/library/postgres:16-alpine
         env:
           POSTGRES_USER: awce_ci_admin
           POSTGRES_PASSWORD: ci-admin-disposable
