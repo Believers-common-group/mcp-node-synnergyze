@@ -127,17 +127,17 @@ try {
   assert.deepEqual(await ledger.inspect(req), { status: "COMPLETED", receiptId: proof.receiptId });
   passed("PostgreSQL trigger rejects changes to completed claims");
 
-  const independentLedger = createPgIdempotencyLedger(new Pool({
+  const secondPool = new Pool({
     ...common, user: "awce_ci_runtime", password: process.env.AWCE_CI_RUNTIME_PASSWORD,
-  }));
-  // A second process/connection cannot claim an operation completed by the first.
+  });
+  const independentLedger = createPgIdempotencyLedger(secondPool);
+  // An independent connection cannot reclaim completed work.
   try {
     assert.equal(await independentLedger.idempotency.claim(req), "DUPLICATE");
     assert.deepEqual(await independentLedger.inspect(req),
       { status: "COMPLETED", receiptId: proof.receiptId });
   } finally {
-    // This disposable test intentionally lets the second pool close via its own reference.
-    // See improved pooled lifecycle in any production adapter.
+    await secondPool.end();
   }
   passed("independent connection sees persistent completion");
 
