@@ -12,8 +12,9 @@ The current Synnergyze Algolia CLI executable remains `NOT_ADMITTED`; successful
 
 | State | Trigger | Transition |
 | --- | --- | --- |
-| CLOSED | healthy native probe | CLOSED, reset consecutive failures |
-| CLOSED | unsuccessful probe below threshold | CLOSED, increment failures |
+| CLOSED | active lease already exists | remain CLOSED; block competing probe |
+| CLOSED | healthy native probe with valid lease | CLOSED, reset consecutive failures |
+| CLOSED | unsuccessful probe with valid lease below threshold | CLOSED, increment failures |
 | CLOSED | failure threshold reached | OPEN, save opening timestamp |
 | OPEN | cooldown still active | remain OPEN; no probe |
 | OPEN | cooldown elapsed | HALF_OPEN with a single leased recovery token |
@@ -35,7 +36,7 @@ A new artifact digest is isolated from previous failure state. No learned routin
 
 ### Current safety limits
 
-- Closed circuits may admit multiple simultaneous read-only health probes; the atomic store serializes their *recording*, not the probe calls. A late success can clear an earlier failure while the breaker remains CLOSED, so a production implementation must choose probe ordering/epoch semantics and bound concurrency.
+- CLOSED and HALF_OPEN states each admit at most one active leased health probe per executor/capability/artifact. An expired or replaced lease rejects late results; concurrent worker decisions still require a genuinely atomic shared store.
 - A health success is not proof of an MCP tool execution.
 - Only known `ADMITTED` records are probed; any storage failure, exception, missing lease token, expired recovery lease, or stale result produces `false`.
 - No feature enables automatic promotion of an executor from `NOT_ADMITTED` to `ADMITTED`.
