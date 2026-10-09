@@ -6,11 +6,11 @@
 
 `src/awceExecutionRouter.ts` is a deterministic dependency-injected orchestration core. It does not import, call, or replace the existing Algolia MCP CLI, Warden–MXC draft execution contract, Genesis host operations, or River service.
 
-Ports are explicit: an authoritative capability **registry**, independent **Warden** admission, a non-effect **health** probe, **River** reservation/receipt/non-execution evidence, a durable atomic **idempotency** claim, and an independently reviewed **execution** adapter. No provider is selectable merely by its name or a successful build.
+Ports are explicit: canonical **input-integrity verification**, an authoritative capability **registry**, independent **Warden** admission, a non-effect **health** probe, **River** reservation/receipt/non-execution evidence, a durable atomic **idempotency** claim, and an independently reviewed **execution** adapter. No provider is selectable merely by its name or a successful build.
 
 ### Governed execution sequence
 
-1. Validate the request identifier, principal, capability and exact input digest.
+1. Validate the request identifier, principal, capability and digest format; require a trusted `inputIntegrity.verify` port to recompute/verify the digest of the exact canonical payload bytes. The router does not claim to perform that cryptography itself.
 2. Resolve authoritative records; only `ADMITTED` capabilities with a valid artifact digest are candidates.
 3. Authorize **each** attempted executor with fresh Warden evidence bound to request ID, principal, executor, artifact digest and input digest; reject unsigned, denied, expired or mismatched grants.
 4. Perform a bounded read-only protocol health check; treat failure as unavailable, not proof of fault.
@@ -20,12 +20,12 @@ Ports are explicit: an authoritative capability **registry**, independent **Ward
 
 ### Failure behavior
 
-- `BLOCKED`: invalid request, registry unavailable, unadmitted executor, invalid/expired Warden grant, unhealthy executor with no authorized alternative, failed River reservation, or missing/double idempotency claim.
+- `BLOCKED`: invalid request or unverified canonical payload digest, registry unavailable, unadmitted executor, invalid/expired Warden grant, unhealthy executor with no authorized alternative, failed River reservation, or missing/double idempotency claim.
 - `UNCERTAIN`: invocation exception, lost acknowledgement or an outcome indicating execution **may** have occurred. **Never retry or fail over automatically.**
 - `PENDING_EVIDENCE`: execution succeeded but evidence/finalization was not verified, or non-execution evidence was missing. **Never retry automatically.**
 - Safe fallback requires (a) request policy `allowFallback`, (b) an explicitly eligible, **admitted** alternative, (c) a new executor-specific Warden permit, and (d) either no invocation having been started or verified River non-execution evidence.
 
-The module processes at most three authorized candidates in order of priority; no unbounded retry loop exists. **Ports must implement timeouts, cancellation behavior and admission verification outside the pure router.** Persistent circuit-breaker state, a durable distributed idempotency store, hosted MCP transport and a runtime health collector are **not implemented** here.
+The module processes at most three authorized candidates in order of priority; no unbounded retry loop exists. **Ports must implement timeouts, cancellation behavior and admission verification outside the pure router.** Persistent circuit-breaker state, an actual cryptographic digest adapter, a durable distributed idempotency store, hosted MCP transport and a runtime health collector are **not implemented** here.
 
 ### Important integration boundary
 
