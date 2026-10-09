@@ -1,0 +1,58 @@
+name: AWCE PostgreSQL Integration (ephemeral)
+on:
+  push:
+    branches:
+      - feat/awce-postgres-integration-r05-20261010
+  pull_request:
+    paths:
+      - src/awcePgBreakerStore.ts
+      - src/awceCircuitBreaker.ts
+      - src/awceExecutionRouter.ts
+      - ops/integration/pg/**
+      - ops/migrations/awce-breaker-state-r04.sql
+      - .github/workflows/awce-postgres-integration.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  ephemeral-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16-alpine
+        env:
+          POSTGRES_USER: awce_ci_admin
+          POSTGRES_PASSWORD: ci-admin-disposable
+          POSTGRES_DB: awce_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U awce_ci_admin -d awce_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+
+    steps:
+      - name: Checkout exact test revision
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - name: Use reviewed Node version
+        uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+
+      - name: Install isolated pinned PostgreSQL client
+        run: npm install --prefix ops/integration/pg --ignore-scripts --omit=dev --no-audit --no-fund --package-lock=false
+
+      - name: Verify disposable PostgreSQL and synthetic routing
+        env:
+          CI: "true"
+          AWCE_CI_ISOLATED: "true"
+          AWCE_CI_ADMIN_PASSWORD: ci-admin-disposable
+          AWCE_CI_RUNTIME_PASSWORD: ci-runtime-disposable
+        run: node --experimental-strip-types ops/integration/pg/integration.mjs

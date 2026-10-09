@@ -1,0 +1,9 @@
+{
+  "name": "awce-postgres-integration-ci",
+  "private": true,
+  "type": "module",
+  "description": "Ephemeral PostgreSQL driver used only in CI isolation",
+  "dependencies": {
+    "pg": "8.16.3"
+  }
+}
