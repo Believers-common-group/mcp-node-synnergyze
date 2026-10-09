@@ -1,0 +1,49 @@
+name: AWCE Idempotency Recovery (ephemeral)
+on:
+  push:
+    branches:
+      - feat/awce-idempotency-recovery-r06-20261010
+  pull_request:
+    paths:
+      - src/awcePgIdempotencyLedger.ts
+      - src/awcePgIdempotencyLedger.test.ts
+      - ops/migrations/awce-execution-claims-r06.sql
+      - ops/integration/pg/idempotency-r06.mjs
+      - .github/workflows/awce-idempotency-r06.yml
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  isolated-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: public.ecr.aws/docker/library/postgres:16-alpine
+        env:
+          POSTGRES_USER: awce_ci_admin
+          POSTGRES_PASSWORD: ci-admin-disposable
+          POSTGRES_DB: awce_ci
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U awce_ci_admin -d awce_ci"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+      - name: Install isolated PostgreSQL test driver
+        run: npm install --prefix ops/integration/pg --ignore-scripts --omit=dev --no-audit --no-fund --package-lock=false
+      - name: Prove duplicate and uncertain execution containment
+        env:
+          CI: "true"
+          AWCE_CI_ISOLATED: "true"
+          AWCE_CI_ADMIN_PASSWORD: ci-admin-disposable
+          AWCE_CI_RUNTIME_PASSWORD: ci-runtime-disposable
+        run: node --experimental-strip-types ops/integration/pg/idempotency-r06.mjs
