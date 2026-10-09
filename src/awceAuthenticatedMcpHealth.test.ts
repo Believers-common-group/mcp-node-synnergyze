@@ -66,7 +66,7 @@ describe("AWCE authenticated MCP discovery probe R0.4", () => {
     const request = x.sent[0].init;
     expect(request.method).toBe("POST");
     expect(request.redirect).toBe("error");
-    expect(request.cache).toBe("no-store");
+    expect((request.headers as Record<string, string>)["Cache-Control"]).toBe("no-store");
     const headers = request.headers as Record<string, string>;
     expect(headers.Authorization).toBe("Bearer synthetic-token");
     expect(headers["MCP-Protocol-Version"]).toBe("2026-07-28");
