@@ -43,7 +43,7 @@ function validState(value: unknown): BreakerState {
     (typeof lease === "object" && lease !== null &&
       typeof lease.id === "string" && lease.id.length > 0 &&
       typeof lease.expiresAt === "number" && Number.isFinite(lease.expiresAt));
-  if (!validPhase || !Number.isSafeInteger(n) || n < 0 || !validOpened || !validLease ||
+  if (!validPhase || typeof n !== "number" || !Number.isSafeInteger(n) || n < 0 || !validOpened || !validLease ||
       (state.phase === "OPEN" && opened === null) ||
       (state.phase === "HALF_OPEN" && lease === null)) {
     throw Error("INVALID_BREAKER_STATE");
