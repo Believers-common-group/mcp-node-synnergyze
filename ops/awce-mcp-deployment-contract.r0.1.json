@@ -1,0 +1,21 @@
+{
+  "schema": "awce.executor-deployment.r0.1",
+  "id": "synnergyze-algolia-mcp-stdio",
+  "source_repository": "Believers-common-group/mcp-node-synnergyze",
+  "transport": "stdio",
+  "entrypoint": "src/app.ts",
+  "transport_implementation": "src/commands/start-server.ts",
+  "artifact_kind": "compiled_executable",
+  "build_command": "npm run build",
+  "intended_hosting": "dedicated_worker_process_with_approved_process_supervisor",
+  "vercel_static_compatible": false,
+  "hosted_http_mcp_implemented": false,
+  "endpoint_verified": false,
+  "deployment_state": "NOT_ADMITTED",
+  "fallback_eligible": false,
+  "warden_admission_required": true,
+  "river_execution_receipt_required": true,
+  "allowed_to_launch": false,
+  "reason": "Current CLI uses MCP stdio transport and builds a Bun executable, not a Vercel static site or hosted Streamable HTTP MCP endpoint.",
+  "evidence_run": "https://vercel.com/faizahmed29-5330s-projects/synnergyze-genesis-mcp/9zwMMSAnfZxE4zEwrW7hAhGxntbd"
+}
