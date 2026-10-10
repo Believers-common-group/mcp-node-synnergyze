@@ -28,7 +28,7 @@ interface LedgerRow {
 }
 const validField = (v: unknown, max = 256): v is string =>
   typeof v === "string" && v.length > 0 && v.length <= max &&
-  v.trim() === v && !/[\u0000-\u001f]/.test(v);
+  v.trim() === v && Array.from(v).every(c => c.charCodeAt(0) >= 0x20);
 const validRequest = (r: RouteRequest): boolean =>
   validField(r.requestId) && validField(r.principalId) &&
   validField(r.capability) && validField(r.inputDigest);
