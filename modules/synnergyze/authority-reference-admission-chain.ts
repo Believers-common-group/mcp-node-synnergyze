@@ -94,7 +94,7 @@ function verifies(proof: unknown, root: unknown): boolean {
       root.revokedKeyIds.includes(proof.keyId)) return false;
   const pem = root.keys[proof.keyId];
   const sig = signatureBytes(proof.signatureBase64);
-  if (!str(pem) || !sig) return false;
+  if (typeof pem !== "string" || !pem.includes("-----BEGIN PUBLIC KEY-----") || !sig) return false;
   try {
     const key = createPublicKey(pem);
     if (key.asymmetricKeyType !== "ed25519") return false;
