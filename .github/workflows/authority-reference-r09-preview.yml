@@ -1,4 +1,4 @@
-name: Authority Reference R1.0 — Offline Commissioning Gate
+name: Authority Reference R1.1 — Offline Signed Admission Conformance
 on:
   pull_request:
     paths:
@@ -6,6 +6,9 @@ on:
       - 'modules/synnergyze/authority-reference-preview.test.ts'
       - 'modules/synnergyze/authority-reference-commissioning.ts'
       - 'modules/synnergyze/authority-reference-commissioning.test.ts'
+      - 'modules/synnergyze/authority-reference-admission-chain.ts'
+      - 'modules/synnergyze/authority-reference-admission-chain.test.ts'
+      - 'docs/AUTHORITY-REFERENCE-R11-ADMISSION-CHAIN.md'
       - 'docs/AUTHORITY-REFERENCE-R10-COMMISSIONING.md'
       - 'docs/AUTHORITY-REFERENCE-R09-NATIVE-PREVIEW.md'
       - '.github/workflows/authority-reference-r09-preview.yml'
@@ -29,4 +32,4 @@ jobs:
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run native draft-only integration tests
-        run: npx --no-install vitest run modules/synnergyze/authority-reference-preview.test.ts modules/synnergyze/authority-reference-commissioning.test.ts
+        run: npx --no-install vitest run modules/synnergyze/authority-reference-preview.test.ts modules/synnergyze/authority-reference-commissioning.test.ts modules/synnergyze/authority-reference-admission-chain.test.ts
