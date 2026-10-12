@@ -13,7 +13,7 @@ The R1.4 harness first applies the staging SQL schema, creates a restrictive tes
 3. Restarts the same ephemeral container and verifies unchanged cluster ID, row count and SHA-256. Both original nonce replay and request replay remain refused.
 4. Creates a second, disposable PostgreSQL server (no published port), applies the schema and restores the snapshot.
 5. Confirms the second server has a **different** PostgreSQL system ID but identical row count and row checksum, with replay refused using an isolated test role. A restored server must be separately admitted: matching data does not inherit runtime identity.
-6. Logs the final checksum as an **unanchored audit candidate** and destroys the restored container and snapshot on job exit.
+6. Exports a synthetic recovery-checkpoint JSON (source commit, both database system identifiers, row digest, explicit `HOLD` and `externallyAnchored=false`) as a GitHub Actions artifact retained for **7 days**. It is **not a trusted external audit anchor**. The restored container and snapshot are destroyed on job exit.
 
 No deployment, database migration to existing services, Warden policy change, real issuer enrollment, or worker invocation is allowed by this workflow.
 
