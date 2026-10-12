@@ -1,4 +1,4 @@
-name: Authority Reference R1.2 — Offline Issuer and Replay Assurance
+name: Authority Reference R1.3 — Offline Shared-Ledger Contract
 on:
   pull_request:
     paths:
@@ -12,6 +12,10 @@ on:
       - 'modules/synnergyze/authority-reference-replay-ledger.ts'
       - 'modules/synnergyze/authority-reference-triple-issuer.ts'
       - 'modules/synnergyze/authority-reference-triple-issuer.test.ts'
+      - 'modules/synnergyze/authority-reference-pg-ledger.ts'
+      - 'modules/synnergyze/authority-reference-pg-ledger.test.ts'
+      - 'schemas/authority-reference-r13-ledger.sql'
+      - 'docs/AUTHORITY-REFERENCE-R13-SHARED-LEDGER.md'
       - 'docs/AUTHORITY-REFERENCE-R12-ISSUERS-REPLAY.md'
       - 'docs/AUTHORITY-REFERENCE-R11-ADMISSION-CHAIN.md'
       - 'docs/AUTHORITY-REFERENCE-R10-COMMISSIONING.md'
@@ -37,4 +41,4 @@ jobs:
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run native draft-only integration tests
-        run: npx --no-install vitest run modules/synnergyze/authority-reference-preview.test.ts modules/synnergyze/authority-reference-commissioning.test.ts modules/synnergyze/authority-reference-admission-chain.test.ts modules/synnergyze/authority-reference-triple-issuer.test.ts
+        run: npx --no-install vitest run modules/synnergyze/authority-reference-preview.test.ts modules/synnergyze/authority-reference-commissioning.test.ts modules/synnergyze/authority-reference-admission-chain.test.ts modules/synnergyze/authority-reference-triple-issuer.test.ts modules/synnergyze/authority-reference-pg-ledger.test.ts
