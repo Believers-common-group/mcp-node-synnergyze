@@ -100,5 +100,25 @@ SQL
 assert_eq "$(claim "$restore_container" "$tenant" "$nonce" "$otherrequest")" 0 'restored nonce replay'
 assert_eq "$(claim "$restore_container" "$tenant" "$othernonce" "$request")" 0 'restored request replay'
 echo "[R1.5] Restore verified: NEW cluster identity, equal rows, replay denied"
+audit_path="${RUNNER_TEMP:-$tmp}/authority-r15-audit-checkpoint.json"
+cat > "$audit_path" <<EOF
+{
+  "schema": "AUTHORITY-REFERENCE-R15-AUDIT-CANDIDATE-001",
+  "origin": "ephemeral-github-actions-postgres16",
+  "sourceCommit": "${GITHUB_SHA:-unavailable}",
+  "sourceClusterIdentifier": "$before_cluster",
+  "restoredClusterIdentifier": "$restored_cluster",
+  "syntheticRowCount": 2,
+  "rowDataSha256": "sha256:$before_hash",
+  "restartIdentityUnchanged": true,
+  "restoredIdentityDistinct": true,
+  "replayAfterRestartDenied": true,
+  "replayAfterRestoreDenied": true,
+  "authorityAdmitted": false,
+  "externallyAnchored": false,
+  "commissioningState": "HOLD"
+}
+EOF
+echo "[R1.5] Exported synthetic, UNANCHORED audit candidate to runner temporary file"
 echo "[R1.5] Audit candidate: sha256:$before_hash rows=2 (UNANCHORED)"
 echo "[R1.5] PASS: ephemeral restart/restore; NO external anchoring or authorisation"
