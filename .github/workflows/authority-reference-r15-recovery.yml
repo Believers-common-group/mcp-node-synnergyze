@@ -37,3 +37,11 @@ jobs:
         run: |
           set -euo pipefail
           bash scripts/authority-reference-r15-recovery-ephemeral.sh "$R15_CONTAINER_ID"
+      - name: Retain synthetic unanchored recovery evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authority-reference-r15-recovery-candidate
+          path: ${{ runner.temp }}/authority-r15-audit-checkpoint.json
+          if-no-files-found: error
+          retention-days: 7
