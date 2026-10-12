@@ -1,9 +1,12 @@
-name: Authority Reference R0.9 — Offline Native Preview
+name: Authority Reference R1.0 — Offline Commissioning Gate
 on:
   pull_request:
     paths:
       - 'modules/synnergyze/authority-reference-preview.ts'
       - 'modules/synnergyze/authority-reference-preview.test.ts'
+      - 'modules/synnergyze/authority-reference-commissioning.ts'
+      - 'modules/synnergyze/authority-reference-commissioning.test.ts'
+      - 'docs/AUTHORITY-REFERENCE-R10-COMMISSIONING.md'
       - 'docs/AUTHORITY-REFERENCE-R09-NATIVE-PREVIEW.md'
       - '.github/workflows/authority-reference-r09-preview.yml'
   workflow_dispatch:
@@ -26,4 +29,4 @@ jobs:
       - name: Install locked dependencies without lifecycle scripts
         run: npm ci --ignore-scripts --no-audit --no-fund
       - name: Run native draft-only integration tests
-        run: npx --no-install vitest run modules/synnergyze/authority-reference-preview.test.ts
+        run: npx --no-install vitest run modules/synnergyze/authority-reference-preview.test.ts modules/synnergyze/authority-reference-commissioning.test.ts
