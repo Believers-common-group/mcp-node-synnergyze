@@ -1,0 +1,190 @@
+{
+  "schema": "AUTHORITY-REFERENCE-OWNER-REGISTER-001/R2.0",
+  "namespace": "authority-reference",
+  "reviewedOn": "2026-10-13",
+  "status": "HOLD",
+  "productionApproval": false,
+  "ownerAppointmentsCreated": false,
+  "capabilityAdmitted": false,
+  "evidenceBasis": "READ_ONLY_REPOSITORY_AND_VERCEL_METADATA_NOT_AUTHORITY",
+  "candidateRepositories": [
+    {
+      "repo": "Believers-common-group/Warden",
+      "githubFork": true,
+      "upstream": "openai/openai-agents-js",
+      "classification": "UPSTREAM_SDK_FORK_NOT_PROOF_OF_WARDEN_SIGNER"
+    },
+    {
+      "repo": "Believers-common-group/processor-BNR",
+      "githubFork": true,
+      "upstream": "github/github-mcp-server",
+      "classification": "UPSTREAM_MCP_FORK_NOT_PROOF_OF_BNR_ISSUER"
+    },
+    {
+      "repo": "Believers-common-group/mcp-node-synnergyze",
+      "githubFork": true,
+      "upstream": "thekingznqueenz11/mcp-node",
+      "classification": "DEVELOPED_NATIVE_BRIDGE_SOURCE_WITH_UNCOMMISSIONED_REFERENCE_WORKER"
+    },
+    {
+      "repo": "Believers-common-group/DigitalMe",
+      "githubFork": false,
+      "classification": "IDENTITY_CONTRACTS_NOT_PRODUCTION_DELEGATION"
+    },
+    {
+      "repo": "Believers-common-group/alpha-warden-admission-core",
+      "githubFork": false,
+      "classification": "BOUNDED_BUILDER_ADMISSION_NOT_REFERENCE_CAPABILITY"
+    },
+    {
+      "repo": "Believers-common-group/genesis-stack",
+      "githubFork": false,
+      "classification": "ARCHITECTURE_PARENT_NOT_LIVE_CAPACITY_ATTESTATION"
+    }
+  ],
+  "controls": [
+    {
+      "control": "WORKER_BUILD",
+      "requiredRole": "Independent release/build custodian",
+      "evidenceCandidate": "Believers-common-group/mcp-node-synnergyze",
+      "observation": "SOURCE_CODE_ONLY",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "RUNTIME_DEPLOYMENT",
+      "requiredRole": "Independent runtime operator",
+      "evidenceCandidate": "Believers-common-group/mcp-node-synnergyze",
+      "observation": "DEPLOYMENT_METADATA_ONLY",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "DIGITALME_DELEGATION",
+      "requiredRole": "DigitalMe identity custodian",
+      "evidenceCandidate": "Believers-common-group/DigitalMe",
+      "observation": "DOCUMENTATION_ONLY",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "BNR_DOOR",
+      "requiredRole": "BNR Door issuance authority",
+      "evidenceCandidate": null,
+      "observation": "NOT_FOUND",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "GENESIS_CAPACITY",
+      "requiredRole": "Genesis resource/capacity authority",
+      "evidenceCandidate": "Believers-common-group/genesis-stack",
+      "observation": "ARCHITECTURE_ONLY",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "WARDEN_POLICY",
+      "requiredRole": "Warden policy custodian",
+      "evidenceCandidate": "Believers-common-group/alpha-warden-admission-core",
+      "observation": "BOUNDED_POLICY_ONLY",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "WARDEN_ADMISSION",
+      "requiredRole": "Warden independently governed signer",
+      "evidenceCandidate": "Believers-common-group/alpha-warden-admission-core",
+      "observation": "REFERENCE_CAPABILITY_NOT_ADMITTED",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "RIVER_ADMISSION",
+      "requiredRole": "RiverOS independent admission receipt signer",
+      "evidenceCandidate": null,
+      "observation": "NOT_FOUND",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "REPLAY_LEDGER",
+      "requiredRole": "Shared transactional ledger operator",
+      "evidenceCandidate": null,
+      "observation": "STAGING_TEST_ONLY",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "SOURCE_EGRESS",
+      "requiredRole": "Official source and privacy approver",
+      "evidenceCandidate": null,
+      "observation": "NOT_APPROVED",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "RIVER_EXECUTION",
+      "requiredRole": "RiverOS independent execution receipt signer",
+      "evidenceCandidate": null,
+      "observation": "NOT_FOUND",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "AUDIT_ANCHOR",
+      "requiredRole": "Independent external audit witness",
+      "evidenceCandidate": null,
+      "observation": "TEST_SIGNATURE_ONLY",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    },
+    {
+      "control": "PRODUCTION_COMMISSIONING",
+      "requiredRole": "Independently mandated go-live approver",
+      "evidenceCandidate": null,
+      "observation": "UNAPPOINTED",
+      "ownerUserId": null,
+      "mandateRef": null,
+      "ownerAccepted": false,
+      "liveAuthorityVerified": false,
+      "reviewStatus": "UNVERIFIED"
+    }
+  ]
+}
