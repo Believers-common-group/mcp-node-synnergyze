@@ -170,7 +170,7 @@ export function assessR17EvidenceHandoff(input:unknown, evaluatedAt:string):R17E
     commissioningAuthorized:false,executeAllowed:false,
     externalSourceAccessAllowed:false,actualIssuerTrustVerified:false,
     liveRiverAdmissionVerified:false,liveRiverExecutionVerified:false,
-    candidateDigest:valid?digest(Object.fromEntries(["schema", "environment", "repository", ...BINDING_FIELDS].map(k=>[k,c[k]]))):null,
+    candidateDigest:valid?digest(Object.fromEntries(["schema", "environment", "repository", ...BINDING_FIELDS].map(k=>[k,c[k as keyof R17Candidate]]))):null,
     checks,reasonCodes:reasons,
     reviewQueue:REQUIRED_R17_CONTROLS.map(control=>({control,requiredIndependentOwner:CONTROL_OWNER[control]})),
   };
