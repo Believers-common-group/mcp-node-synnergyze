@@ -1,0 +1,27 @@
+name: Authority Reference R2.0 — Owner & Provenance HOLD
+on:
+  pull_request:
+    paths:
+      - 'modules/synnergyze/authority-reference-r20-owner-discovery.ts'
+      - 'modules/synnergyze/authority-reference-r20-owner-discovery.test.ts'
+      - 'docs/AUTHORITY-REFERENCE-R20-OWNER-COMMISSIONING.md'
+      - '.github/workflows/authority-reference-r20.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  source-provenance-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked, script-free installation
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Fail-closed commissioning candidate tests
+        run: npx --no-install vitest run modules/synnergyze/authority-reference-r20-owner-discovery.test.ts
