@@ -1,0 +1,25 @@
+name: Authority Reference R1.9 — Source Inventory HOLD
+on:
+  pull_request:
+    paths:
+      - 'modules/synnergyze/authority-reference-r19-source-inventory.ts'
+      - 'modules/synnergyze/authority-reference-r19-source-inventory.test.ts'
+      - 'docs/AUTHORITY-REFERENCE-R19-AUTHORITY-INVENTORY.md'
+      - '.github/workflows/authority-reference-r19.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  inventory-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - run: npm ci --ignore-scripts --no-audit --no-fund
+      - run: npx --no-install vitest run modules/synnergyze/authority-reference-r19-source-inventory.test.ts
