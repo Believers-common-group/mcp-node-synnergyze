@@ -8,6 +8,16 @@ type ControlEntry={control:string;requiredRole:string;evidenceCandidate:string|n
 type EditableRegister={productionApproval:boolean;candidateRepositories:SourceEntry[];controls:ControlEntry[];[key:string]:unknown};
 const load=()=>JSON.parse(readFileSync(new URL("../../docs/AUTHORITY-REFERENCE-R20-OWNER-REGISTER.json",import.meta.url),"utf8")) as EditableRegister;
 const check=(data:unknown)=>auditR20OwnerRegister(data);
+function repoOf(data:EditableRegister,repo:string):SourceEntry {
+ const found=data.candidateRepositories.find(r=>r.repo===repo);
+ if(!found)throw new Error("TEST_FIXTURE_REPOSITORY_MISSING");
+ return found;
+}
+function controlOf(data:EditableRegister,control:string):ControlEntry {
+ const found=data.controls.find(r=>r.control===control);
+ if(!found)throw new Error("TEST_FIXTURE_CONTROL_MISSING");
+ return found;
+}
 
 describe("R2.0 owner custody provenance and immutable HOLD",()=>{
  it("checked-in actual source register includes every commissioning control, but appoints no owners",()=>{
@@ -44,16 +54,16 @@ describe("R2.0 owner custody provenance and immutable HOLD",()=>{
   expect(check(y).integrityIssues).toContain("MISSING_OR_DUPLICATE_CONTROL:"+first.control);
  });
  it("rejects an undocumented OpenAI SDK origin for the Warden-named fork",()=>{
-  const x=load();x.candidateRepositories.find((r:SourceEntry)=>r.repo==="Believers-common-group/Warden").githubFork=false;
+  const x=load();repoOf(x,"Believers-common-group/Warden").githubFork=false;
   expect(check(x).integrityIssues).toContain("FORK_ORIGIN_NOT_ACKNOWLEDGED:Believers-common-group/Warden");
  });
  it("rejects an undocumented GitHub MCP origin for processor-BNR",()=>{
-  const x=load();x.candidateRepositories.find((r:SourceEntry)=>r.repo==="Believers-common-group/processor-BNR").upstream="claimed-native-bnr";
+  const x=load();repoOf(x,"Believers-common-group/processor-BNR").upstream="claimed-native-bnr";
   expect(check(x).integrityIssues).toContain("FORK_ORIGIN_NOT_ACKNOWLEDGED:Believers-common-group/processor-BNR");
  });
  it("refuses a forked upstream SDK nominated as the signing authority",()=>{
   const x=load();
-  x.controls.find((r:ControlEntry)=>r.control==="WARDEN_ADMISSION").evidenceCandidate="Believers-common-group/Warden";
+  controlOf(x,"WARDEN_ADMISSION").evidenceCandidate="Believers-common-group/Warden";
   expect(check(x).integrityIssues).toContain("UPSTREAM_SDK_FORK_CANNOT_ESTABLISH_AUTHORITY:WARDEN_ADMISSION");
  });
  it("rejects unknown control injection and still holds",()=>{
