@@ -3,7 +3,10 @@ import { describe, it, expect } from "vitest";
 import { REQUIRED_R17_CONTROLS } from "./authority-reference-trust-handoff.ts";
 import { auditR20OwnerRegister } from "./authority-reference-r20-owner-gate.ts";
 
-const load=()=>JSON.parse(readFileSync(new URL("../../docs/AUTHORITY-REFERENCE-R20-OWNER-REGISTER.json",import.meta.url),"utf8")) as Record<string,any>;
+type SourceEntry={repo:string;githubFork:boolean;upstream?:string};
+type ControlEntry={control:string;requiredRole:string;evidenceCandidate:string|null;ownerUserId:string|null;mandateRef:string|null;ownerAccepted:boolean;liveAuthorityVerified:boolean;reviewStatus:string};
+type EditableRegister={productionApproval:boolean;candidateRepositories:SourceEntry[];controls:ControlEntry[];[key:string]:unknown};
+const load=()=>JSON.parse(readFileSync(new URL("../../docs/AUTHORITY-REFERENCE-R20-OWNER-REGISTER.json",import.meta.url),"utf8")) as EditableRegister;
 const check=(data:unknown)=>auditR20OwnerRegister(data);
 
 describe("R2.0 owner custody provenance and immutable HOLD",()=>{
@@ -41,16 +44,16 @@ describe("R2.0 owner custody provenance and immutable HOLD",()=>{
   expect(check(y).integrityIssues).toContain("MISSING_OR_DUPLICATE_CONTROL:"+first.control);
  });
  it("rejects an undocumented OpenAI SDK origin for the Warden-named fork",()=>{
-  const x=load();x.candidateRepositories.find((r:any)=>r.repo==="Believers-common-group/Warden").githubFork=false;
+  const x=load();x.candidateRepositories.find((r:SourceEntry)=>r.repo==="Believers-common-group/Warden").githubFork=false;
   expect(check(x).integrityIssues).toContain("FORK_ORIGIN_NOT_ACKNOWLEDGED:Believers-common-group/Warden");
  });
  it("rejects an undocumented GitHub MCP origin for processor-BNR",()=>{
-  const x=load();x.candidateRepositories.find((r:any)=>r.repo==="Believers-common-group/processor-BNR").upstream="claimed-native-bnr";
+  const x=load();x.candidateRepositories.find((r:SourceEntry)=>r.repo==="Believers-common-group/processor-BNR").upstream="claimed-native-bnr";
   expect(check(x).integrityIssues).toContain("FORK_ORIGIN_NOT_ACKNOWLEDGED:Believers-common-group/processor-BNR");
  });
  it("refuses a forked upstream SDK nominated as the signing authority",()=>{
   const x=load();
-  x.controls.find((r:any)=>r.control==="WARDEN_ADMISSION").evidenceCandidate="Believers-common-group/Warden";
+  x.controls.find((r:ControlEntry)=>r.control==="WARDEN_ADMISSION").evidenceCandidate="Believers-common-group/Warden";
   expect(check(x).integrityIssues).toContain("UPSTREAM_SDK_FORK_CANNOT_ESTABLISH_AUTHORITY:WARDEN_ADMISSION");
  });
  it("rejects unknown control injection and still holds",()=>{
