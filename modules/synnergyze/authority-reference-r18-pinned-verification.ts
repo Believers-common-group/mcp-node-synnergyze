@@ -155,7 +155,7 @@ export function assessR18PinnedEvidence(
     const a=attestations[0] as R18EvidenceAttestation;
     const pin=OBJ(suppliedPin)?suppliedPin as unknown as R18IssuerPin:null;
     if(!pin||!TEXT(pin.issuerRef)||!TEXT(pin.keyId)||
-       pin.state!=="ACTIVE"||!TEXT(pin.publicKeyPem)||!TEXT(pin.spkiDigest)||
+       pin.state!=="ACTIVE"||typeof pin.publicKeyPem!=="string"||!pin.publicKeyPem.includes("-----BEGIN PUBLIC KEY-----")||!TEXT(pin.spkiDigest)||
        pin.issuerRef!==e.issuerRef||pin.issuerRef!==a.issuerRef||
        pin.keyId!==a.keyId || !publicKeyOf(pin)||
        ![instant(pin.validFrom),instant(pin.validUntil),now].every(Number.isFinite)||
