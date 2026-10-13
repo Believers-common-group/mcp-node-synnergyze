@@ -1,5 +1,5 @@
 import { assessR17EvidenceHandoff, REQUIRED_R17_CONTROLS,
-  type R17Candidate, type R17Control } from "./authority-reference-trust-handoff.ts";
+  type R17Control } from "./authority-reference-trust-handoff.ts";
 
 /**
  * R1.9 read-only authority-source inventory. This is an intake CHECKLIST,
