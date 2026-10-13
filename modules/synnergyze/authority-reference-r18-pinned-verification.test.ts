@@ -33,7 +33,7 @@ function fixture(){
   const pem=keys.publicKey.export({type:"spki",format:"pem"}).toString();
   pins[e.control]={issuerRef:e.issuerRef,keyId:"key-"+i,publicKeyPem:pem,spkiDigest:r18SpkiDigest(pem),
     state:"ACTIVE",validFrom:"2026-10-13T05:50:00.000Z",validUntil:"2026-10-13T06:15:00.000Z"};
-  const attestation={schema:"AUTHORITY-REFERENCE-EVIDENCE-PROOF-001/R1.8",
+  const attestation={schema:"AUTHORITY-REFERENCE-EVIDENCE-PROOF-001/R1.8" as const,
     namespace:"STAGING-TEST",generation:3,control:e.control,
     issuerRef:e.issuerRef,keyId:"key-"+i,candidateDigest,evidenceDigest:r18EvidenceDigest(e),
     nonce:"nonce-unique-per-control-"+i,signedAt:"2026-10-13T05:56:00.000Z",
