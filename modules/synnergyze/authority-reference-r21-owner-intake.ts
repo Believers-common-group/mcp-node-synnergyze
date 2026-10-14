@@ -1,6 +1,6 @@
 import { auditR20OwnerRegister } from "./authority-reference-r20-owner-gate.ts";
 import { assessR17EvidenceHandoff, REQUIRED_R17_CONTROLS,
-  type R17Candidate, type R17Control } from "./authority-reference-trust-handoff.ts";
+  type R17Control } from "./authority-reference-trust-handoff.ts";
 
 /**
  * R2.1 immutable owner nomination intake. A well-formed mandate proposal is only
