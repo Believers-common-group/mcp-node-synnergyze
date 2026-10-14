@@ -1,0 +1,27 @@
+name: Authority Reference R2.1 — Custodian Intake HOLD
+on:
+  pull_request:
+    paths:
+      - 'modules/synnergyze/authority-reference-r21-owner-intake.ts'
+      - 'modules/synnergyze/authority-reference-r21-owner-intake.test.ts'
+      - 'docs/AUTHORITY-REFERENCE-R21-OWNER-INTAKE.md'
+      - '.github/workflows/authority-reference-r21-intake.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  independent-custodian-intake:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Locked dependencies, no lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Test fail-closed 13-role custodian intake
+        run: npx --no-install vitest run modules/synnergyze/authority-reference-r21-owner-intake.test.ts
