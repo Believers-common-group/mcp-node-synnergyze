@@ -16,7 +16,6 @@ const candidate=()=>({
  arkRef:"ark:offline-test",genesisRef:"genesis:offline-test",
  sourceAuthorityRef:"source:offline-test",purpose:"historical-reference",
 });
-type Candidate=ReturnType<typeof candidate>;
 const proposal=(control:(typeof REQUIRED_R17_CONTROLS)[number],nominee="nominee:"+control):Record<string,unknown>=>({
  control,nomineeRef:nominee,independentReviewerRef:"reviewer:"+control,
  mandateRef:"mandate:"+control,evidenceRef:"evidence:"+control,
