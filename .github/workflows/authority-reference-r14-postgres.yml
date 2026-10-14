@@ -1,0 +1,38 @@
+name: Authority Reference R1.4 — Ephemeral PostgreSQL Conformance
+on:
+  pull_request:
+    paths:
+      - 'schemas/authority-reference-r13-ledger.sql'
+      - 'scripts/authority-reference-r14-postgres-ephemeral.sh'
+      - 'docs/AUTHORITY-REFERENCE-R14-EPHEMERAL-PG.md'
+      - '.github/workflows/authority-reference-r14-postgres.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-postgres:
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ephemeral-r14-fixture-only
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Validate migration and concurrent replay in throwaway PostgreSQL container
+        env:
+          R14_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          bash scripts/authority-reference-r14-postgres-ephemeral.sh "$R14_PG_CONTAINER"

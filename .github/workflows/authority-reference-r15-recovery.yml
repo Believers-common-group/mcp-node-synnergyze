@@ -1,0 +1,47 @@
+name: Authority Reference R1.5 — Ephemeral Recovery & Audit
+on:
+  pull_request:
+    paths:
+      - 'schemas/authority-reference-r13-ledger.sql'
+      - 'scripts/authority-reference-r14-postgres-ephemeral.sh'
+      - 'scripts/authority-reference-r15-recovery-ephemeral.sh'
+      - 'docs/AUTHORITY-REFERENCE-R15-RECOVERY-ASSURANCE.md'
+      - '.github/workflows/authority-reference-r15-recovery.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disposable-recovery:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: ephemeral-r15-only
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Exercise restart, new-cluster restore, replay refusal and audit fingerprint
+        env:
+          R15_CONTAINER_ID: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          bash scripts/authority-reference-r15-recovery-ephemeral.sh "$R15_CONTAINER_ID"
+      - name: Retain synthetic unanchored recovery evidence
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: authority-reference-r15-recovery-candidate
+          path: ${{ runner.temp }}/authority-r15-audit-checkpoint.json
+          if-no-files-found: error
+          retention-days: 7

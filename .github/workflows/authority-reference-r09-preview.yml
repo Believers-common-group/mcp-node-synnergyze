@@ -1,0 +1,44 @@
+name: Authority Reference R1.3 — Offline Shared-Ledger Contract
+on:
+  pull_request:
+    paths:
+      - 'modules/synnergyze/authority-reference-preview.ts'
+      - 'modules/synnergyze/authority-reference-preview.test.ts'
+      - 'modules/synnergyze/authority-reference-commissioning.ts'
+      - 'modules/synnergyze/authority-reference-commissioning.test.ts'
+      - 'modules/synnergyze/authority-reference-admission-chain.ts'
+      - 'modules/synnergyze/authority-reference-admission-chain.test.ts'
+      - 'modules/synnergyze/authority-reference-issuer-registry.ts'
+      - 'modules/synnergyze/authority-reference-replay-ledger.ts'
+      - 'modules/synnergyze/authority-reference-triple-issuer.ts'
+      - 'modules/synnergyze/authority-reference-triple-issuer.test.ts'
+      - 'modules/synnergyze/authority-reference-pg-ledger.ts'
+      - 'modules/synnergyze/authority-reference-pg-ledger.test.ts'
+      - 'schemas/authority-reference-r13-ledger.sql'
+      - 'docs/AUTHORITY-REFERENCE-R13-SHARED-LEDGER.md'
+      - 'docs/AUTHORITY-REFERENCE-R12-ISSUERS-REPLAY.md'
+      - 'docs/AUTHORITY-REFERENCE-R11-ADMISSION-CHAIN.md'
+      - 'docs/AUTHORITY-REFERENCE-R10-COMMISSIONING.md'
+      - 'docs/AUTHORITY-REFERENCE-R09-NATIVE-PREVIEW.md'
+      - '.github/workflows/authority-reference-r09-preview.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-native-contract:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run native draft-only integration tests
+        run: npx --no-install vitest run modules/synnergyze/authority-reference-preview.test.ts modules/synnergyze/authority-reference-commissioning.test.ts modules/synnergyze/authority-reference-admission-chain.test.ts modules/synnergyze/authority-reference-triple-issuer.test.ts modules/synnergyze/authority-reference-pg-ledger.test.ts

@@ -1,0 +1,118 @@
+name: Authority Reference R1.6 — Signed Audit Conformance (Test Only)
+on:
+  pull_request:
+    paths:
+      - 'scripts/authority-reference-r16-audit.mjs'
+      - 'scripts/authority-reference-r15-recovery-ephemeral.sh'
+      - 'scripts/authority-reference-r14-postgres-ephemeral.sh'
+      - 'schemas/authority-reference-r13-ledger.sql'
+      - 'docs/AUTHORITY-REFERENCE-R16-AUDIT-ANCHORING.md'
+      - '.github/workflows/authority-reference-r16-audit.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  produce-synthetic-evidence:
+    runs-on: ubuntu-latest
+    timeout-minutes: 14
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_PASSWORD: r16-disposable-only
+          POSTGRES_DB: postgres
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 12
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - name: Generate real ephemeral PostgreSQL recovery candidate
+        env:
+          R16_PG_CONTAINER: ${{ job.services.postgres.id }}
+        run: |
+          set -euo pipefail
+          bash scripts/authority-reference-r15-recovery-ephemeral.sh "$R16_PG_CONTAINER"
+          test -s "$RUNNER_TEMP/authority-r15-audit-checkpoint.json"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r16-synthetic-candidate
+          path: ${{ runner.temp }}/authority-r15-audit-checkpoint.json
+          if-no-files-found: error
+          retention-days: 7
+  sign-test-evidence:
+    needs: produce-synthetic-evidence
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: r16-synthetic-candidate
+          path: ${{ runner.temp }}/candidate
+      - name: Separate ephemeral TEST auditor process; no database access
+        env:
+          R16_TEST_ONLY: '1'
+        run: |
+          set -euo pipefail
+          mkdir -m 700 "$RUNNER_TEMP/attestor"
+          node scripts/authority-reference-r16-audit.mjs generate-test-key "$RUNNER_TEMP/attestor/auditor-private.pem" "$RUNNER_TEMP/attestor/auditor-public.pem"
+          node scripts/authority-reference-r16-audit.mjs sign "$RUNNER_TEMP/candidate/authority-r15-audit-checkpoint.json" "$RUNNER_TEMP/attestor/auditor-private.pem" "$RUNNER_TEMP/attestor/signed-audit.json" "$GITHUB_RUN_ID" "$GITHUB_SHA"
+          node scripts/authority-reference-r16-audit.mjs pin "$RUNNER_TEMP/attestor/auditor-public.pem" > "$RUNNER_TEMP/attestor/test-public-pin.txt"
+          test -s "$RUNNER_TEMP/attestor/signed-audit.json"
+          shred -u "$RUNNER_TEMP/attestor/auditor-private.pem" || rm -f "$RUNNER_TEMP/attestor/auditor-private.pem"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: r16-test-auditor-signed-bundle
+          path: |
+            ${{ runner.temp }}/attestor/auditor-public.pem
+            ${{ runner.temp }}/attestor/signed-audit.json
+            ${{ runner.temp }}/attestor/test-public-pin.txt
+          if-no-files-found: error
+          retention-days: 7
+  verify-signed-evidence:
+    needs: [produce-synthetic-evidence, sign-test-evidence]
+    runs-on: ubuntu-latest
+    timeout-minutes: 6
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+      - uses: actions/download-artifact@v4
+        with:
+          name: r16-synthetic-candidate
+          path: ${{ runner.temp }}/candidate
+      - uses: actions/download-artifact@v4
+        with:
+          name: r16-test-auditor-signed-bundle
+          path: ${{ runner.temp }}/signed
+      - name: Verify signed evidence, then reject changes and signer substitution
+        env:
+          R16_TEST_ONLY: '1'
+        run: |
+          set -euo pipefail
+          candidate="$RUNNER_TEMP/candidate/authority-r15-audit-checkpoint.json"
+          bundle="$RUNNER_TEMP/signed/signed-audit.json"
+          pub="$RUNNER_TEMP/signed/auditor-public.pem"
+          pin="$(cat "$RUNNER_TEMP/signed/test-public-pin.txt")"
+          node scripts/authority-reference-r16-audit.mjs verify "$candidate" "$bundle" "$pub" "$pin" "$GITHUB_SHA"
+          cp "$candidate" "$RUNNER_TEMP/changed-candidate.json"
+          node -e 'const fs=require("fs"),f=process.argv[1],x=JSON.parse(fs.readFileSync(f));x.rowDataSha256="sha256:"+"0".repeat(64);fs.writeFileSync(f,JSON.stringify(x))' "$RUNNER_TEMP/changed-candidate.json"
+          if node scripts/authority-reference-r16-audit.mjs verify "$RUNNER_TEMP/changed-candidate.json" "$bundle" "$pub" "$pin" "$GITHUB_SHA"; then exit 1; fi
+          cp "$bundle" "$RUNNER_TEMP/changed-bundle.json"
+          node -e 'const fs=require("fs"),f=process.argv[1],x=JSON.parse(fs.readFileSync(f));x.authorityGranted=true;fs.writeFileSync(f,JSON.stringify(x))' "$RUNNER_TEMP/changed-bundle.json"
+          if node scripts/authority-reference-r16-audit.mjs verify "$candidate" "$RUNNER_TEMP/changed-bundle.json" "$pub" "$pin" "$GITHUB_SHA"; then exit 1; fi
+          if node scripts/authority-reference-r16-audit.mjs verify "$candidate" "$bundle" "$pub" "sha256:$(printf '0%.0s' {1..64})" "$GITHUB_SHA"; then exit 1; fi
+          if node scripts/authority-reference-r16-audit.mjs verify "$candidate" "$bundle" "$pub" "$pin" "$(printf '0%.0s' {1..40})"; then exit 1; fi
+          echo 'R1.6 PASS: signature and candidate bound, tampering/pin/commit substitution refused; all outputs HOLD'

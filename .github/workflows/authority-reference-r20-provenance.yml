@@ -1,0 +1,28 @@
+name: Authority Reference R2.0 — Owner Provenance HOLD
+on:
+  pull_request:
+    paths:
+      - 'modules/synnergyze/authority-reference-r20-owner-gate.ts'
+      - 'modules/synnergyze/authority-reference-r20-owner-gate.test.ts'
+      - 'docs/AUTHORITY-REFERENCE-R20-OWNER-REGISTER.json'
+      - 'docs/AUTHORITY-REFERENCE-R20-LIVE-COMMISSIONING.md'
+      - '.github/workflows/authority-reference-r20-provenance.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  owner-provenance-audit:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install pinned dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Verify source provenance and unappointed commissioning HOLD
+        run: npx --no-install vitest run modules/synnergyze/authority-reference-r20-owner-gate.test.ts

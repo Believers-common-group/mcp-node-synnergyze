@@ -1,0 +1,28 @@
+name: Authority Reference R1.8 — Pinned Signature Conformance
+on:
+  pull_request:
+    paths:
+      - 'modules/synnergyze/authority-reference-r18-pinned-verification.ts'
+      - 'modules/synnergyze/authority-reference-r18-pinned-verification.test.ts'
+      - 'modules/synnergyze/authority-reference-trust-handoff.ts'
+      - 'docs/AUTHORITY-REFERENCE-R18-PINNED-VERIFICATION.md'
+      - '.github/workflows/authority-reference-r18-pins.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  offline-pinned-signatures:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Install locked dependencies without lifecycle scripts
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      - name: Run R1.8 fail-closed evidence tests
+        run: npx --no-install vitest run modules/synnergyze/authority-reference-trust-handoff.test.ts modules/synnergyze/authority-reference-r18-pinned-verification.test.ts
