@@ -115,13 +115,15 @@ export function createApp({file=DEFAULT_FILE}={}) {
       if(!body||typeof body!=='object'||Array.isArray(body))bad('INVALID_JSON');
       const pathname=url.pathname;
       const result=db.commit(s=>{
-        const w=permitted(s,actor,'WORKSPACE-001');
+        const w=s.workspaces.find(item=>item.id==='WORKSPACE-001');
+        if(!w)throw new HttpError(404,'WORKROOM_NOT_FOUND');
         if(pathname==='/api/invitation/accept'){
           if(actor!==w.partner)denied('PARTNER_ONLY');
           if(w.invitation!=='PENDING')bad('ALREADY_RESPONDED');
           w.invitation='ACCEPTED';addEvent(s,actor,'PARTNER_JOINED','Partner accepted the invitation');
           return {ok:true};
         }
+        permitted(s,actor,'WORKSPACE-001');
         if(pathname==='/api/requests'){
           if(actor!==w.requester)denied('REQUESTER_ONLY');
           if(w.invitation!=='ACCEPTED')bad('WAIT_FOR_PARTNER');
