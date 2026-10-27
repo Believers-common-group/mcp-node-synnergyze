@@ -14,7 +14,7 @@ async function setup(t){
    return {status:response.status,data:await response.json(),cookie:response.headers.get('set-cookie')?.split(';')[0]};
  };
  const auth=async (username,password)=>{const x=await req('/api/login',{username,password});assert.equal(x.status,200);
-   return {cookie:x.cookie,csrf:x.data.csrf,headers(){return{cookie:this.cookie,'x-csrf':this.csrf}},async call(path,body){return req(path,body,this.headers())},async view(path){return req(path,undefined,{cookie:this.cookie})}}};
+   return {cookie:x.cookie,csrf:x.data.csrf,headers(){return{cookie:this.cookie,'x-csrf':this.csrf}},async call(path,body={}){return req(path,body,this.headers())},async view(path){return req(path,undefined,{cookie:this.cookie})}}};
  return {dir,file,app,url,req,auth};
 }
 async function officeSetup(t){
