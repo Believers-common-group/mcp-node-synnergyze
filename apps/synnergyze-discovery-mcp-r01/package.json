@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "description": "Synnergyze read-only MCP discovery candidate for public sandbox information",
   "private": true,
-  "license": "UNLICENSED",
+  "license": "MIT",
   "type": "module",
   "bin": {
     "synnergyze-discovery-mcp": "./server.mjs"
