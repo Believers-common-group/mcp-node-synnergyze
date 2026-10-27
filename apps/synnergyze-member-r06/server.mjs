@@ -180,8 +180,9 @@ export function createMemberApp({file=join(homedir(),'.synnergyze','member-pilot
     }catch(e){const code=e.message?.includes('UNIQUE constraint')?'CONFLICT':(e.status?e.message:'SERVER_ERROR');
       send(e.status??(code==='CONFLICT'?409:500),{ok:false,error:code})}
   });
-  return {server,db,file:resolved,async start(port=0){await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve)});return 'http://127.0.0.1:'+server.address().port},
-    async close(){if(server.listening)await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));db.close()}};
+  let closed=false;
+  return {server,db,file:resolved,async start(port=0){if(closed)err('APP_ALREADY_CLOSED');await new Promise((resolve,reject)=>{server.once('error',reject);server.listen(port,'127.0.0.1',resolve)});return 'http://127.0.0.1:'+server.address().port},
+    async close(){if(closed)return;closed=true;if(server.listening)await new Promise((resolve,reject)=>server.close(e=>e?reject(e):resolve()));db.close()}};
 }
 if(process.argv[1]&&resolve(process.argv[1])===fileURLToPath(import.meta.url)){
   if(process.env.SYNNERGYZE_MEMBER_PILOT!=='1'){console.error('Not started: SYNNERGYZE_MEMBER_PILOT=1 required');process.exitCode=1}
