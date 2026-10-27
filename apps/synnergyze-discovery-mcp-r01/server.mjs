@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 /**
  * Synnergyze R0.1 public discovery MCP candidate.
  *
