@@ -1,0 +1,32 @@
+{
+  "name": "@believers-common-group/synnergyze-discovery-mcp",
+  "version": "0.1.0",
+  "description": "Synnergyze read-only MCP discovery candidate for public sandbox information",
+  "private": true,
+  "license": "UNLICENSED",
+  "type": "module",
+  "bin": {
+    "synnergyze-discovery-mcp": "./server.mjs"
+  },
+  "files": [
+    "server.mjs",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Believers-common-group/mcp-node-synnergyze.git",
+    "directory": "apps/synnergyze-discovery-mcp-r01"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.11.0",
+    "zod": "^3.24.4"
+  },
+  "scripts": {
+    "start": "node server.mjs",
+    "test": "node --test discovery.node-check.mjs",
+    "pack:check": "npm pack --dry-run --ignore-scripts --json"
+  }
+}
