@@ -31,3 +31,32 @@ jobs:
           node --check apps/synnergyze-discovery-mcp-r01/discovery.node-check.mjs
       - name: Verify actual MCP stdio protocol and denied mutation
         run: node --test apps/synnergyze-discovery-mcp-r01/discovery.node-check.mjs
+      - name: Validate isolated Synnergyze package contents
+        run: |
+          npm pack ./apps/synnergyze-discovery-mcp-r01 --dry-run --ignore-scripts --json > "$RUNNER_TEMP/synnergyze-pack.json"
+          node --input-type=module <<'NODE'
+          import { readFileSync } from 'node:fs';
+          const archive = JSON.parse(readFileSync(process.env.RUNNER_TEMP + '/synnergyze-pack.json', 'utf8'))[0];
+          const actual = archive.files.map(f => f.path).sort();
+          const expected = ['README.md', 'package.json', 'server.mjs'].sort();
+          if (JSON.stringify(actual) !== JSON.stringify(expected)) {
+            throw new Error('Unexpected package contents: ' + JSON.stringify(actual));
+          }
+          const meta = JSON.parse(readFileSync('apps/synnergyze-discovery-mcp-r01/package.json', 'utf8'));
+          if (meta.private !== true || meta.name !== '@believers-common-group/synnergyze-discovery-mcp') {
+            throw new Error('Unauthorized or misidentified release candidate');
+          }
+          if ('algoliasearch' in meta.dependencies) {
+            throw new Error('Algolia inherited dependency found in standalone package');
+          }
+          NODE
+      - name: Install only the Synnergyze tarball and verify MCP protocol
+        shell: bash
+        run: |
+          ARCHIVE="$(npm pack ./apps/synnergyze-discovery-mcp-r01 --pack-destination "$RUNNER_TEMP" --ignore-scripts)"
+          mkdir -p "$RUNNER_TEMP/isolated-synnergyze"
+          npm install --prefix "$RUNNER_TEMP/isolated-synnergyze" "$RUNNER_TEMP/$ARCHIVE" --ignore-scripts --no-audit --no-fund
+          test ! -e "$RUNNER_TEMP/isolated-synnergyze/node_modules/algoliasearch"
+          export SYNNERGYZE_MCP_SERVER_PATH="$RUNNER_TEMP/isolated-synnergyze/node_modules/@believers-common-group/synnergyze-discovery-mcp/server.mjs"
+          test -f "$SYNNERGYZE_MCP_SERVER_PATH"
+          node --test apps/synnergyze-discovery-mcp-r01/discovery.node-check.mjs
