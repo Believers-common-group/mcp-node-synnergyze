@@ -12,14 +12,34 @@ This directory adds a small **real MCP-protocol adapter** on the same branch as 
 - Admission documentation: [handoff](../../docs/mcp-registry/SYNNERGYZE-SANDBOX-CONNECTION-R0.1.md)
 - External catalogue onboarding: [GitHub discussion #1257](https://github.com/github/github-mcp-server/discussions/1257)
 
-## Run locally (from the repository root)
+## Independent package identity (R0.1)
 
-Requires Node.js 22 and existing root `package-lock.json` dependencies.
+This directory contains a **separate npm package manifest** named `@believers-common-group/synnergyze-discovery-mcp` (version `0.1.0`). Its entry point and MCP server identity are Synnergyze-specific and do not import `algoliasearch` or launch the inherited `algolia-mcp` root server.
+
+The package is **`private: true`**, meaning `npm publish` is deliberately disabled. The scoped name is an engineering candidate, **not proof of npm organization ownership or entitlement**. The MIT source licence follows the existing repository licence; the pre-existing Algolia notices remain untouched.
+
+## Install and run locally (isolated from the repository root package)
+
+Requires Node.js 22 or newer and installation of the listed npm dependencies.
 
 ```sh
-npm ci
-node apps/synnergyze-discovery-mcp-r01/server.mjs
+cd apps/synnergyze-discovery-mcp-r01
+npm install --ignore-scripts
+npm start
 ```
+
+This starts only a **stdio MCP process**. It has no HTTP endpoint and cannot access the existing R0.5 sandbox state, Warden, RiverOS, payment systems or private GitHub data.
+
+To check its package contents without publishing:
+
+```sh
+npm run pack:check
+npm test
+```
+
+GitHub Actions also packs the candidate into a tarball, installs that tarball into a separate temporary directory and executes an actual MCP protocol smoke test against the isolated installation.
+
+**Do not remove `private: true`, create a public `server.json`, register a namespace, or publish to npm without independent owner review and approval.**
 
 The process speaks MCP JSON-RPC over **stdio**, not an HTTP browser URL. Do not paste it into a web browser or proxy it to the R0.5 local demo.
 
