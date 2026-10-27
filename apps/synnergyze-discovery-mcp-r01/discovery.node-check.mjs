@@ -2,10 +2,11 @@ import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
+import { fileURLToPath } from 'node:url';
 import { test } from 'node:test';
 
 test('real MCP stdio protocol: read-only public overview and admission gates', { timeout: 15000 }, async (t) => {
-  const executable = process.env.SYNNERGYZE_MCP_SERVER_PATH || 'apps/synnergyze-discovery-mcp-r01/server.mjs';
+  const executable = process.env.SYNNERGYZE_MCP_SERVER_PATH || fileURLToPath(new URL('./server.mjs', import.meta.url));
   const child = spawn(process.execPath, [executable], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { PATH: process.env.PATH || '', NODE_ENV: 'test', HOME: process.env.HOME || '' }
