@@ -9,7 +9,7 @@ This proof-of-concept provides a narrow, universal collaboration workflow with *
 Requires Node.js 22+.
 
 ```sh
-node --test sandbox/synnergyze-collaboration-r04/pilot.test.mjs
+node --test sandbox/synnergyze-collaboration-r04/pilot.node-check.mjs
 node sandbox/synnergyze-collaboration-r04/demo.mjs
 ```
 
