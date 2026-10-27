@@ -5,7 +5,8 @@ import { once } from 'node:events';
 import { test } from 'node:test';
 
 test('real MCP stdio protocol: read-only public overview and admission gates', { timeout: 15000 }, async (t) => {
-  const child = spawn(process.execPath, ['apps/synnergyze-discovery-mcp-r01/server.mjs'], {
+  const executable = process.env.SYNNERGYZE_MCP_SERVER_PATH || 'apps/synnergyze-discovery-mcp-r01/server.mjs';
+  const child = spawn(process.execPath, [executable], {
     stdio: ['pipe', 'pipe', 'pipe'],
     env: { PATH: process.env.PATH || '', NODE_ENV: 'test', HOME: process.env.HOME || '' }
   });
