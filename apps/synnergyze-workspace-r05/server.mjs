@@ -67,7 +67,7 @@ const permitted = (s,actor,workspace) => {
 function view(s,actor) {
   if(!INITIAL_ACTORS[actor])denied('DEMO_ROLE_REQUIRED');
   const workspaces=s.workspaces.filter(w=>actor==='office'||w.requester===actor||w.partner===actor);
-  const visible=new Set(workspaces.map(w=>w.id));
+  const visible=new Set(workspaces.filter(w=>actor!=='partner'||w.invitation==='ACCEPTED').map(w=>w.id));
   return {
     demo:true, role:actor, actor:clone(INITIAL_ACTORS[actor]),
     workspaces: workspaces.map(w=>({...w})),
@@ -99,7 +99,7 @@ export function createApp({file=DEFAULT_FILE}={}) {
     try {
       const host=req.headers.host??'';
       if(!/^(127\.0\.0\.1|localhost)(:\d+)?$/i.test(host))denied('LOCAL_HOST_ONLY');
-      if(req.headers.origin&&!/^http:\/\/(127\.0\.0\.1|localhost)(:\d+)?$/i.test(req.headers.origin))denied('CROSS_ORIGIN_DENIED');
+      if(req.headers.origin&&req.headers.origin!=='http://'+host)denied('CROSS_ORIGIN_DENIED');
       const url=new URL(req.url,'http://127.0.0.1');
       if(req.method==='GET'&&staticFiles.has(url.pathname)) {
         const f=staticFiles.get(url.pathname);res.statusCode=200;res.setHeader('Content-Type',f.type);res.end(readFileSync(f.path));return;
