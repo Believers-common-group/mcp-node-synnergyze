@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Synnergyze — Work together</title>
+<meta name="color-scheme" content="light"><link rel="stylesheet" href="/styles.css"><script type="module" src="/app.js"></script>
+<style>.wrap{max-width:1050px;margin:34px auto;padding:0 20px}.auth{max-width:440px;margin:65px auto}.top{display:flex;justify-content:space-between;align-items:center;gap:10px;padding:20px 24px;background:#fff;border-bottom:1px solid #e4eced}.top strong{font-size:23px;color:#0e6773}.top span{font-size:11px;color:#718990}.top .actions{align-items:center}.panel{margin-bottom:15px}.cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(240px,1fr));gap:14px}.result{background:#ecf7f5;padding:12px;border-radius:8px;overflow-wrap:anywhere;font-size:12px}.subtle{color:#667d85;font-size:13px;line-height:1.7}.tabs{display:flex;gap:8px;margin-bottom:20px}.tabs button{padding:8px 15px;border-radius:9px;border:1px solid #d6e4e8;background:white}.tabs button.active{background:#0f7782;color:white}.field{margin-bottom:12px}.field select{padding:10px;width:100%;border:1px solid #d6e4e8;border-radius:7px}.fine{font-size:11px;color:#738891}.inline-actions{display:flex;flex-wrap:wrap;gap:8px}.record{padding:15px;border-bottom:1px solid #e7eded}.record:last-child{border:0}.record strong{display:block;margin-bottom:7px}.record p{margin:4px 0 10px;color:#637d85;font-size:12px;white-space:pre-wrap}.stage{font-weight:700;color:#287a7f;font-size:11px}.danger{color:#aa443d}.hidden{display:none!important}@media(max-width:620px){.top{flex-wrap:wrap}.wrap{margin:20px auto}.auth{margin-top:25px}}</style></head>
+<body><div class="demo-banner" role="note" id="warning">LOCAL MEMBERS PILOT — Not identity-verified. No real finance, ERP or Warden execution.</div>
+<header class="top"><div><strong>synnergyze</strong><span style="display:block" id="subtitle">A shared place to get work done</span></div>
+<div class="actions"><label class="field" style="margin:0"><span id="language-label">Language</span><select id="lang" aria-label="Language"><option value="en">English</option><option value="hi">हिन्दी</option><option value="kn">ಕನ್ನಡ</option></select></label><button id="logout" class="secondary hidden" type="button">Sign out</button></div></header>
+<main class="wrap">
+<div id="message" role="status" aria-live="polite" class="notice hidden"></div>
+<section id="auth" class="auth">
+<div class="tabs"><button type="button" id="show-login" class="active">Sign in</button><button type="button" id="show-join">Use invitation</button></div>
+<div class="panel" id="login-panel"><h1 class="page-title" id="login-title">Welcome to your workspace</h1><p class="subtle" id="login-help">Sign in to view the work your organisation is part of.</p>
+<form id="login-form" class="form-grid"><label class="field"><span id="username-label">Username</span><input name="username" autocomplete="username" required maxlength="60"></label>
+<label class="field"><span id="password-label">Password</span><input type="password" name="password" autocomplete="current-password" required></label>
+<button class="primary" type="submit" id="login-button">Sign in</button></form></div>
+<div class="panel hidden" id="join-panel"><h1 class="page-title" id="join-title">Join a workroom</h1><p class="subtle" id="join-help">Use the invitation issued by the office. No email is sent automatically.</p>
+<form id="join-form" class="form-grid"><label class="field"><span id="invite-label">Invitation code</span><input name="invitation" required autocomplete="off"></label>
+<label class="field"><span id="new-user-label">Choose a username</span><input name="username" required maxlength="60" autocomplete="username"></label>
+<label class="field"><span id="your-name-label">Your name</span><input name="label" required maxlength="120"></label>
+<label class="field"><span id="new-password-label">Create a password (at least 12 characters)</span><input type="password" name="password" minlength="12" required autocomplete="new-password"></label>
+<button class="primary" type="submit" id="join-button">Create local account</button></form></div></section>
+<section id="workspace" class="hidden">
+<div class="hero"><div><div class="eyebrow" id="audience">MEMBER WORKSPACE</div><h1 id="hello">Your shared work</h1><p id="welcome">See requests, partner responses and the next steps.</p></div></div>
+<div id="office-tools" class="hidden"><div class="cards">
+<div class="panel"><h2 id="org-title">Add an organisation</h2><form id="org-form" class="form-grid"><label class="field"><span id="org-label">Organisation name</span><input name="name" maxlength="100" required></label><button class="primary" id="org-create" type="submit">Add organisation</button></form></div>
+<div class="panel"><h2 id="invite-title">Invite a member</h2><form id="invite-form" class="form-grid"><label class="field"><span id="invite-org-label">Organisation</span><select name="org_id" id="invite-org" required></select></label><button class="primary" id="invite-create" type="submit">Create invitation code</button></form><div class="result hidden" id="invite-result"></div></div>
+<div class="panel"><h2 id="room-title">Create a shared workroom</h2><form id="room-form" class="form-grid"><label class="field"><span id="room-name-label">Workroom name</span><input name="title" maxlength="120" required></label>
+<label class="field"><span id="requester-label">Requesting business</span><select name="requester_org" id="requester-org" required></select></label>
+<label class="field"><span id="partner-label">Working partner</span><select name="partner_org" id="partner-org" required></select></label>
+<button class="primary" id="room-create" type="submit">Create workroom</button></form></div></div></div>
+<h2 class="subheading" id="work-title">Workrooms and requests</h2>
+<div id="rooms" class="cards"></div>
+<h2 class="subheading" id="connections-title">Connections</h2><div id="connections" class="cards"></div>
+<p class="fine" id="footnote">Private information remains on this computer. This pilot uses local identities, not real membership authority.</p>
+</section></main></body></html>
