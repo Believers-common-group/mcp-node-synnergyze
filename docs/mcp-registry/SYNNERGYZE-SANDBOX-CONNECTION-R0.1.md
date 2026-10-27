@@ -20,7 +20,7 @@ This file connects the **existing** Synnergyze sandbox review to the external MC
 | Property | Current state |
 | --- | --- |
 | Repository visibility | Public GitHub repository. Public **source** is not an operational authorization grant. |
-| Repository root package | Currently named `algolia-mcp` in `package.json`, with an Algolia-derived scaffold. **Not** a verified distributable Synnergyze MCP package. |
+| Repository root package | Still named `algolia-mcp`; retained only as an inherited scaffold. Not a Synnergyze release. |\n| Isolated candidate package | `apps/synnergyze-discovery-mcp-r01/package.json` independently identifies `@believers-common-group/synnergyze-discovery-mcp` (v0.1.0), sets `private: true`, and requires only MCP SDK and Zod. **Not published or registry-listed**; npm namespace ownership remains unverified. |
 | R0.5 browser demo | Node 22+ local, `127.0.0.1:4177`, enabled only by `SYNNERGYZE_DEMO_MODE=1`. |
 | R0.5 demo security | Synthetic `x-demo-role` header, not real authentication or tenant isolation. Do **not** tunnel, proxy, expose, or deploy. |
 | Warden / DigitalMe / BNR | Not integrated into the R0.5 runtime; synthetic roles/grants are not entitlement. |
@@ -50,9 +50,7 @@ Registry discovery, BNR admission, Warden authorization and operational executio
 
 - [x] Identify the actual existing source branch and draft PR.
 - [x] Verify that repo-wide tests, lint, type-check and the dedicated R0.4/R0.5 checks pass on the then-current PR head (2026-10-27, `ceb895d5`). Check again after any new changes.
-- [ ] Decide which actual MCP tool contract to publish (minimal read-only discovery recommended), independent of the demo UI.
-- [ ] Correct package/server identity and remove inherited Algolia service declarations **for the candidate service** before advertising it as Synnergyze.
-- [ ] Complete an executable MCP protocol conformance and tool-inventory test.
+- [x] Implement a minimal read-only discovery candidate with exactly two metadata tools, separate from the local demo. This is a **candidate contract**, not approved for publication.\n- [x] Give the candidate its own private package identity and executable, without Algolia imports; leave the attributed upstream scaffold unchanged.\n- [x] Run executable MCP protocol and isolated npm tarball-install smoke tests in GitHub Actions. These tests establish technical packaging compatibility, **not** production security.
 - [ ] Select actual distribution: publicly accessible secured Streamable HTTP MCP endpoint **or** a real published stdio-compatible package, not a localhost URL or an imaginary deployment.
 - [ ] Verify ownership of the intended `io.github.<owner>/<server>` namespace or a domain-verified namespace; use the authorized publisher identity.
 - [ ] If remote: deploy behind authentication, rate limits, audit, no synthetic role bypass, per-resource least privilege, tenant isolation, and network controls.
