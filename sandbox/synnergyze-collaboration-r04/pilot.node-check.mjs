@@ -1,0 +1,29 @@
+import test from 'node:test';
+import assert from 'node:assert/strict';
+import { SynnergyzeCollaborationPilot as Pilot } from './pilot.mjs';
+
+const CLOCK='2026-10-27T12:00:00.000Z';
+const create = () => { const p = new Pilot({ now: () => CLOCK }); for (const [id,org] of [['alice','BUSINESS_A'],['bob','BUSINESS_B'],['charlie','BUSINESS_C'],['finance','BUSINESS_A']]) {p.registerActor(id,org); p.approveActor(id,'synthetic-reviewer');} p.createWorkspace('WORK_A','alice');p.invite('WORK_A','alice','bob');p.acceptInvite('WORK_A','bob');p.invite('WORK_A','alice','finance');p.acceptInvite('WORK_A','finance'); for (const [actor,action] of [['alice','ORDER_PROPOSE'],['alice','ORDER_VIEW'],['alice','ERP_EXPORT'],['bob','ORDER_VIEW'],['bob','ORDER_ACCEPT'],['finance','FINANCE_APPROVE'],['finance','AUDIT_VIEW']]) p.issueTestGrant('WORK_A','alice',actor,action,'2026-11-01T00:00:00Z'); return p; };
+const submitted=()=>{let p=create(); p.proposeOrder('WORK_A','alice','O1',10500);p.acceptOrder('WORK_A','bob','O1');p.approveFinance('WORK_A','finance','O1');return p;};
+const denies=(fn,code)=>assert.throws(fn,e=>e.message===code);
+
+test('01 pending registration does not permit workspace creation',()=>{const p=new Pilot({now:()=>CLOCK});p.registerActor('alice','ORG_A');denies(()=>p.createWorkspace('A','alice'),'ACTOR_NOT_APPROVED');});
+test('02 reviewer cannot approve themselves',()=>{const p=new Pilot({now:()=>CLOCK});p.registerActor('alice','ORG_A');denies(()=>p.approveActor('alice','alice'),'INDEPENDENT_APPROVAL_REQUIRED');});
+test('03 uninvited actors cannot accept invitation',()=>{const p=create();denies(()=>p.acceptInvite('WORK_A','charlie'),'INVITATION_REQUIRED');});
+test('04 cannot invite without workspace ownership',()=>{const p=create();denies(()=>p.invite('WORK_A','bob','charlie'),'INVITE_NOT_AUTHORIZED');});
+test('05 foreign tenant cannot read a private order',()=>{const p=create();p.proposeOrder('WORK_A','alice','O1',10500);denies(()=>p.readOrder('WORK_A','charlie','O1'),'WARDEN_TEST_DENY');});
+test('06 owner must have explicit per-action test grant',()=>{const p=new Pilot({now:()=>CLOCK});p.registerActor('alice','ORG_A');p.approveActor('alice','rev');p.createWorkspace('W','alice');denies(()=>p.proposeOrder('W','alice','O1',100),'WARDEN_TEST_DENY');});
+test('07 no forged arbitrary grant by outside actor',()=>{const p=create();denies(()=>p.issueTestGrant('WORK_A','bob','charlie','ORDER_VIEW','2026-11-01'),'GRANT_NOT_AUTHORIZED');});
+test('08 expired test grants denied',()=>{const p=new Pilot({now:()=>CLOCK});p.registerActor('alice','ORG_A');p.approveActor('alice','rev');p.createWorkspace('W','alice');denies(()=>p.issueTestGrant('W','alice','alice','ORDER_PROPOSE','2026-10-26'),'INVALID_GRANT');});
+test('09 proposal amount must be positive integer minor unit',()=>{const p=create();denies(()=>p.proposeOrder('WORK_A','alice','BAD',1.5),'INVALID_ORDER');});
+test('10 duplicate orders rejected',()=>{const p=create();p.proposeOrder('WORK_A','alice','O1',100);denies(()=>p.proposeOrder('WORK_A','alice','O1',100),'ORDER_DUPLICATE');});
+test('11 owner cannot self-accept a bilateral order',()=>{const p=create();p.proposeOrder('WORK_A','alice','O1',100);denies(()=>p.acceptOrder('WORK_A','alice','O1'),'WARDEN_TEST_DENY');});
+test('12 cannot export without partner/finance approval',()=>{const p=create();p.proposeOrder('WORK_A','alice','O1',100);denies(()=>p.exportDryRun('WORK_A','alice','O1','K1'),'FINANCE_APPROVAL_REQUIRED');});
+test('13 partner cannot approve their own acceptance as finance',()=>{const p=create();p.proposeOrder('WORK_A','alice','O1',100);p.acceptOrder('WORK_A','bob','O1');denies(()=>p.approveFinance('WORK_A','bob','O1'),'WARDEN_TEST_DENY');});
+test('14 complete bilateral flow reaches stub without real effect',()=>{const p=submitted();const r=p.exportDryRun('WORK_A','alice','O1','K1');assert.equal(r.state,'DRY_RUN_ACCEPTED');assert.equal(r.externalEffects,false);assert.equal(p.stats().realExternalEffects,0);assert.equal(p.stats().simulatedAdapterCalls,1);});
+test('15 identical replay returns original result without second stub call',()=>{const p=submitted();const a=p.exportDryRun('WORK_A','alice','O1','K1');const b=p.exportDryRun('WORK_A','alice','O1','K1');assert.deepEqual(a,b);assert.equal(p.stats().simulatedAdapterCalls,1);});
+test('16 conflicting idempotency key cannot serve a different order',()=>{const p=submitted();p.proposeOrder('WORK_A','alice','O2',200);p.acceptOrder('WORK_A','bob','O2');p.approveFinance('WORK_A','finance','O2');p.exportDryRun('WORK_A','alice','O1','K1');denies(()=>p.exportDryRun('WORK_A','alice','O2','K1'),'IDEMPOTENCY_CONFLICT');});
+test('17 lost-ack state blocks blind replay and is auditable',()=>{const p=submitted();const r=p.exportDryRun('WORK_A','alice','O1','K1',{uncertain:true});assert.equal(r.state,'RECONCILIATION_REQUIRED');assert.equal(p.exportDryRun('WORK_A','alice','O1','K1').state,'RECONCILIATION_REQUIRED');assert.equal(p.stats().simulatedAdapterCalls,0);});
+test('18 revoked read permission blocks later reads',()=>{const p=create();p.proposeOrder('WORK_A','alice','O1',100);assert.equal(p.readOrder('WORK_A','bob','O1').amountMinor,100);p.revokeGrant('WORK_A','alice','bob','ORDER_VIEW');denies(()=>p.readOrder('WORK_A','bob','O1'),'WARDEN_TEST_DENY');});
+test('19 evidence requires scoped audit grant and chain is intact',()=>{const p=submitted();p.exportDryRun('WORK_A','alice','O1','K1');assert.ok(p.evidence('WORK_A','finance').length>=4);denies(()=>p.evidence('WORK_A','bob'),'WARDEN_TEST_DENY');assert.equal(p.verifyChain(),true);});
+test('20 read returns copies, not editable internal objects',()=>{const p=create();p.proposeOrder('WORK_A','alice','O1',100);const o=p.readOrder('WORK_A','bob','O1');o.amountMinor=999999;assert.equal(p.readOrder('WORK_A','bob','O1').amountMinor,100);});

@@ -1,0 +1,41 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="color-scheme" content="light">
+  <meta name="description" content="Synnergyze: a simple shared workspace demonstration for independent businesses and their partners.">
+  <title>Synnergyze — Work Together</title>
+  <link rel="stylesheet" href="/styles.css">
+  <script type="module" src="/app.js"></script>
+</head>
+<body>
+  <div class="demo-banner" role="note"><span class="banner-pulse"></span><span id="demo-banner">LOCAL DEMO — Sample people and sample records. No real customer accounts, payments or accounting connections.</span></div>
+  <div class="shell">
+    <aside class="sidebar" aria-label="Main navigation">
+      <a class="brand" href="/"><span class="brand-icon" aria-hidden="true"><span></span><span></span><span></span></span><span>synnergyze<small>work together</small></span></a>
+      <div class="sidebar-label" id="sidebar-label">YOUR WORKSPACE</div>
+      <nav id="navigation" aria-label="Sections"></nav>
+      <div class="sidebar-bottom">
+        <div class="hint-icon">ⓘ</div>
+        <strong id="data-info-title">A safe place to try it</strong>
+        <p id="data-info-detail">This example saves on your own computer. Nothing here is sent to an ERP or a bank.</p>
+      </div>
+    </aside>
+    <main class="main">
+      <header class="topbar">
+        <div class="location"><span class="crumb">Synnergyze</span><span class="chevron">/</span><strong id="top-section">Overview</strong></div>
+        <div class="toolbar">
+          <label class="picker"><span id="language-label">Language</span><select id="language" aria-label="Language"><option value="en">English</option><option value="hi">हिन्दी</option><option value="kn">ಕನ್ನಡ</option></select></label>
+          <label class="picker actor-picker"><span id="view-label">Viewing as</span><select id="actor" aria-label="Sample user"><option value="requester">Business A — Owner</option><option value="partner">Business B — Partner</option><option value="office">Office — Coordinator</option></select></label>
+          <span class="avatar" aria-hidden="true" id="avatar">A</span>
+        </div>
+      </header>
+      <div class="content" id="content" aria-live="polite">
+        <div class="loading">Loading your sample workspace…</div>
+      </div>
+    </main>
+  </div>
+  <div class="toast-area" id="messages" role="status" aria-live="polite"></div>
+</body>
+</html>
