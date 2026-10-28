@@ -82,8 +82,8 @@ function validateSchema(schema, path = '$', depth = 0) {
   if (schema.required !== undefined && (!Array.isArray(schema.required) ||
       schema.required.some((x) => typeof x !== 'string' || blockedNames.has(x) || !has(schema.properties ?? {}, x)) ||
       new Set(schema.required).size !== schema.required.length)) return schemaError('Invalid or undeclared required field');
-  if ((schema.properties !== undefined || schema.required !== undefined) && types.length && !types.includes('object')) return schemaError('Object constraints with non-object type');
-  if (schema.items !== undefined && types.length && !types.includes('array')) return schemaError('Array items with non-array type');
+  if ((schema.properties !== undefined || schema.required !== undefined) && types.length && (types.length !== 1 || types[0] !== 'object')) return schemaError('Object constraints require exclusive object type');
+  if (schema.items !== undefined && types.length && (types.length !== 1 || types[0] !== 'array')) return schemaError('Array items require exclusive array type');
   if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== 'boolean') return schemaError('Unsupported additionalProperties');
   for (const key of ['minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength']) {
     if (schema[key] !== undefined && (typeof schema[key] !== 'number' || !Number.isFinite(schema[key]) || (key !== 'minimum' && key !== 'maximum' && (!Number.isInteger(schema[key]) || schema[key] < 0)))) return schemaError('Invalid ' + key);
@@ -173,6 +173,7 @@ export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSU
         return { ok: false, classification: 'UNKNOWN_OR_UNPINNED_TOOL', retryable: false, transportAttempts: 0 };
       }
       if (!boundedJson(descriptor.inputSchema, maxArgumentBytes)) return { ok: false, classification: 'INVALID_OR_OVERSIZED_SCHEMA', retryable: false, transportAttempts: 0 };
+      if (descriptor.readOnly !== true) return { ok: false, classification: 'WARDEN_AUTHORIZATION_REQUIRED', retryable: false, transportAttempts: 0 };
       const schemaErr = validateSchema(descriptor.inputSchema);
       if (schemaErr) return { ok: false, classification: schemaErr.code, path: schemaErr.path, retryable: false, transportAttempts: 0 };
       if (!boundedJson(providedArgs, maxArgumentBytes)) return { ok: false, classification: 'INVALID_OR_OVERSIZED_ARGUMENTS', retryable: false, transportAttempts: 0 };
@@ -192,7 +193,7 @@ export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSU
       if (inFlight.has(fingerprint)) return { ok: false, classification: 'IN_FLIGHT_DUPLICATE', retryable: false, transportAttempts: 0, fingerprint };
       inFlight.add(fingerprint);
       try {
-      const cap = descriptor.readOnly === true ? maxReadOnlyRetries : 0;
+      const cap = maxReadOnlyRetries;
       for (let attempt = 1; attempt <= cap + 1; attempt++) {
         try {
           const result = await transport(name, input);
