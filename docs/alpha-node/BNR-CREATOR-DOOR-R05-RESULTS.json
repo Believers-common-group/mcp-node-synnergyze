@@ -1,0 +1,39 @@
+{
+  "contract_version": "0.5.0",
+  "observed_on": "2026-10-28",
+  "branch_name": "bnr-creator-door-r05-authz-probe-20261028",
+  "branch_type": "NEON_NONDEFAULT_SYNTHETIC_CHILD",
+  "role": "bnr_cd_r05_probe",
+  "role_login": false,
+  "role_superuser": false,
+  "role_bypass_rls": false,
+  "role_read_rows": 0,
+  "role_insert": false,
+  "role_update": false,
+  "role_acknowledge": false,
+  "role_witness": false,
+  "caller_controlled_claim_elevated_access": false,
+  "unprivileged_attempts_rejected": true,
+  "rls_enabled_tables": 7,
+  "synthetic_rows": {
+    "requests": 8,
+    "mock_acknowledgements": 1,
+    "mock_witnesses": 1,
+    "real_receipt_verifications": 0,
+    "external_dispatches": 0
+  },
+  "local_python_tests": {
+    "passed": 46,
+    "total": 46,
+    "scope": "Offline local tests, not GitHub CI or live issuer tests"
+  },
+  "canonical_registry_connected": false,
+  "digitalme_issuer_verified": false,
+  "warden_authority_verified": false,
+  "live_neon_worker_connected": false,
+  "river_receipt_verified": false,
+  "operator_consent_verified": false,
+  "production_ready": false,
+  "production_changes": false,
+  "notes": "Dated synthetic staging probe; the role cannot log in and no production authority is inferred."
+}

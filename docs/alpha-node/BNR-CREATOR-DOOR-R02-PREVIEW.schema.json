@@ -1,0 +1,84 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "BNR Creator Door synthetic handoff preview R0.2",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "contract_version",
+    "origin_node",
+    "request_ref",
+    "idempotency_key",
+    "membership_ref",
+    "actor_ref",
+    "resource_ref",
+    "requested_action",
+    "payload_sha256",
+    "registry_state",
+    "warden_state",
+    "execution_lease_state",
+    "runtime_ack_state",
+    "effect_state",
+    "river_receipt_ref",
+    "synthetic_only",
+    "executable"
+  ],
+  "properties": {
+    "contract_version": {
+      "const": "0.2.0"
+    },
+    "origin_node": {
+      "const": "LOCAL-SYNTHETIC-SOURCE"
+    },
+    "request_ref": {
+      "type": "string",
+      "pattern": "^BNR-CD-REQ-[A-F0-9]{24}$"
+    },
+    "idempotency_key": {
+      "type": "string",
+      "pattern": "^BNR-CD:[a-f0-9]{64}$"
+    },
+    "membership_ref": {
+      "type": "string",
+      "minLength": 1
+    },
+    "actor_ref": {
+      "type": "string",
+      "pattern": "^digitalme:demo:"
+    },
+    "resource_ref": {
+      "type": "string",
+      "pattern": "^event-[0-9a-f]{12}$"
+    },
+    "requested_action": {
+      "const": "creator.event.register"
+    },
+    "payload_sha256": {
+      "type": "string",
+      "pattern": "^[0-9a-f]{64}$"
+    },
+    "registry_state": {
+      "const": "NOT_SUBMITTED"
+    },
+    "warden_state": {
+      "const": "NOT_REQUESTED"
+    },
+    "execution_lease_state": {
+      "const": "NONE"
+    },
+    "runtime_ack_state": {
+      "const": "NONE"
+    },
+    "effect_state": {
+      "const": "NOT_OBSERVED"
+    },
+    "river_receipt_ref": {
+      "type": "null"
+    },
+    "synthetic_only": {
+      "const": true
+    },
+    "executable": {
+      "const": false
+    }
+  }
+}
