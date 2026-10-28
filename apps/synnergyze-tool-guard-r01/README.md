@@ -1,0 +1,53 @@
+# Synnergyze Tool-Contract and Retry Guard — R0.1 (DRAFT / HOLD)
+
+An **isolated, non-executing** reference module to stop repeated invalid MCP tool invocations. It accepts a **trusted, version-pinned tool manifest** (from the connected server's tools/list plus a separately reviewed read-only classification) and an **injected** transport. It does not connect to GitHub, invoke a shell, register an MCP server, touch credentials, or authorize an operation.
+
+## Verification
+
+~~~bash
+node --check apps/synnergyze-tool-guard-r01/guard.mjs
+node --test apps/synnergyze-tool-guard-r01/guard.node-check.mjs
+~~~
+
+## Scope
+
+- Normalize *only* explicitly pinned aliases **if the target field is advertised in the connected tool schema**. GitHub issue [#3605](https://github.com/github/github-mcp-server/issues/3605) illustrates pull_number/pullNumber and issueNumber/issue_number mismatches. These names are **observed examples**, not a universal GitHub schema claim.
+- Fail closed for missing fields, unknown arguments, wrong primitive types, zero-length arrays, unsupported schema keywords, alias collisions, and unregistered/unversioned tools.
+- Suppress an identical second call after an MCP JSON-RPC error or transport failure. The cache is **in-memory and bounded**, not cross-process or persistent. No arguments or tokens are printed to logs.
+- Default to **zero automatic retries**. A caller may explicitly enable at most two retries only for **trusted read-only** tools and a narrow set of transient transport errors. Mutating or unknown-effect calls are never retried automatically.
+- Treat an MCP -32602 validation response as terminal regardless of retry settings. Distinguish transportAttempts: 0 (locally denied) from a remote invocation.
+
+## Critical limits / integration gates
+
+1. **Not a complete JSON Schema implementation.** Only explicitly supported keywords are accepted; $ref, oneOf, anyOf, pattern, and other unsupported constraints deny the call. Before real integration, use a reviewed complete schema validator or establish conformance for each tool schema.
+2. **No Warden authority is created.** A schema-valid request is only *structurally* valid; it remains subject to separate Warden authorization, principal/tenant checks, RiverOS evidence reservation, and native provider authorization.
+3. **No cross-worker guarantee.** Process restart clears the terminal-error cache. Cross-worker duplicate suppression requires an independently governed, durable idempotency service; uncertain write effects require reconciliation, not replay.
+4. **Manifest trust is external.** Do not let an untrusted remote server label its own calls safe to retry; readOnly must be validated against a reviewed local permission manifest.
+5. **No production adapter activated.** This package is not imported by the existing public Synnergyze discovery server or any live gateway; it is source/test only until independently reviewed and authorized.
+
+## Example: synthetic-only use
+
+~~~js
+import { createMcpToolCallGuard } from './guard.mjs';
+
+const guard = createMcpToolCallGuard({
+  tools: {
+    secret_scanning: {
+      version: 'sandbox-scanner-schema-r01',
+      readOnly: true,
+      inputSchema: {
+        type: 'object', required: ['paths'],
+        properties: { paths: { type: 'array', minItems: 1, items: { type: 'string' } } }
+      }
+    }
+  },
+  // No production transport: demonstrate only.
+  transport: async (_name, _args) => ({ result: 'SYNTHETIC_ONLY' })
+});
+
+const denied = await guard.invoke('secret_scanning', {});
+// denied.classification === 'MISSING_REQUIRED_ARGUMENT'
+// denied.transportAttempts === 0
+~~~
+
+Release posture: **DRAFT / HOLD**. No merge, publish, deployment, external scanner invocation or authority promotion is implied by CI passing.
