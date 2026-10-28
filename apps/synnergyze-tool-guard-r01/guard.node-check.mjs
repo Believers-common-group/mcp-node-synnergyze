@@ -84,3 +84,13 @@ test('no retries by default even for transient read-only failure', async () => {
   const m = mock(async () => { throw Object.assign(new Error('timeout'), { status: 503 }); });
   const a = await m.guard.invoke('issue_read', issueArgs); assert.equal(a.transportAttempts, 1); assert.equal(m.count(), 1);
 });
+
+test('nested MCP result.isError is terminal and blocks unchanged calls', async () => {
+  const m = mock(async () => ({ result: { isError: true, content: [{ type: 'text', text: 'denied' }] } }), { maxReadOnlyRetries: 2 });
+  const a = await m.guard.invoke('issue_read', issueArgs);
+  const b = await m.guard.invoke('issue_read', issueArgs);
+  assert.equal(a.classification, 'REMOTE_ERROR');
+  assert.equal(a.transportAttempts, 1);
+  assert.equal(b.classification, 'REPEATED_TERMINAL_FAILURE');
+  assert.equal(m.count(), 1);
+});
