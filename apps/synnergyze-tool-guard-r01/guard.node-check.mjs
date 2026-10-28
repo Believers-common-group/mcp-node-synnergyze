@@ -3,9 +3,9 @@ import assert from 'node:assert/strict';
 import { createMcpToolCallGuard } from './guard.mjs';
 
 const tools = Object.freeze({
-  pull_request_read: { version: 'github-mcp-observed-2026-10-28', readOnly: true, inputSchema: { type: 'object', required: ['owner','repo','method','pullNumber'], additionalProperties: false, properties: { owner: { type: 'string', minLength: 1 }, repo: { type: 'string', minLength: 1 }, method: { type: 'string', enum: ['get'] }, pullNumber: { type: 'integer', minimum: 1 } } } },
-  issue_read: { version: 'github-mcp-observed-2026-10-28', readOnly: true, inputSchema: { type: 'object', required: ['owner','repo','method','issue_number'], additionalProperties: false, properties: { owner: { type: 'string' }, repo: { type: 'string' }, method: { type: 'string', enum: ['get'] }, issue_number: { type: 'integer', minimum: 1 } } } },
-  secret_scanning: { version: 'local-test-schema', readOnly: true, inputSchema: { type: 'object', required: ['paths'], additionalProperties: false, properties: { paths: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } } } } },
+  pull_request_read: { version: 'github-mcp-observed-2026-10-28', readOnly: true, publicRead: true, inputSchema: { type: 'object', required: ['owner','repo','method','pullNumber'], additionalProperties: false, properties: { owner: { type: 'string', minLength: 1 }, repo: { type: 'string', minLength: 1 }, method: { type: 'string', enum: ['get'] }, pullNumber: { type: 'integer', minimum: 1 } } } },
+  issue_read: { version: 'github-mcp-observed-2026-10-28', readOnly: true, publicRead: true, inputSchema: { type: 'object', required: ['owner','repo','method','issue_number'], additionalProperties: false, properties: { owner: { type: 'string' }, repo: { type: 'string' }, method: { type: 'string', enum: ['get'] }, issue_number: { type: 'integer', minimum: 1 } } } },
+  secret_scanning: { version: 'local-test-schema', readOnly: true, publicRead: true, inputSchema: { type: 'object', required: ['paths'], additionalProperties: false, properties: { paths: { type: 'array', minItems: 1, items: { type: 'string', minLength: 1 } } } } },
   mutation: { version: 'local-test-schema', readOnly: false, inputSchema: { type: 'object', required: ['target'], properties: { target: { type: 'string' } } } }
 });
 const prArgs = { owner: 'tauri-apps', repo: 'tauri', method: 'get', pull_number: 16225 };
@@ -41,7 +41,7 @@ test('unknown tool and unknown parameters fail closed', async () => {
   assert.equal((await m.guard.invoke('secret_scanning', { paths: ['a'], extra: 1 })).classification, 'UNKNOWN_ARGUMENT'); assert.equal(m.count(), 0);
 });
 test('unsupported schema constraints fail closed before execution', async () => {
-  let called = 0; const guard = createMcpToolCallGuard({ tools: { complex: { version: 'v1', readOnly: true, inputSchema: { type: 'object', oneOf: [{ type: 'object' }] } } }, transport: async () => { called++; } });
+  let called = 0; const guard = createMcpToolCallGuard({ tools: { complex: { version: 'v1', readOnly: true, publicRead: true, inputSchema: { type: 'object', oneOf: [{ type: 'object' }] } } }, transport: async () => { called++; } });
   assert.equal((await guard.invoke('complex', {})).classification, 'UNSUPPORTED_SCHEMA'); assert.equal(called, 0);
 });
 test('remote -32602 is terminal; unchanged replays are blocked', async () => {
@@ -157,8 +157,8 @@ test('rejects cyclic or accessor-based tool input schemas', async () => {
   let calls = 0;
   const guard = createMcpToolCallGuard({
     tools: {
-      circular: { version: 'v1', readOnly: true, inputSchema: circularSchema },
-      accessor: { version: 'v1', readOnly: true, inputSchema: accessorSchema }
+      circular: { version: 'v1', readOnly: true, publicRead: true, inputSchema: circularSchema },
+      accessor: { version: 'v1', readOnly: true, publicRead: true, inputSchema: accessorSchema }
     },
     transport: async () => { calls++; }
   });
@@ -169,7 +169,7 @@ test('rejects cyclic or accessor-based tool input schemas', async () => {
 });
 test('rejects required schema fields missing from declared properties', async () => {
   const guard = createMcpToolCallGuard({
-    tools: { drift: { version: 'v1', readOnly: true, inputSchema: {
+    tools: { drift: { version: 'v1', readOnly: true, publicRead: true, inputSchema: {
       type: 'object', required: ['paths'], properties: { path: { type: 'string' } }
     } } },
     transport: async () => { throw Error('Must not run'); }
@@ -217,10 +217,22 @@ test('successful read does not permanently memoize an old response', async () =>
 test('mixed type schema cannot bypass required object properties', async () => {
   let calls = 0;
   const guard = createMcpToolCallGuard({
-    tools: { union: { version: 'v1', readOnly: true,
+    tools: { union: { version: 'v1', readOnly: true, publicRead: true,
       inputSchema: { type: ['object', 'string'], required: ['id'], properties: { id: { type: 'string' } } } } },
     transport: async () => { calls++; return { result: true }; }
   });
   assert.equal((await guard.invoke('union', {})).classification, 'UNSUPPORTED_SCHEMA');
+  assert.equal(calls, 0);
+});
+
+test('read-only private tool cannot bypass Warden merely by being non-mutating', async () => {
+  let calls = 0;
+  const guard = createMcpToolCallGuard({
+    tools: { privateRead: { version: 'v1', readOnly: true, inputSchema: { type: 'object', properties: {} } } },
+    transport: async () => { calls++; return { result: { secret: true } }; }
+  });
+  const r = await guard.invoke('privateRead', {});
+  assert.equal(r.classification, 'WARDEN_AUTHORIZATION_REQUIRED');
+  assert.equal(r.transportAttempts, 0);
   assert.equal(calls, 0);
 });
