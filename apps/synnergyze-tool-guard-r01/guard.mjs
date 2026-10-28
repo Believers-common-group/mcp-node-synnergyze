@@ -161,6 +161,7 @@ export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSU
   if (!Number.isInteger(maxArgumentBytes) || maxArgumentBytes < 64 || maxArgumentBytes > 65536) throw new RangeError('Argument budget out of range');
   const salt = randomBytes(32);
   const terminal = new Map();
+  const inFlight = new Set();
   function remember(key, code) {
     terminal.set(key, code);
     if (terminal.size > cacheLimit) terminal.delete(terminal.keys().next().value);
@@ -188,6 +189,9 @@ export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSU
       const invalid = check(input, descriptor.inputSchema);
       if (invalid) return { ok: false, classification: invalid.code, path: invalid.path, retryable: false, transportAttempts: 0, fingerprint };
       if (terminal.has(fingerprint)) return { ok: false, classification: 'REPEATED_TERMINAL_FAILURE', priorClassification: terminal.get(fingerprint), retryable: false, transportAttempts: 0, fingerprint };
+      if (inFlight.has(fingerprint)) return { ok: false, classification: 'IN_FLIGHT_DUPLICATE', retryable: false, transportAttempts: 0, fingerprint };
+      inFlight.add(fingerprint);
+      try {
       const cap = descriptor.readOnly === true ? maxReadOnlyRetries : 0;
       for (let attempt = 1; attempt <= cap + 1; attempt++) {
         try {
@@ -203,6 +207,9 @@ export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSU
           remember(fingerprint, classification);
           return { ok: false, classification, retryable: false, transportAttempts: attempt, fingerprint };
         }
+      }
+      } finally {
+        inFlight.delete(fingerprint);
       }
     }
   });
