@@ -29,6 +29,35 @@ function canonical(value) {
   return '{' + keys.map((key) => JSON.stringify(key) + ':' + canonical(value[key])).join(',') + '}';
 }
 
+/**
+ * Bound all argument walks before canonicalization. Reject cycles, accessors,
+ * sparse arrays and non-JSON values. JSON and tool schemas remain untrusted
+ * data; neither may trigger unbounded traversal or implicit getters.
+ */
+function boundedJson(value, byteLimit, depth = 0, state = { nodes: 0, bytes: 0, seen: new WeakSet() }) {
+  if (++state.nodes > 4096 || depth > 24) return false;
+  if (value === null || typeof value === 'boolean') return true;
+  if (typeof value === 'number') return Number.isFinite(value);
+  if (typeof value === 'string') {
+    state.bytes += Buffer.byteLength(value, 'utf8');
+    return state.bytes <= byteLimit;
+  }
+  if (typeof value !== 'object' || !(Array.isArray(value) || plain(value))) return false;
+  if (state.seen.has(value)) return false;
+  state.seen.add(value);
+  const descriptors = Object.getOwnPropertyDescriptors(value);
+  const keys = Object.keys(descriptors);
+  if (Array.isArray(value) && (keys.filter((k) => k !== 'length').length !== value.length ||
+      keys.some((k) => k !== 'length' && (!/^(0|[1-9][0-9]*)$/.test(k) || Number(k) >= value.length)))) return false;
+  for (const key of keys) {
+    if (key === 'length' && Array.isArray(value)) continue;
+    if (blockedNames.has(key) || !has(descriptors[key], 'value')) return false;
+    state.bytes += Buffer.byteLength(key, 'utf8');
+    if (state.bytes > byteLimit || !boundedJson(descriptors[key].value, byteLimit, depth + 1, state)) return false;
+  }
+  return true;
+}
+
 function schemaError(message) { return { code: 'UNSUPPORTED_SCHEMA', path: '$', detail: message }; }
 function validateSchema(schema, path = '$', depth = 0) {
   if (depth > 24 || !plain(schema)) return schemaError('Unrecognized schema node');
@@ -49,7 +78,11 @@ function validateSchema(schema, path = '$', depth = 0) {
     const err = validateSchema(schema.items, path + '[]', depth + 1);
     if (err) return err;
   }
-  if (schema.required !== undefined && (!Array.isArray(schema.required) || schema.required.some((x) => typeof x !== 'string'))) return schemaError('Invalid required list');
+  if (schema.required !== undefined && (!Array.isArray(schema.required) ||
+      schema.required.some((x) => typeof x !== 'string' || blockedNames.has(x) || !has(schema.properties ?? {}, x)) ||
+      new Set(schema.required).size !== schema.required.length)) return schemaError('Invalid or undeclared required field');
+  if ((schema.properties !== undefined || schema.required !== undefined) && types.length && !types.includes('object')) return schemaError('Object constraints with non-object type');
+  if (schema.items !== undefined && types.length && !types.includes('array')) return schemaError('Array items with non-array type');
   if (schema.additionalProperties !== undefined && typeof schema.additionalProperties !== 'boolean') return schemaError('Unsupported additionalProperties');
   for (const key of ['minimum', 'maximum', 'minItems', 'maxItems', 'minLength', 'maxLength']) {
     if (schema[key] !== undefined && (typeof schema[key] !== 'number' || !Number.isFinite(schema[key]) || (key !== 'minimum' && key !== 'maximum' && (!Number.isInteger(schema[key]) || schema[key] < 0)))) return schemaError('Invalid ' + key);
@@ -104,9 +137,11 @@ function normalize(name, args, schema, aliases) {
 }
 
 function remoteFailure(response) {
-  if (response && typeof response === 'object' && response.error) {
-    const c = response.error.code;
-    return { code: c === -32602 ? 'REMOTE_INVALID_ARGUMENTS' : 'REMOTE_ERROR', status: response.error.status ?? null };
+  if (!response || typeof response !== 'object' || Array.isArray(response)) return { code: 'MALFORMED_REMOTE_RESPONSE', status: null };
+  const nestedError = response.result && typeof response.result === 'object' ? response.result.error : undefined;
+  if (response.error || nestedError) {
+    const c = (response.error ?? nestedError)?.code;
+    return { code: c === -32602 ? 'REMOTE_INVALID_ARGUMENTS' : 'REMOTE_ERROR', status: (response.error ?? nestedError)?.status ?? null };
   }
   if (response && typeof response === 'object' && (response.isError === true || response.result?.isError === true)) return { code: 'REMOTE_ERROR', status: null };
   return null;
@@ -118,10 +153,11 @@ function retryable(err) {
   return [408, 502, 503, 504, '408', '502', '503', '504'].includes(status) || ['ETIMEDOUT', 'ECONNRESET', 'EAI_AGAIN'].includes(code);
 }
 
-export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSUE_3605_ALIASES, maxReadOnlyRetries = 0, cacheLimit = 256 } = {}) {
+export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSUE_3605_ALIASES, maxReadOnlyRetries = 0, cacheLimit = 256, maxArgumentBytes = 32768 } = {}) {
   if (!plain(tools) || typeof transport !== 'function') throw new TypeError('Trusted manifest and transport required');
   if (!Number.isInteger(maxReadOnlyRetries) || maxReadOnlyRetries < 0 || maxReadOnlyRetries > 2) throw new RangeError('Retry limit must be 0..2');
   if (!Number.isInteger(cacheLimit) || cacheLimit < 1 || cacheLimit > 4096) throw new RangeError('Cache size out of range');
+  if (!Number.isInteger(maxArgumentBytes) || maxArgumentBytes < 64 || maxArgumentBytes > 65536) throw new RangeError('Argument budget out of range');
   const salt = randomBytes(32);
   const terminal = new Map();
   function remember(key, code) {
@@ -139,7 +175,11 @@ export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSU
       const normalized = normalize(name, providedArgs, descriptor.inputSchema, aliases);
       if (normalized.error) return { ok: false, classification: normalized.error.code, path: normalized.error.path, retryable: false, transportAttempts: 0 };
       let args;
-      try { args = canonical(normalized.args); } catch { return { ok: false, classification: 'INVALID_ARGUMENTS', retryable: false, transportAttempts: 0 }; }
+      try {
+        if (!boundedJson(normalized.args, maxArgumentBytes)) return { ok: false, classification: 'INVALID_OR_OVERSIZED_ARGUMENTS', retryable: false, transportAttempts: 0 };
+        args = canonical(normalized.args);
+        if (Buffer.byteLength(args, 'utf8') > maxArgumentBytes) return { ok: false, classification: 'INVALID_OR_OVERSIZED_ARGUMENTS', retryable: false, transportAttempts: 0 };
+      } catch { return { ok: false, classification: 'INVALID_ARGUMENTS', retryable: false, transportAttempts: 0 }; }
       const input = JSON.parse(args);
       const fingerprint = createHmac('sha256', salt).update(canonical({ name, version: descriptor.version, args: input })).digest('hex');
       const invalid = check(input, descriptor.inputSchema);
