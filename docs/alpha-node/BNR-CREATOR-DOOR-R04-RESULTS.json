@@ -1,0 +1,33 @@
+{
+  "contract": "BNR-CREATOR-DOOR-R0.4",
+  "observed_on": "2026-10-28",
+  "environment": "isolated-neon-nondefault-verification-branch",
+  "branch": "bnr-creator-door-r04-synthetic-20261028",
+  "synthetic_only": true,
+  "external_dispatch": false,
+  "acceptance_checks": {
+    "passed": 17,
+    "total": 17
+  },
+  "python_local_tests": {
+    "passed": 27,
+    "total": 27,
+    "scope": "includes four historical report invariant checks"
+  },
+  "db_fixtures": {
+    "requests": 8,
+    "permits": 7,
+    "consumed_leases": 1,
+    "mock_acknowledgements": 1,
+    "synthetic_witnesses": 1,
+    "independently_verified_receipts": 0
+  },
+  "rls_tables": 7,
+  "public_schema_grants": false,
+  "production_registry_verified": false,
+  "production_warden_verified": false,
+  "live_runtime_dispatch": false,
+  "production_receipt_verified": false,
+  "production_change": false,
+  "notes": "Historical staging read; does not assert live health, cryptographic custody or effect."
+}
