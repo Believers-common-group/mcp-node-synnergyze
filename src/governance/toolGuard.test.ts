@@ -138,7 +138,7 @@ describe("Governed MCP callback dispatch", () => {
     const { client, close } = await pair(server);
     try {
       const result = await client.callTool({ name: "warden.telco.classify" });
-      expect(result.content[0]).toMatchObject({ type: "text", text: "synthetic-result" });
+      expect(result).toMatchObject({ content: [{ type: "text", text: "synthetic-result" }] });
       expect(cb).toHaveBeenCalledTimes(1);
       expect(guard).toHaveBeenCalledTimes(1);
     } finally { await close(); }
@@ -151,7 +151,7 @@ describe("Governed MCP callback dispatch", () => {
     const { client, close } = await pair(server);
     try {
       const result = await client.callTool({ name: "getApplications" });
-      expect(result.content[0]).toMatchObject({ text: "existing" });
+      expect(result).toMatchObject({ content: [{ type: "text", text: "existing" }] });
       expect(cb).toHaveBeenCalledTimes(1);
     } finally { await close(); }
   });
