@@ -94,3 +94,116 @@ test('nested MCP result.isError is terminal and blocks unchanged calls', async (
   assert.equal(b.classification, 'REPEATED_TERMINAL_FAILURE');
   assert.equal(m.count(), 1);
 });
+
+test('rejects cyclic inputs before fingerprinting or transport', async () => {
+  const m = mock();
+  const args = { paths: ['src/file.mjs'] };
+  args.self = args;
+  const r = await m.guard.invoke('secret_scanning', args);
+  assert.equal(r.classification, 'INVALID_OR_OVERSIZED_ARGUMENTS');
+  assert.equal(r.transportAttempts, 0);
+  assert.equal(m.count(), 0);
+});
+test('rejects deep inputs before recursive canonicalization', async () => {
+  const m = mock();
+  let deep = 'leaf';
+  for (let i = 0; i < 40; i++) deep = [deep];
+  const r = await m.guard.invoke('secret_scanning', { paths: [deep] });
+  assert.equal(r.classification, 'INVALID_OR_OVERSIZED_ARGUMENTS');
+  assert.equal(m.count(), 0);
+});
+test('rejects input with getters without executing them', async () => {
+  let reads = 0;
+  const args = Object.defineProperty({}, 'paths', {
+    enumerable: true,
+    get() { reads++; throw new Error('Getter must never run'); }
+  });
+  const m = mock();
+  const r = await m.guard.invoke('secret_scanning', args);
+  assert.equal(r.classification, 'INVALID_OR_OVERSIZED_ARGUMENTS');
+  assert.equal(reads, 0);
+  assert.equal(m.count(), 0);
+});
+test('rejects sparse arrays and symbol-keyed properties without dispatch', async () => {
+  const m = mock();
+  const sparse = new Array(2);
+  sparse[0] = 'src/file';
+  assert.equal((await m.guard.invoke('secret_scanning', { paths: sparse })).classification, 'INVALID_OR_OVERSIZED_ARGUMENTS');
+  const symbols = { paths: ['src/file'] };
+  symbols[Symbol('untracked')] = 'hidden';
+  assert.equal((await m.guard.invoke('secret_scanning', symbols)).classification, 'INVALID_OR_OVERSIZED_ARGUMENTS');
+  assert.equal(m.count(), 0);
+});
+test('rejects oversized arguments with no transport attempt', async () => {
+  const m = mock();
+  const r = await m.guard.invoke('secret_scanning', { paths: ['a'.repeat(40000)] });
+  assert.equal(r.classification, 'INVALID_OR_OVERSIZED_ARGUMENTS');
+  assert.equal(r.transportAttempts, 0);
+  assert.equal(m.count(), 0);
+});
+test('rejects cyclic or accessor-based tool input schemas', async () => {
+  const circularSchema = { type: 'object', properties: {} };
+  circularSchema.properties.self = circularSchema;
+  let reads = 0;
+  const accessorSchema = Object.defineProperty({ type: 'object' }, 'properties', {
+    enumerable: true, get() { reads++; throw new Error('Not allowed'); }
+  });
+  let calls = 0;
+  const guard = createMcpToolCallGuard({
+    tools: {
+      circular: { version: 'v1', readOnly: true, inputSchema: circularSchema },
+      accessor: { version: 'v1', readOnly: true, inputSchema: accessorSchema }
+    },
+    transport: async () => { calls++; }
+  });
+  assert.equal((await guard.invoke('circular', {})).classification, 'INVALID_OR_OVERSIZED_SCHEMA');
+  assert.equal((await guard.invoke('accessor', {})).classification, 'INVALID_OR_OVERSIZED_SCHEMA');
+  assert.equal(reads, 0);
+  assert.equal(calls, 0);
+});
+test('rejects required schema fields missing from declared properties', async () => {
+  const guard = createMcpToolCallGuard({
+    tools: { drift: { version: 'v1', readOnly: true, inputSchema: {
+      type: 'object', required: ['paths'], properties: { path: { type: 'string' } }
+    } } },
+    transport: async () => { throw Error('Must not run'); }
+  });
+  const r = await guard.invoke('drift', { path: 'file' });
+  assert.equal(r.classification, 'UNSUPPORTED_SCHEMA');
+});
+test('nested JSON-RPC -32602 responses are terminal', async () => {
+  const m = mock(async () => ({ result: { error: { code: -32602, message: 'Missing required' } } }), { maxReadOnlyRetries: 2 });
+  const a = await m.guard.invoke('issue_read', issueArgs);
+  const b = await m.guard.invoke('issue_read', issueArgs);
+  assert.equal(a.classification, 'REMOTE_INVALID_ARGUMENTS');
+  assert.equal(b.classification, 'REPEATED_TERMINAL_FAILURE');
+  assert.equal(m.count(), 1);
+});
+test('null and string remote responses cannot be reported as success', async () => {
+  for (const returned of [null, undefined, 'unexpected']) {
+    const m = mock(async () => returned);
+    const r = await m.guard.invoke('issue_read', issueArgs);
+    assert.equal(r.classification, 'MALFORMED_REMOTE_RESPONSE');
+    assert.equal(r.ok, false);
+    assert.equal(m.count(), 1);
+  }
+});
+test('concurrent identical invocations dispatch at most once in one process', async () => {
+  let release;
+  const pending = new Promise((resolve) => { release = resolve; });
+  const m = mock(async () => { await pending; return { result: { ok: true } }; });
+  const first = m.guard.invoke('issue_read', issueArgs);
+  const second = await m.guard.invoke('issue_read', issueArgs);
+  assert.equal(second.classification, 'IN_FLIGHT_DUPLICATE');
+  assert.equal(second.transportAttempts, 0);
+  assert.equal(m.count(), 1);
+  release();
+  assert.equal((await first).ok, true);
+  assert.equal(m.count(), 1);
+});
+test('successful read does not permanently memoize an old response', async () => {
+  const m = mock();
+  assert.equal((await m.guard.invoke('issue_read', issueArgs)).ok, true);
+  assert.equal((await m.guard.invoke('issue_read', issueArgs)).ok, true);
+  assert.equal(m.count(), 2);
+});
