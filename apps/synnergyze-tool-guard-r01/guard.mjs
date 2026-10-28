@@ -174,7 +174,9 @@ export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSU
       }
       if (descriptor.inputSchema.type !== 'object') return { ok: false, classification: 'UNSUPPORTED_SCHEMA', retryable: false, transportAttempts: 0 };
       if (!boundedJson(descriptor.inputSchema, maxArgumentBytes)) return { ok: false, classification: 'INVALID_OR_OVERSIZED_SCHEMA', retryable: false, transportAttempts: 0 };
-      if (descriptor.readOnly !== true) return { ok: false, classification: 'WARDEN_AUTHORIZATION_REQUIRED', retryable: false, transportAttempts: 0 };
+      // Read-only does not imply public or authorized. R0.1 allows only public
+      // read-only tools explicitly approved in a trusted local manifest.
+      if (descriptor.readOnly !== true || descriptor.publicRead !== true) return { ok: false, classification: 'WARDEN_AUTHORIZATION_REQUIRED', retryable: false, transportAttempts: 0 };
       const schemaErr = validateSchema(descriptor.inputSchema);
       if (schemaErr) return { ok: false, classification: schemaErr.code, path: schemaErr.path, retryable: false, transportAttempts: 0 };
       if (!boundedJson(providedArgs, maxArgumentBytes)) return { ok: false, classification: 'INVALID_OR_OVERSIZED_ARGUMENTS', retryable: false, transportAttempts: 0 };
