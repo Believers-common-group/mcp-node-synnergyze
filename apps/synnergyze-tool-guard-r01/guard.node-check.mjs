@@ -58,10 +58,16 @@ test('read-only transient network failure retries only within explicit budget', 
   let seen = 0; const m = mock(async () => { if (++seen === 1) throw Object.assign(new Error('transient'), { code: 'ECONNRESET' }); return { value: 'ok' }; }, { maxReadOnlyRetries: 1 });
   const r = await m.guard.invoke('issue_read', issueArgs); assert.equal(r.ok, true); assert.equal(r.transportAttempts, 2); assert.equal(m.count(), 2);
 });
-test('writes are never retried after an unknown transport result', async () => {
-  const m = mock(async () => { throw Object.assign(new Error('timeout'), { code: 'ETIMEDOUT' }); }, { maxReadOnlyRetries: 2 });
-  const first = await m.guard.invoke('mutation', { target: 'synthetic' }); const again = await m.guard.invoke('mutation', { target: 'synthetic' });
-  assert.equal(first.classification, 'TRANSIENT_RETRY_EXHAUSTED'); assert.equal(first.transportAttempts, 1); assert.equal(again.classification, 'REPEATED_TERMINAL_FAILURE'); assert.equal(m.count(), 1);
+test('effect-bearing and unclassified tools are denied pending Warden authorization', async () => {
+  const m = mock(async () => { throw Error('Must never execute'); }, { maxReadOnlyRetries: 2 });
+  const first = await m.guard.invoke('mutation', { target: 'synthetic' });
+  const again = await m.guard.invoke('mutation', { target: 'synthetic' });
+  assert.equal(first.classification, 'WARDEN_AUTHORIZATION_REQUIRED');
+  assert.equal(first.transportAttempts, 0);
+  assert.equal(again.classification, 'WARDEN_AUTHORIZATION_REQUIRED');
+  assert.equal(m.count(), 0);
+  const unclassified = createMcpToolCallGuard({ tools: { unknownEffect: { version: 'v1', inputSchema: { type: 'object' } } }, transport: async () => { throw Error('Must never execute'); } });
+  assert.equal((await unclassified.invoke('unknownEffect', {})).classification, 'WARDEN_AUTHORIZATION_REQUIRED');
 });
 test('different payload is not blocked by failed earlier payload', async () => {
   const m = mock(async () => ({ error: { code: -32602 } }));
@@ -206,4 +212,15 @@ test('successful read does not permanently memoize an old response', async () =>
   assert.equal((await m.guard.invoke('issue_read', issueArgs)).ok, true);
   assert.equal((await m.guard.invoke('issue_read', issueArgs)).ok, true);
   assert.equal(m.count(), 2);
+});
+
+test('mixed type schema cannot bypass required object properties', async () => {
+  let calls = 0;
+  const guard = createMcpToolCallGuard({
+    tools: { union: { version: 'v1', readOnly: true,
+      inputSchema: { type: ['object', 'string'], required: ['id'], properties: { id: { type: 'string' } } } } },
+    transport: async () => { calls++; return { result: true }; }
+  });
+  assert.equal((await guard.invoke('union', {})).classification, 'UNSUPPORTED_SCHEMA');
+  assert.equal(calls, 0);
 });
