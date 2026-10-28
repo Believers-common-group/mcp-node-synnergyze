@@ -169,9 +169,10 @@ export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSU
   return Object.freeze({
     async invoke(name, providedArgs) {
       const descriptor = has(tools, name) ? tools[name] : null;
-      if (!descriptor || typeof descriptor.version !== 'string' || !descriptor.version || !plain(descriptor.inputSchema) || descriptor.inputSchema.type !== 'object') {
+      if (!descriptor || typeof descriptor.version !== 'string' || !descriptor.version || !plain(descriptor.inputSchema)) {
         return { ok: false, classification: 'UNKNOWN_OR_UNPINNED_TOOL', retryable: false, transportAttempts: 0 };
       }
+      if (descriptor.inputSchema.type !== 'object') return { ok: false, classification: 'UNSUPPORTED_SCHEMA', retryable: false, transportAttempts: 0 };
       if (!boundedJson(descriptor.inputSchema, maxArgumentBytes)) return { ok: false, classification: 'INVALID_OR_OVERSIZED_SCHEMA', retryable: false, transportAttempts: 0 };
       if (descriptor.readOnly !== true) return { ok: false, classification: 'WARDEN_AUTHORIZATION_REQUIRED', retryable: false, transportAttempts: 0 };
       const schemaErr = validateSchema(descriptor.inputSchema);
