@@ -47,6 +47,7 @@ function boundedJson(value, byteLimit, depth = 0, state = { nodes: 0, bytes: 0, 
   state.seen.add(value);
   const descriptors = Object.getOwnPropertyDescriptors(value);
   const keys = Object.keys(descriptors);
+  if (Object.getOwnPropertySymbols(value).length) return false;
   if (Array.isArray(value) && (keys.filter((k) => k !== 'length').length !== value.length ||
       keys.some((k) => k !== 'length' && (!/^(0|[1-9][0-9]*)$/.test(k) || Number(k) >= value.length)))) return false;
   for (const key of keys) {
@@ -170,8 +171,10 @@ export function createMcpToolCallGuard({ tools, transport, aliases = GITHUB_ISSU
       if (!descriptor || typeof descriptor.version !== 'string' || !descriptor.version || !plain(descriptor.inputSchema) || descriptor.inputSchema.type !== 'object') {
         return { ok: false, classification: 'UNKNOWN_OR_UNPINNED_TOOL', retryable: false, transportAttempts: 0 };
       }
+      if (!boundedJson(descriptor.inputSchema, maxArgumentBytes)) return { ok: false, classification: 'INVALID_OR_OVERSIZED_SCHEMA', retryable: false, transportAttempts: 0 };
       const schemaErr = validateSchema(descriptor.inputSchema);
       if (schemaErr) return { ok: false, classification: schemaErr.code, path: schemaErr.path, retryable: false, transportAttempts: 0 };
+      if (!boundedJson(providedArgs, maxArgumentBytes)) return { ok: false, classification: 'INVALID_OR_OVERSIZED_ARGUMENTS', retryable: false, transportAttempts: 0 };
       const normalized = normalize(name, providedArgs, descriptor.inputSchema, aliases);
       if (normalized.error) return { ok: false, classification: normalized.error.code, path: normalized.error.path, retryable: false, transportAttempts: 0 };
       let args;
