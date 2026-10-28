@@ -7,6 +7,7 @@ import {
   createDenyAllWardenGuard,
   isReservedGovernedTool,
   type ToolInvocationGuard,
+  type ToolInvocation,
 } from "./toolGuard.ts";
 
 function makeServer(guard?: ToolInvocationGuard) {
@@ -101,7 +102,7 @@ describe("Governed MCP callback dispatch", () => {
   });
 
   it("never forwards caller-owned authority assertions as trusted context", async () => {
-    const guard = vi.fn(() => ({ decision: "DENY" as const, reasonCode: "NO_AUTHORITY" }));
+    const guard = vi.fn((_invocation: ToolInvocation) => ({ decision: "DENY" as const, reasonCode: "NO_AUTHORITY" }));
     const cb = vi.fn(async () => "not-run");
     const server = makeServer(guard);
     server.tool({
