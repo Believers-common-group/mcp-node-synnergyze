@@ -108,7 +108,7 @@ function remoteFailure(response) {
     const c = response.error.code;
     return { code: c === -32602 ? 'REMOTE_INVALID_ARGUMENTS' : 'REMOTE_ERROR', status: response.error.status ?? null };
   }
-  if (response && typeof response === 'object' && response.isError === true) return { code: 'REMOTE_ERROR', status: null };
+  if (response && typeof response === 'object' && (response.isError === true || response.result?.isError === true)) return { code: 'REMOTE_ERROR', status: null };
   return null;
 }
 
