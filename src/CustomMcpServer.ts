@@ -16,6 +16,11 @@ import {
 } from "@modelcontextprotocol/sdk/types.js";
 import { Ajv2020 as Ajv } from "ajv/dist/2020.js";
 import type { SomeJSONSchema } from "ajv/dist/types/json-schema.js";
+import {
+  canInvokeGovernedTool,
+  isReservedGovernedTool,
+  type GovernanceRuntime,
+} from "./governance/toolGuard.ts";
 
 export type InputJsonSchema = Partial<SomeJSONSchema>;
 
@@ -35,6 +40,8 @@ export type ToolDefinition<T extends InputJsonSchema | undefined = undefined> = 
   inputSchema: T;
   description?: string;
   annotations?: ToolAnnotations;
+  // Other services must explicitly opt into governed execution for sensitive tools.
+  governed?: boolean;
   cb: ToolCallback<T>;
 };
 
@@ -65,10 +72,19 @@ export class CustomMcpServer {
   private ajv: Ajv;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   private tools: Record<string, ToolDefinition<any>> = {};
+  private readonly governance: GovernanceRuntime;
 
-  constructor(...args: ConstructorParameters<typeof Server>) {
+  constructor(
+    info: ConstructorParameters<typeof Server>[0],
+    sdkOptions?: ConstructorParameters<typeof Server>[1],
+    governance: GovernanceRuntime = { mode: "LEGACY" },
+  ) {
+    if (governance.mode === "GOVERNED" && typeof governance.guard !== "function") {
+      throw new Error("WARDEN_GUARD_REQUIRED");
+    }
+    this.governance = governance;
     this.ajv = new Ajv({ removeAdditional: true, strict: false });
-    this.server = new Server(...args);
+    this.server = new Server(info, sdkOptions);
 
     this.server.assertCanSetRequestHandler(ListToolsRequestSchema.shape.method.value);
     this.server.assertCanSetRequestHandler(CallToolRequestSchema.shape.method.value);
@@ -117,6 +133,7 @@ export class CustomMcpServer {
           }
 
           try {
+            await this.requireInvocationAuthority(request.params.name, callbackArguments);
             const cb = tool.cb as unknown as ToolCallback<InputJsonSchema>;
             return formatToolResult(await cb(callbackArguments, extra));
           } catch (error) {
@@ -125,6 +142,7 @@ export class CustomMcpServer {
         }
 
         try {
+          await this.requireInvocationAuthority(request.params.name, {});
           const cb = tool.cb as unknown as ToolCallback<undefined>;
           return formatToolResult(await cb(extra));
         } catch (error) {
@@ -132,6 +150,28 @@ export class CustomMcpServer {
         }
       },
     );
+  }
+
+  private async requireInvocationAuthority(
+    toolName: string,
+    args: Record<string, unknown>,
+  ): Promise<void> {
+    if (this.governance.mode !== "GOVERNED") return;
+
+    // The guard is supplied by a trusted server-owned adapter. No caller
+    // controlled header or MCP argument can establish authorization.
+    let verdict;
+    try {
+      verdict = await this.governance.guard({
+        toolName,
+        arguments: structuredClone(args),
+      });
+    } catch {
+      throw new Error("WARDEN_GUARD_UNAVAILABLE");
+    }
+    if (!canInvokeGovernedTool(verdict)) {
+      throw new Error("WARDEN_AUTHORITY_NOT_ADMITTED");
+    }
   }
 
   async connect(transport: Transport): Promise<void> {
@@ -145,6 +185,10 @@ export class CustomMcpServer {
   tool<T extends InputJsonSchema | undefined>(options: ToolDefinition<T>) {
     if (this.tools[options.name]) {
       throw new Error(`Tool with name ${options.name} already exists`);
+    }
+    if ((options.governed === true || isReservedGovernedTool(options.name)) &&
+        this.governance.mode !== "GOVERNED") {
+      throw new Error("WARDEN_GUARD_REQUIRED_FOR_GOVERNED_TOOL");
     }
 
     this.tools[options.name] = options;

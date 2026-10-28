@@ -42,6 +42,7 @@ import {
 } from "../tools/registerSetCustomRanking.ts";
 
 import { CustomMcpServer } from "../CustomMcpServer.ts";
+import type { GovernanceRuntime } from "../governance/toolGuard.ts";
 import { z } from "zod";
 
 export const StartServerOptionsSchema = CliFilteringOptionsSchema.extend({
@@ -76,6 +77,8 @@ function makeRegionRequestMiddleware(dashboardApi: DashboardApi): RequestMiddlew
 export async function startServer(
   options: StartServerOptions,
   transport: Transport = new StdioServerTransport(),
+  // Supplied by server bootstrap, never from MCP/CLI arguments.
+  governance: GovernanceRuntime = { mode: "LEGACY" },
 ): Promise<CustomMcpServer> {
   const { credentials, ...opts } = StartServerOptionsSchema.parse(options);
   const toolFilter = getToolFilter(opts);
@@ -83,7 +86,7 @@ export async function startServer(
   const server = new CustomMcpServer({
     name: "algolia",
     version: CONFIG.version,
-  });
+  }, undefined, governance);
 
   const regionHotFixMiddlewares: RequestMiddleware[] = [];
   let processCallbackArguments: ProcessCallbackArguments;
