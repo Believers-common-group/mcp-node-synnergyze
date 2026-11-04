@@ -135,7 +135,7 @@ export function qualifyMeetingMetadataR05(input: unknown): MeetingQualificationR
     meetingRef: ref(input.meetingRef) ? input.meetingRef : undefined,
     provider: knownProvider ? provider : undefined,
     capability: allowedCapability ? capability : undefined,
-    sourceRefDigest: typeof obs.sourceRef === "string"
+    sourceRefDigest: ref(obs.sourceRef)
       ? createHash("sha256").update(obs.sourceRef, "utf8").digest("hex") : undefined,
     qualifyingEvidence: status === "LAB_METADATA_CANDIDATE" ? "synthetic_metadata_only" : "none",
     reviewRequirements: ["AUTHENTICATED_PROVIDER_READ", "WARDEN_GRANT",
