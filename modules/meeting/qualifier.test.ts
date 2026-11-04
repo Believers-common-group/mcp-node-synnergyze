@@ -77,8 +77,15 @@ describe("SYN-MEETING-CONCIERGE-001 R0.5 offline qualification", () => {
     expect(qualifyMeetingMetadataR05(x).reasonCodes).toContain("LIVE_TRANSPORT_FORBIDDEN");
   });
   it("denies raw media and does not echo its contents", () => {
-    const x: any = media(); x.observation.metadata.audio = "PRIVATE_AUDIO_MATERIAL";
-    const result = qualifyMeetingMetadataR05(x);
+    const x = media();
+    const withUntrustedMedia = {
+      ...x,
+      observation: {
+        ...x.observation,
+        metadata: { ...x.observation.metadata, audio: "PRIVATE_AUDIO_MATERIAL" },
+      },
+    };
+    const result = qualifyMeetingMetadataR05(withUntrustedMedia);
     expect(result.reasonCodes).toContain("UNEXPECTED_METADATA_FIELD");
     expect(JSON.stringify(result)).not.toContain("PRIVATE_AUDIO_MATERIAL");
   });
