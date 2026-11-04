@@ -21,6 +21,7 @@ import {
   maybeRegisterPestelLegislativeIngest,
 } from "../tools/registerPestelLegislativeIngest.ts";
 import { maybeRegisterPestelImpactBrief } from "../tools/registerPestelImpactBrief.ts";
+import { maybeRegisterMeetingEvidenceQualification } from "../tools/registerMeetingEvidenceQualification.ts";
 import { InMemoryLegislativeIntelligenceResultStoreV1 } from "../../modules/legislative-intelligence/result-store.ts";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import type {
@@ -101,6 +102,7 @@ export async function createServer(options: StartServerOptions): Promise<CustomM
   maybeRegisterWardenRiverSynnergyzeConformanceExecution(server, toolFilter);
   maybeRegisterWardenRiverEffectConformance(server, toolFilter);
   maybeRegisterWardenReconciliationConformance(server, toolFilter);
+  maybeRegisterMeetingEvidenceQualification(server, toolFilter);
 
   const pestelResultStore = new InMemoryLegislativeIntelligenceResultStoreV1();
   const pestelService = createDefaultPestelLegislativeServiceV1();
