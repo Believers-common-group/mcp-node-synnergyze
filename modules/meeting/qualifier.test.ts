@@ -119,4 +119,24 @@ describe("SYN-MEETING-CONCIERGE-001 R0.5 offline qualification", () => {
     expect(JSON.stringify(result)).not.toContain("TEST-CALENDAR:001");
     expect(result.sourceRefDigest).toMatch(/^[a-f0-9]{64}$/);
   });
+  it("does not reflect untrusted provider or unsupported capability strings", () => {
+    const probe = "SECRET_SENTINEL_NO_ECHO_001";
+    const unknownProvider = booking();
+    const rejectedProvider = qualifyMeetingMetadataR05({
+      ...unknownProvider,
+      observation: { ...unknownProvider.observation, provider: probe },
+    });
+    expect(rejectedProvider.status).toBe("DENIED");
+    expect(rejectedProvider.reasonCodes).toContain("UNKNOWN_PROVIDER");
+    expect(JSON.stringify(rejectedProvider)).not.toContain(probe);
+
+    const rejectedCapability = qualifyMeetingMetadataR05({
+      ...unknownProvider,
+      observation: { ...unknownProvider.observation, capability: probe },
+    });
+    expect(rejectedCapability.status).toBe("DENIED");
+    expect(rejectedCapability.reasonCodes).toContain("WRITE_OR_UNSUPPORTED_CAPABILITY");
+    expect(JSON.stringify(rejectedCapability)).not.toContain(probe);
+  });
+
 });
