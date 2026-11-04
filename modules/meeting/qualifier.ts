@@ -67,9 +67,12 @@ export function qualifyMeetingMetadataR05(input: unknown): MeetingQualificationR
   if (Object.keys(meta).some((k) => !META_FIELDS.includes(k))) hard.push("UNEXPECTED_METADATA_FIELD");
   const provider = typeof obs.provider === "string" ? obs.provider : "";
   const capability = typeof obs.capability === "string" ? obs.capability : "";
-  if (!own(MEETING_QUALIFICATION_CAPABILITIES as unknown as Record<string, unknown>, provider)) {
+  const knownProvider = own(MEETING_QUALIFICATION_CAPABILITIES as unknown as Record<string, unknown>, provider);
+  const allowedCapability = knownProvider &&
+    (MEETING_QUALIFICATION_CAPABILITIES[provider as MeetingEvidenceProvider] as readonly string[]).includes(capability);
+  if (!knownProvider) {
     hard.push("UNKNOWN_PROVIDER");
-  } else if (!(MEETING_QUALIFICATION_CAPABILITIES[provider as MeetingEvidenceProvider] as readonly string[]).includes(capability)) {
+  } else if (!allowedCapability) {
     hard.push("WRITE_OR_UNSUPPORTED_CAPABILITY");
   }
   if (obs.meetingRef !== input.meetingRef || obs.sourceMeetingRef !== input.meetingRef) {
@@ -130,7 +133,8 @@ export function qualifyMeetingMetadataR05(input: unknown): MeetingQualificationR
   return {
     ...out, status, reasonCodes: reasons,
     meetingRef: ref(input.meetingRef) ? input.meetingRef : undefined,
-    provider, capability,
+    provider: knownProvider ? provider : undefined,
+    capability: allowedCapability ? capability : undefined,
     sourceRefDigest: typeof obs.sourceRef === "string"
       ? createHash("sha256").update(obs.sourceRef, "utf8").digest("hex") : undefined,
     qualifyingEvidence: status === "LAB_METADATA_CANDIDATE" ? "synthetic_metadata_only" : "none",
