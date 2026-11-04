@@ -139,4 +139,17 @@ describe("SYN-MEETING-CONCIERGE-001 R0.5 offline qualification", () => {
     expect(JSON.stringify(rejectedCapability)).not.toContain(probe);
   });
 
+  it("never hashes or reflects unbounded source references", () => {
+    const source = "S".repeat(8192);
+    const x = booking();
+    const r = qualifyMeetingMetadataR05({
+      ...x,
+      observation: { ...x.observation, sourceRef: source },
+    });
+    expect(r.status).toBe("HOLD");
+    expect(r.reasonCodes).toContain("SOURCE_REFERENCE_REQUIRED");
+    expect(r.sourceRefDigest).toBeUndefined();
+    expect(JSON.stringify(r)).not.toContain(source);
+  });
+
 });
