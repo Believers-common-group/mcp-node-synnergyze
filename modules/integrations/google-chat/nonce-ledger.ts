@@ -68,15 +68,15 @@ export class NeonGoogleChatNonceLedger implements GoogleChatNonceLedger {
     }
     const nonceDigest = hash(nonce);
     const actorBindingDigest = bindingFingerprint(binding);
-    const rows = await this.sql\`
+    const rows = await this.sql`
       insert into synnergyze_oauth.google_chat_nonce (
         nonce_digest, actor_binding_digest, expires_at
       ) values (
-        \${nonceDigest}, \${actorBindingDigest}, to_timestamp(\${expiresAt} / 1000.0)
+        ${nonceDigest}, ${actorBindingDigest}, to_timestamp(${expiresAt} / 1000.0)
       )
       on conflict (nonce_digest) do nothing
       returning nonce_digest
-    \` as Array<{ nonce_digest: string }>;
+    ` as Array<{ nonce_digest: string }>;
     return rows.length === 1;
   }
 
@@ -89,13 +89,13 @@ export class NeonGoogleChatNonceLedger implements GoogleChatNonceLedger {
     const actorBindingDigest = bindingFingerprint(binding);
     // One atomic statement: at most one callback can consume the nonce.
     // A bad binding must never consume another principal's valid nonce.
-    const rows = await this.sql\`
+    const rows = await this.sql`
       delete from synnergyze_oauth.google_chat_nonce
-      where nonce_digest = \${nonceDigest}
-        and actor_binding_digest = \${actorBindingDigest}
+      where nonce_digest = ${nonceDigest}
+        and actor_binding_digest = ${actorBindingDigest}
         and expires_at > now()
       returning nonce_digest
-    \` as Array<{ nonce_digest: string }>;
+    ` as Array<{ nonce_digest: string }>;
     return rows.length === 1;
   }
 }
