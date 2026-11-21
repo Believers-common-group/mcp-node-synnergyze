@@ -72,7 +72,13 @@ export async function verifyGoogleIdTokenSubject(input: {
       key.kid === header.kid && key.kty === "RSA" &&
       (!key.alg || key.alg === "RS256") && (!key.use || key.use === "sig"));
     if (keys.length !== 1) return false;
-    const publicKey = createPublicKey({ key: keys[0], format: "jwk" });
+    const candidate = keys[0];
+    if (typeof candidate.n !== "string" || typeof candidate.e !== "string" ||
+        !/^[A-Za-z0-9_-]+$/.test(candidate.n) ||
+        !/^[A-Za-z0-9_-]+$/.test(candidate.e)) return false;
+    const publicKey = createPublicKey({
+      key: { kty: "RSA", n: candidate.n, e: candidate.e }, format: "jwk",
+    });
     if (!verify("RSA-SHA256", Buffer.from(parts[0] + "." + parts[1]), publicKey,
       Buffer.from(parts[2], "base64url"))) return false;
     const registeredSubject = await input.registry.getVerifiedGoogleSubject(binding);
