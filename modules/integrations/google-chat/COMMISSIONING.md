@@ -82,3 +82,14 @@ Never interpret a Vitest mock test as evidence of production authorization. Exis
 - The database adapter is intentionally **write-only** for now. A future read path requires a server-verifiable Warden checkpoint, separate trusted identity resolver, current consent, allowed Google Chat resource, and River reservation before token decryption and provider execution. A claimed identity string is insufficient.
 - Key rotation: keep old decryption keys until encrypted rows are re-encrypted or expire. Revoke consent by deleting that binding; also revoke provider-side grants when supported.
 - Release gate: apply least-privilege DB access, encryption-key handling, retention cleanup, audit logging without token contents, and independent account verification. Existing CI checks are not proof of live authorization.
+
+## Stage 5 — Verified Google OpenID account binding (proposed)
+
+- Google OAuth request now asks for `openid` alongside the three existing **read-only Chat scopes**, and sends a random nonce in the authorization request.
+- The token exchange requires `id_token` and a trusted `verifyProviderAccount` adapter before any access token is handed to the encrypted vault.
+- `google-id-token.ts` provides a cryptographic RS256 verification primitive against Google's published JWKS endpoint. It checks exact client audience, allowed issuer, expiry, issuance time, original transaction nonce, and immutable Google `sub` matched to a **trusted Genesis registry lookup**.
+- The registry is a trusted interface only, not a working binding implementation: it must be populated from a separately verified account-enrollment process. Never trust a `sub` supplied in an MCP argument, HTTP request body or user-editable profile field.
+- The existing `verifyProviderAccount` hook is intentionally not wired to any live callback; the callback still returns 503. The function must be bound to this cryptographic verification before activation, never a stub that merely returns `true`.
+- Existing token-vault storage continues to retain only the authorized three Chat read scopes; identity permission `openid` is authentication-specific and not a Chat execution permission.
+- Production hardening: pin Google JWKS retrieval, account for signing-key rotation and cache limits, add verified session lookup and revocation, audit token handling and consent expiry, and review multiple-account linking/anti-rebinding conditions. Current tests use synthetic signed tokens and fixtures only.
+- **No live Google user identity, Chat message or OAuth secret has been accessed by this PR.**
