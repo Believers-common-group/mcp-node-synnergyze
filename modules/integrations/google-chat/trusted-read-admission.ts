@@ -16,6 +16,7 @@ import {
 } from "./trusted-context.ts";
 import {
   evaluateGoogleChatReadGateV1,
+  GOOGLE_CHAT_READ_SCOPES,
   type GoogleChatPilotPolicyV1,
 } from "./warden-read-gate.ts";
 
@@ -141,6 +142,11 @@ export async function prepareTrustedGoogleChatReadV1(
     const policy = await sources.getPolicy(resolved);
     const grantedScopes = await sources.getProviderGrantedScopes(resolved);
     if (!Array.isArray(grantedScopes)) return denied("provider_scopes_unavailable");
+    const scopes = new Set(grantedScopes);
+    if (scopes.size !== GOOGLE_CHAT_READ_SCOPES.length ||
+        !GOOGLE_CHAT_READ_SCOPES.every((scope) => scopes.has(scope))) {
+      return denied("provider_scopes_not_exact_readonly");
+    }
     const verified = await sources.getVerifiedWardenDecision(resolved, intent);
     if (!verified || verified.verified !== true ||
         !completeRef(verified.verificationRef)) return denied("warden_authority_unverified");
