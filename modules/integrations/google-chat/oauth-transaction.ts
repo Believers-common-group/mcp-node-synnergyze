@@ -8,6 +8,8 @@ import { GOOGLE_CHAT_READ_SCOPES } from './warden-read-gate.ts';
 
 const GOOGLE_AUTH = 'https://accounts.google.com/o/oauth2/v2/auth';
 const GOOGLE_TOKEN = 'https://oauth2.googleapis.com/token';
+// OpenID is an authentication scope, not a Google Chat write permission.
+const GOOGLE_CHAT_AUTH_SCOPES = ['openid', ...GOOGLE_CHAT_READ_SCOPES] as const;
 const COOKIE = '__Host-synnergyze-gchat-oauth';
 const TEN_MIN = 10 * 60 * 1000;
 const ENVELOPE_VERSION = 1;
@@ -116,7 +118,9 @@ export function beginGoogleChatOAuth(options: OAuthStartOptions): {
   url.searchParams.set('response_type', 'code');
   url.searchParams.set('client_id', options.clientId);
   url.searchParams.set('redirect_uri', options.redirectUri);
-  url.searchParams.set('scope', GOOGLE_CHAT_READ_SCOPES.join(' '));
+  url.searchParams.set('scope', GOOGLE_CHAT_AUTH_SCOPES.join(' '));
+  // Google returns this nonce in the signed ID token; verify it before binding.
+  url.searchParams.set('nonce', transaction.nonce);
   url.searchParams.set('state', transaction.state);
   url.searchParams.set('code_challenge', createHash('sha256').update(verifier).digest('base64url'));
   url.searchParams.set('code_challenge_method', 'S256');
@@ -189,7 +193,13 @@ export async function exchangeAndVaultGoogleChatOAuth(input: {
   vault: GoogleChatOAuthVault;
   clientId: string;
   clientSecret: string;
-  verifyProviderAccount: (token: string, binding: TrustedGoogleChatPrincipalBinding) => Promise<boolean>;
+  /** Must cryptographically verify Google's ID token (issuer, aud, exp, nonce) and match the immutable sub against Genesis registry. */
+  verifyProviderAccount: (
+    idToken: string,
+    binding: TrustedGoogleChatPrincipalBinding,
+    expectedClientId: string,
+    expectedNonce: string,
+  ) => Promise<boolean>;
   now?: number;
   httpPost?: typeof fetch;
 }): Promise<{ connected: true; actorRef: string; correlationId: string }> {
@@ -215,8 +225,8 @@ export async function exchangeAndVaultGoogleChatOAuth(input: {
   try { payload = await reply.json() as Record<string, unknown>; }
   catch { throw new Error('oauth_token_response_invalid'); }
   const scopes = typeof payload.scope === 'string' ? payload.scope.split(/\s+/).filter(Boolean) : [];
-  if (scopes.length !== GOOGLE_CHAT_READ_SCOPES.length ||
-      !GOOGLE_CHAT_READ_SCOPES.every((scope) => scopes.includes(scope))) {
+  if (scopes.length !== GOOGLE_CHAT_AUTH_SCOPES.length ||
+      !GOOGLE_CHAT_AUTH_SCOPES.every((scope) => scopes.includes(scope))) {
     throw new Error('oauth_scope_verification_failed');
   }
   if (typeof payload.access_token !== 'string' || !payload.access_token ||
@@ -224,14 +234,21 @@ export async function exchangeAndVaultGoogleChatOAuth(input: {
       !Number.isFinite(payload.expires_in) || payload.expires_in <= 0) {
     throw new Error('oauth_token_response_invalid');
   }
-  if (!await input.verifyProviderAccount(payload.access_token, input.verified.binding)) {
-    throw new Error('oauth_provider_account_mismatch');
+  if (typeof payload.id_token !== 'string' || !payload.id_token) {
+    throw new Error('oauth_google_id_token_required');
   }
+  let matched = false;
+  try {
+    matched = await input.verifyProviderAccount(
+      payload.id_token, input.verified.binding, input.clientId, input.verified.nonce,
+    );
+  } catch { matched = false; }
+  if (!matched) throw new Error('oauth_provider_account_mismatch');
   await input.vault.putGoogleChatTokens({
     binding: input.verified.binding,
     accessToken: payload.access_token,
     expiresAt: (input.now ?? Date.now()) + payload.expires_in * 1000,
-    grantedScopes: scopes,
+    grantedScopes: [...GOOGLE_CHAT_READ_SCOPES],
   });
   return { connected: true, actorRef: input.verified.binding.actorRef,
     correlationId: input.verified.binding.correlationId };
