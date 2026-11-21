@@ -103,3 +103,14 @@ Never interpret a Vitest mock test as evidence of production authorization. Exis
 - **Important:** `TrustedGoogleChatContextSourcesV1` is a backend integration contract, not an implemented authenticator. It must be supplied by a real session verifier and authoritative registry/consent database, never instantiated from MCP tool parameters, client JSON, cookies without signature verification, or editable profiles.
 - At execution time, re-check consent/session and verified Google subject, obtain a genuinely authenticated Warden decision from the existing governance service, reserve River evidence, and enforce the tool/space allowlist at the server-side Google MCP adapter.
 - The OAuth callback remains disabled (HTTP 503), databases unchanged, live Chat unread. Stage 6 is not production commissioning.
+
+## Stage 7 — Trusted Warden + River admission composition
+
+- `trusted-read-admission.ts` builds a **non-executable readiness receipt** from a server-resolved session/account/consent context and separately injected Warden/River provider interfaces.
+- It permits only `list_messages` and `list_memberships`, binds the exact Google space, principal, provider account, request and correlation IDs, and checks a server-verified Warden `ALLOW`.
+- It validates the River reservation authorization digest against the Warden action token and requires a `VALID` checkpoint matching the same Warden, decision, correlation and time ordering.
+- Readiness state `READ_READY_NO_EXTERNAL_EFFECT` is **not** proof of a Google provider response, executed action, retrieved token, persisted River result, or completed security admission.
+- `trusted-read-admission.test.ts` exercises a positive synthetic receipt and deny-by-default paths including revoked consent, missing session, wrong space or Warden target, unavailable authority, stale checkpoint and authorization digest mismatch.
+- The source interfaces are unimplemented internal-only ports. Only trusted service code may instantiate them; a request, MCP tool argument, or caller-supplied `verificationRef` cannot prove Warden or River authority.
+- Before any live provider call: wire authenticated session and registry sources, verify Warden signatures/issuance or trusted authenticated decision channel, finalize a durable River reservation/checkpoint, add secure server-side token access and provider transport, then independently recheck consent and Warden authority at the moment of execution.
+- **No real Google Chat transport or token retrieval occurs in Stage 7.** The OAuth callback stays HTTP 503, both database migrations remain unexecuted, and production release stays HOLD.
