@@ -59,3 +59,17 @@ Do not enable a live read until:
 Run: \`npx vitest run modules/integrations/google-chat/warden-read-gate.test.ts\`.
 
 This change only introduces pure policy code and unit tests. It does not itself assert successful CI, completed OAuth or verified Google Chat access.
+
+## Stage 3: Durable nonce reservation
+
+- `nonce-ledger.ts` contains a Neon SQL-backed one-time ledger. It hashes the nonce and the ordered trusted binding; it never stores OAuth authorization codes, access tokens, or the user's plaintext identity binding.
+- `migrations/google-chat-oauth-ledger.sql` is **proposed and NOT applied**. The credentials used to run this migration must be scoped to the intended development database.
+- The OAuth **start** handler must call `beginGoogleChatOAuth`, then await `reserveGoogleChatOAuthTransaction(ledger, result, trustedBinding, now + 600000)` before setting the cookie and issuing the redirect. Do not issue the redirect if reservation fails.
+- The callback must use the same durable ledger for atomic `consumeTransactionNonce`; consuming an absent, expired, mismatched or already-consumed nonce fails closed.
+- `exchangeAndVaultGoogleChatOAuth` still requires a real encrypted credential vault and trusted provider-account verifier. The callback remains intentionally disabled until these are present, independently qualified and deployed.
+- Audit note: when OAuth fails *after* nonce consumption, start a new transaction instead of retrying the consumed code. Restrict the database user so it cannot access unrelated Estate or River tables.
+- The current transaction-cookie design is a pre-commissioning specification: third-party cookie support, host browser/session binding, OAuth-provider behavior and production replay controls still require end-to-end qualification.
+
+### Security review hold
+
+Never interpret a Vitest mock test as evidence of production authorization. Existing synthetic Warden decisions remain test-only. The project still needs: authenticated session recovery, tenant isolation, exact actor/binding attestation, encryption-at-rest key rotation, strict outbound egress, provider identity verification, and separately governed River receipts.
