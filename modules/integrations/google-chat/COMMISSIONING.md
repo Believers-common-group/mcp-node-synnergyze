@@ -93,3 +93,13 @@ Never interpret a Vitest mock test as evidence of production authorization. Exis
 - Existing token-vault storage continues to retain only the authorized three Chat read scopes; identity permission `openid` is authentication-specific and not a Chat execution permission.
 - Production hardening: pin Google JWKS retrieval, account for signing-key rotation and cache limits, add verified session lookup and revocation, audit token handling and consent expiry, and review multiple-account linking/anti-rebinding conditions. Current tests use synthetic signed tokens and fixtures only.
 - **No live Google user identity, Chat message or OAuth secret has been accessed by this PR.**
+
+## Stage 6 — Trusted context gate and abstention
+
+- `trusted-context.ts` defines server-only interfaces for independently resolved Synnergyze sessions, previously verified Google subjects, and revocable Chat-specific consents. The interface has **no credentials and no client-writable trust fields**.
+- The resolver requires the expected session issuer/audience, current session validity, exact DigitalMe actor/principal correspondence, a previously verified Google account enrollment, bounded purpose/space consent and exactly the three Chat read scopes.
+- Failed, missing, revoked, expired or unavailable records return a non-authoritative denial. A verified context returns a bounded identity/consent binding **but not a Warden ALLOW decision or River receipt**.
+- `trusted-context.test.ts` adds negative cases for cross-principal access, wrong audience, expired session or consent, excess permissions and unauthorized rooms.
+- **Important:** `TrustedGoogleChatContextSourcesV1` is a backend integration contract, not an implemented authenticator. It must be supplied by a real session verifier and authoritative registry/consent database, never instantiated from MCP tool parameters, client JSON, cookies without signature verification, or editable profiles.
+- At execution time, re-check consent/session and verified Google subject, obtain a genuinely authenticated Warden decision from the existing governance service, reserve River evidence, and enforce the tool/space allowlist at the server-side Google MCP adapter.
+- The OAuth callback remains disabled (HTTP 503), databases unchanged, live Chat unread. Stage 6 is not production commissioning.
