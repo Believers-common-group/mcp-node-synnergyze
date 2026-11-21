@@ -175,46 +175,10 @@ export class NeonGoogleChatTokenVault implements GoogleChatOAuthVault {
     `;
   }
 
-  /**
-   * Internal-only retrieval. Identity, consent, Warden authorization and
-   * target-space admission MUST have occurred before invocation.
-   */
-  async getAccessTokenForAuthorizedRead(
-    trustedBinding: TrustedGoogleChatPrincipalBinding,
-  ): Promise<string | null> {
-    const bindingDigest = googleChatBindingDigest(trustedBinding);
-    const rows = await this.sql`
-      select binding_digest, key_id, iv, tag, ciphertext, scope_digest,
-        (extract(epoch from expires_at) * 1000)::bigint as expires_at_ms
-      from synnergyze_oauth.google_chat_access_token
-      where binding_digest = ${bindingDigest} and expires_at > now()
-      limit 1
-    ` as Array<{
-      binding_digest: string;
-      key_id: string;
-      iv: string;
-      tag: string;
-      ciphertext: string;
-      scope_digest: string;
-      expires_at_ms: string;
-    }>;
-    if (rows.length !== 1) return null;
-    const row = rows[0];
-    const expiresAt = Number(row.expires_at_ms);
-    return openGoogleChatAccessToken({
-      sealed: {
-        keyId: row.key_id,
-        bindingDigest: row.binding_digest,
-        iv: row.iv,
-        tag: row.tag,
-        ciphertext: row.ciphertext,
-        scopeDigest: row.scope_digest,
-        expiresAt,
-      },
-      trustedBinding,
-      keyring: this.keyring,
-    });
-  }
+  // Deliberately no database token read method in the pilot.
+  // A future reader must accept a non-forgeable, server-verifiable Warden
+  // authorization checkpoint, resolve the identity independently, then
+  // decrypt and call Google. A claimed binding alone is not authorization.
 
   async revokeBinding(trustedBinding: TrustedGoogleChatPrincipalBinding): Promise<void> {
     const bindingDigest = googleChatBindingDigest(trustedBinding);
