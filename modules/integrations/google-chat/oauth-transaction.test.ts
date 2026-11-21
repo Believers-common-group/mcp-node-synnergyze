@@ -1,3 +1,4 @@
+import type { GoogleChatOAuthVault } from "./oauth-transaction.ts";
 import { describe, it, expect } from "vitest";
 import { strict as assert } from "node:assert";
 import { randomBytes } from "node:crypto";
@@ -74,7 +75,7 @@ describe("GEN-CON-GCHAT-001 OAuth offline conformance", () => {
     const verified = cb(start()); let consumeCount=0; let stored: unknown=null;
     const vault = {
       async consumeTransactionNonce(n: string,b: typeof binding) {consumeCount++;return n===verified.nonce && b.actorRef===actor && consumeCount===1;},
-      async putGoogleChatTokens(x: Parameters<import("./oauth-transaction.ts").GoogleChatOAuthVault["putGoogleChatTokens"]>[0]){stored=x;},
+      async putGoogleChatTokens(x: Parameters<GoogleChatOAuthVault["putGoogleChatTokens"]>[0]){stored=x;},
     };
     const token = {access_token:"synthetic-token",token_type:"Bearer",
       scope:"https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.memberships.readonly",expires_in:900};
