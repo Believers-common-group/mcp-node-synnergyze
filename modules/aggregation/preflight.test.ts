@@ -115,6 +115,17 @@ describe("cross-account and authority denial",()=>{
     const result=preflightIAMCommandV1(fixture(),{...command,command:"LICENSE_ASSIGN"});
     expect(result).toEqual({ok:false,reasonCode:"iam_command_not_assigned"});
   });
+  it("denies an agent invocation aimed at another agent",()=>{
+    const result=preflightIAMCommandV1(fixture(),{...command,targetRef:"AGENT:OTHER"});
+    expect(result).toEqual({ok:false,reasonCode:"iam_target_agent_mismatch"});
+  });
+  it("sends authority mutation to a separate admission workflow",()=>{
+    const s=fixture();s.membership={...s.membership,iamCommands:[
+      ...s.membership.iamCommands,"LICENSE_ASSIGN",
+    ]};
+    const result=preflightIAMCommandV1(s,{...command,command:"LICENSE_ASSIGN",targetRef:"LICENSE:OTHER"});
+    expect(result).toEqual({ok:false,reasonCode:"iam_authority_change_requires_independent_workflow"});
+  });
   it("denies IAM actor mismatch",()=>{
     const result=preflightIAMCommandV1(fixture(),{...command,requestedByActorRef:"DIGITALME:OTHER"});
     expect(result).toEqual({ok:false,reasonCode:"iam_request_actor_or_license_mismatch"});
