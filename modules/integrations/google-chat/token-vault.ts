@@ -34,9 +34,11 @@ function digest(input: string): string {
 }
 
 export function googleChatBindingDigest(binding: TrustedGoogleChatPrincipalBinding): string {
+  // Credential identity stays stable across Warden requests and correlation IDs.
+  // Those volatile identifiers belong in the nonce ledger and River receipts.
   const values = [
     binding.actorRef, binding.principalRef, binding.googleAccountBindingRef,
-    binding.consentRef, binding.wardenRequestRef, binding.correlationId,
+    binding.consentRef,
   ];
   if (values.some((value) => typeof value !== "string" || !value.trim() || value.length >= 512)) {
     throw new Error("vault_binding_invalid");
@@ -115,6 +117,8 @@ export function openGoogleChatAccessToken(input: {
   }
   const digestForBinding = googleChatBindingDigest(input.trustedBinding);
   if (digestForBinding !== input.sealed.bindingDigest) throw new Error("vault_binding_mismatch");
+  const expectedScopeDigest = digest(JSON.stringify(normalizedScopes(GOOGLE_CHAT_READ_SCOPES)));
+  if (input.sealed.scopeDigest !== expectedScopeDigest) throw new Error("vault_scope_mismatch");
   const key = requireKey(input.keyring, input.sealed.keyId);
   try {
     const decipher = createDecipheriv("aes-256-gcm", key, Buffer.from(input.sealed.iv, "base64"));
