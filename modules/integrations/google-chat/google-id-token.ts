@@ -53,7 +53,8 @@ export async function verifyGoogleIdTokenSubject(input: {
     if (!Number.isFinite(now) || !ISSUERS.has(String(claims.iss))) return false;
     if (typeof claims.aud !== "string" || claims.aud !== expectedClientId) return false;
     if (typeof claims.azp === "string" && claims.azp !== expectedClientId) return false;
-    if (typeof claims.sub !== "string" || !/^[0-9]{5,64}$/.test(claims.sub)) return false;
+    // Google sub is case-sensitive and can be up to 255 ASCII characters.
+    if (typeof claims.sub !== "string" || !/^[\x21-\x7E]{1,255}$/.test(claims.sub)) return false;
     if (typeof claims.nonce !== "string" || claims.nonce !== expectedNonce) return false;
     if (typeof claims.exp !== "number" || !Number.isSafeInteger(claims.exp) ||
         claims.exp <= now - CLOCK_SKEW_SECONDS) return false;
