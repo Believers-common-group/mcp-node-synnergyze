@@ -100,7 +100,15 @@ export function preflightIAMCommandV1(
   }
   if (AUTHORITY_CHANGING.has(intent.command) &&
     !ref(snapshot.membership.authorityEvidenceRef)) return fail("iam_authority_evidence_missing");
-  if (intent.command === "AGENT_INVOKE" && !snapshot.agent) return fail("agent_binding_required");
+  if (intent.command === "AGENT_INVOKE") {
+    if (!snapshot.agent) return fail("agent_binding_required");
+    if (intent.targetRef !== snapshot.agent.agentRef) return fail("iam_target_agent_mismatch");
+  }
+  // Authority-changing commands require separate privileged reviewer/admission,
+  // beyond this snapshot: they cannot mutate their own license or role.
+  if (AUTHORITY_CHANGING.has(intent.command)) {
+    return fail("iam_authority_change_requires_independent_workflow");
+  }
   return {
     ok: true, state: "READY_FOR_WARDEN", accountCategory: snapshot.account.category,
     accountRef: snapshot.account.accountRef,
