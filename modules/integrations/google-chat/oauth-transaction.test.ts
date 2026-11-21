@@ -71,10 +71,10 @@ describe("GEN-CON-GCHAT-001 OAuth offline conformance", () => {
   it("handles provider access denial", () => throws(() => cb(start(),{error:"access_denied"}),"oauth_provider_declined"));
   it("clears the correct Host cookie", () => expect(GOOGLE_OAUTH_CLEAR_COOKIE).toContain("Max-Age=0"));
   it("requires nonce consumption and vaults synthetic approved token", async () => {
-    const verified = cb(start()); let consumeCount=0; let stored: any=null;
+    const verified = cb(start()); let consumeCount=0; let stored: unknown=null;
     const vault = {
       async consumeTransactionNonce(n: string,b: typeof binding) {consumeCount++;return n===verified.nonce && b.actorRef===actor && consumeCount===1;},
-      async putGoogleChatTokens(x: any){stored=x;},
+      async putGoogleChatTokens(x: Parameters<import("./oauth-transaction.ts").GoogleChatOAuthVault["putGoogleChatTokens"]>[0]){stored=x;},
     };
     const token = {access_token:"synthetic-token",token_type:"Bearer",
       scope:"https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.memberships.readonly",expires_in:900};
@@ -82,7 +82,7 @@ describe("GEN-CON-GCHAT-001 OAuth offline conformance", () => {
     const opts={verified,vault,clientId,clientSecret:"synthetic-secret",now,httpPost: httpPost as typeof fetch,verifyProviderAccount:async()=>true};
     const result=await exchangeAndVaultGoogleChatOAuth(opts);
     expect(result.connected).toBe(true);expect(result.actorRef).toBe(actor);
-    expect(stored.accessToken).toBe("synthetic-token");expect(stored.expiresAt).toBe(now+900000);
+    expect(stored).toMatchObject({ accessToken: "synthetic-token", expiresAt: now + 900000 });
     await expect(exchangeAndVaultGoogleChatOAuth(opts)).rejects.toThrow("oauth_transaction_replayed");
   });
   it("rejects overbroad token scopes", async () => {
