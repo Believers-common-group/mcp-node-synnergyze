@@ -50,7 +50,9 @@ describe("GEN-CON-GCHAT-001 OAuth offline conformance", () => {
     expect(u.searchParams.get("code_challenge_method")).toBe("S256");
     expect(u.searchParams.get("redirect_uri")).toBe(callback);
     expect(u.searchParams.get("access_type")).toBe("online");
-    expect(u.searchParams.get("scope")?.split(" ")).toHaveLength(3);
+    expect(u.searchParams.get("scope")?.split(" ")).toHaveLength(4);
+    expect(u.searchParams.get("scope")?.split(" ")).toContain("openid");
+    expect(u.searchParams.get("nonce")).toHaveLength(43);
     expect(u.searchParams.get("scope")).not.toContain("create");
     expect(x.setCookie).toContain("HttpOnly; Secure; SameSite=Lax; Max-Age=600");
     expect(x.authorizationUrl).not.toContain(actor);
@@ -78,7 +80,7 @@ describe("GEN-CON-GCHAT-001 OAuth offline conformance", () => {
       async putGoogleChatTokens(x: Parameters<GoogleChatOAuthVault["putGoogleChatTokens"]>[0]){stored=x;},
     };
     const token = {access_token:"synthetic-token",token_type:"Bearer",
-      scope:"https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.memberships.readonly",expires_in:900};
+      scope:"openid https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.memberships.readonly",expires_in:900,id_token:"synthetic-id-token"};
     const httpPost = async () => new Response(JSON.stringify(token),{status:200});
     const opts={verified,vault,clientId,clientSecret:"synthetic-secret",now,httpPost: httpPost as typeof fetch,verifyProviderAccount:async()=>true};
     const result=await exchangeAndVaultGoogleChatOAuth(opts);
@@ -89,14 +91,14 @@ describe("GEN-CON-GCHAT-001 OAuth offline conformance", () => {
   it("rejects overbroad token scopes", async () => {
     const verified=cb(start());const vault={async consumeTransactionNonce(){return true;},async putGoogleChatTokens(){throw Error("should not store");}};
     const token={access_token:"synthetic-token",token_type:"Bearer",
-      scope:"https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.memberships.readonly https://www.googleapis.com/auth/chat.messages.create",expires_in:900};
+      scope:"openid https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.memberships.readonly https://www.googleapis.com/auth/chat.messages.create",expires_in:900,id_token:"synthetic-id-token"};
     await expect(exchangeAndVaultGoogleChatOAuth({verified,vault,clientId,clientSecret:"synthetic-secret",httpPost:(async()=>new Response(JSON.stringify(token))) as typeof fetch,verifyProviderAccount:async()=>true})).rejects.toThrow("oauth_scope_verification_failed");
   });
   it("rejects unverified provider identity without storing token", async () => {
     const verified=cb(start());let stored=false;
     const vault={async consumeTransactionNonce(){return true;},async putGoogleChatTokens(){stored=true;}};
     const token={access_token:"synthetic-token",token_type:"Bearer",
-      scope:"https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.memberships.readonly",expires_in:900};
+      scope:"openid https://www.googleapis.com/auth/chat.spaces.readonly https://www.googleapis.com/auth/chat.messages.readonly https://www.googleapis.com/auth/chat.memberships.readonly",expires_in:900,id_token:"synthetic-id-token"};
     await expect(exchangeAndVaultGoogleChatOAuth({verified,vault,clientId,clientSecret:"synthetic-secret",httpPost:(async()=>new Response(JSON.stringify(token))) as typeof fetch,verifyProviderAccount:async()=>false})).rejects.toThrow("oauth_provider_account_mismatch");
     expect(stored).toBe(false);
   });
