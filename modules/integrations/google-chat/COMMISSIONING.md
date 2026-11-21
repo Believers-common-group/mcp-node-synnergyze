@@ -73,3 +73,12 @@ This change only introduces pure policy code and unit tests. It does not itself 
 ### Security review hold
 
 Never interpret a Vitest mock test as evidence of production authorization. Existing synthetic Warden decisions remain test-only. The project still needs: authenticated session recovery, tenant isolation, exact actor/binding attestation, encryption-at-rest key rotation, strict outbound egress, provider identity verification, and separately governed River receipts.
+
+## Stage 4: encrypted credential persistence
+
+- The proposed `token-vault.ts` supports AES-256-GCM with AAD binding to stable DigitalMe actor, represented principal, Google account and consent. Per-request Warden/correlation identifiers are NOT used as the durable credential primary key.
+- `migrations/google-chat-token-vault.sql` is **not applied**. It holds ciphertext, IV, tag, key identifier, scope fingerprint and expiry only.
+- Encryption keys are supplied by the hosting secret manager, never by untrusted MCP caller input. The read-only pilot does not request refresh tokens.
+- The database adapter is intentionally **write-only** for now. A future read path requires a server-verifiable Warden checkpoint, separate trusted identity resolver, current consent, allowed Google Chat resource, and River reservation before token decryption and provider execution. A claimed identity string is insufficient.
+- Key rotation: keep old decryption keys until encrypted rows are re-encrypted or expire. Revoke consent by deleting that binding; also revoke provider-side grants when supported.
+- Release gate: apply least-privilege DB access, encryption-key handling, retention cleanup, audit logging without token contents, and independent account verification. Existing CI checks are not proof of live authorization.
