@@ -83,7 +83,10 @@ function deny(code: string): GoogleChatTrustedContextResultV1 {
 }
 function reference(value: string): boolean {
   return typeof value === "string" && value.length > 0 && value.length <= 256 &&
-    !/[\x00-\x1f\x7f]/.test(value);
+    !Array.from(value).some((char) => {
+      const code = char.charCodeAt(0);
+      return code <= 31 || code === 127;
+    });
 }
 function instant(value: string): number | undefined {
   const parsed = Date.parse(value);
