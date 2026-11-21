@@ -184,7 +184,15 @@ describe("GEN-CON-GCHAT-001 read readiness without external effect", () => {
   it("denies provider scope missing", async () => {
     const {sources,getReservationCalls}=buildSources({scopes:[]});
     expect(await prepareTrustedGoogleChatReadV1(sources,intent))
-      .toEqual({ok:false,code:"scope_missing"});
+      .toEqual({ok:false,code:"provider_scopes_not_exact_readonly"});
+    expect(getReservationCalls()).toBe(0);
+  });
+  it("denies overbroad provider permissions even when read scopes are present", async () => {
+    const {sources,getReservationCalls}=buildSources({scopes:[
+      ...GOOGLE_CHAT_READ_SCOPES, "https://www.googleapis.com/auth/chat.messages.create",
+    ]});
+    expect(await prepareTrustedGoogleChatReadV1(sources,intent))
+      .toEqual({ok:false,code:"provider_scopes_not_exact_readonly"});
     expect(getReservationCalls()).toBe(0);
   });
   it("denies connector HOLD", async () => {
